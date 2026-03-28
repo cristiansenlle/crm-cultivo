@@ -313,25 +313,35 @@ async function confirmAdjust(id) {
 }
 
 async function removeQuimico(id) {
-    if (confirm('¿Eliminar este insumo del inventario por completo?')) {
-        try {
-            await window.sbClient.from('core_inventory_quimicos').delete().eq('id', id);
-            await fetchInventory();
-        } catch (e) {
-            console.error(e);
-            alert('Fallo al eliminar de Supabase.');
+    const btn = event.currentTarget;
+    if (btn) btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Eliminando...';
+    try {
+        const { data, error } = await window.sbClient.from('core_inventory_quimicos').delete().eq('id', id);
+        if (error) {
+            console.error("DB Drop Error:", error);
+            if (btn) btn.innerHTML = '<i class="ph ph-warning"></i> Error (Ver Consola)';
+            return;
         }
+        await fetchInventory();
+    } catch (e) {
+        console.error("Fallo catastrófico:", e);
+        if (btn) btn.innerHTML = '<i class="ph ph-warning"></i> Error RLS';
     }
 }
 
 async function removeCosecha(id) {
-    if (confirm('¿Eliminar esta cosecha del inventario?')) {
-        try {
-            await window.sbClient.from('core_inventory_cosechas').delete().eq('id', id);
-            await fetchInventory();
-        } catch (e) {
-            console.error(e);
-            alert('Fallo al eliminar de Supabase.');
+    const btn = event.currentTarget;
+    if (btn) btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Eliminando...';
+    try {
+        const { data, error } = await window.sbClient.from('core_inventory_cosechas').delete().eq('id', id);
+        if (error) {
+            console.error("DB Drop Error:", error);
+            if (btn) btn.innerHTML = '<i class="ph ph-warning"></i> Error (Ver Consola)';
+            return;
         }
+        await fetchInventory();
+    } catch (e) {
+        console.error("Fallo catastrófico:", e);
+        if (btn) btn.innerHTML = '<i class="ph ph-warning"></i> Error RLS';
     }
 }

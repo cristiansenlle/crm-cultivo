@@ -44,12 +44,19 @@ async function supaFetch(path, method = 'GET', body = null) {
 }
 
 function fuzzyMatch(lookup, targetList) {
-    const lLower = lookup.toLowerCase().trim();
+    if (!lookup) return null;
+    const normalize = str => {
+        if (!str) return '';
+        return String(str).toLowerCase().replace(/[^a-z0-9áéíóúñ]/g, ' ').replace(/\s+/g, ' ').trim();
+    };
+    
+    const lLower = normalize(lookup);
     let bestMatch = null;
     let highestScore = 0;
     
-    for (const item of targetList) {
-        const iLower = item.name.toLowerCase();
+    for (const item of (targetList || [])) {
+        if (!item || !item.name) continue;
+        const iLower = normalize(item.name);
         if (lLower === iLower) return item;
         
         let score = 0;
@@ -105,8 +112,10 @@ const server = http.createServer(async (req, res) => {
 
                 
                 // 1. Fetch valid batches
+                console.log('[BOT-AGRO] Q1: fetching batches');
                 const batchFilter = batches.map(b => `"${b}"`).join(',');
                 const dbBatches = await supaFetch(`core_batches?id=in.(${encodeURIComponent(batchFilter)})&select=id,location`);
+                console.log('[BOT-AGRO] Q1 done. Found:', dbBatches ? dbBatches.length : 0);
                 if (!dbBatches || dbBatches.length === 0) {
                     res.writeHead(404); return res.end(JSON.stringify({ error: "Lotes inválidos." }));
                 }
@@ -114,21 +123,35 @@ const server = http.createServer(async (req, res) => {
                 const splitFactor = dbBatches.length;
 
                 // 2. Fetch inventory
+                console.log('[BOT-AGRO] Q2: catching inventory');
                 const qInventory = await supaFetch('core_inventory_quimicos?select=*');
+                console.log('[BOT-AGRO] Q2 done.');
 
                 let totalCalculatedCost = 0;
                 let successfulDeductions = [];
                 let errors = [];
 
                 // 3. Process inputs
-                for (const input of (inputs || [])) {
-                    const match = fuzzyMatch(input.name, qInventory);
+                console.log('[BOT-AGRO] Q3: processing inputs');
+                const safeInputs = typeof inputs === 'string' ? JSON.parse(inputs) : inputs;
+                for (const input of (safeInputs || [])) {
+                    // LLM might hallucinate Spanish keys due to missing schema descriptions
+                    const inputName = input.name || input.insumo || input.producto || input.item || input.nombre;
+                    const inputQty = input.qty || input.cantidad || input.amount || 1;
+                    
+                    if (!inputName) {
+                        console.warn(`[BOT-AGRO] Input missing name/insumo/nombre:`, input);
+                        continue;
+                    }
+
+                    const match = fuzzyMatch(inputName, qInventory);
                     if (match) {
-                        const usedQty = parseFloat(input.qty);
+                        const usedQty = parseFloat(inputQty);
                         const itemCost = parseFloat(match.unit_cost || 0) * usedQty;
                         totalCalculatedCost += itemCost;
                         
                         const newStock = Math.max(0, match.qty - usedQty);
+                        console.log('[BOT-AGRO] Q3 patching inventory for', match.id);
                         await supaFetch(`core_inventory_quimicos?id=eq.${encodeURIComponent(match.id)}`, 'PATCH', { 
                             qty: newStock, 
                             last_updated: new Date().toISOString() 
@@ -136,12 +159,13 @@ const server = http.createServer(async (req, res) => {
                         
                         successfulDeductions.push({ id: match.id, name: match.name, qty: usedQty, cost: itemCost });
                     } else {
-                        console.warn(`[BOT-AGRO] Fallo Fuzzy Match: ${input.name}`);
-                        errors.push(`Insumo no encontrado: ${input.name}`);
+                        console.warn(`[BOT-AGRO] Fallo Fuzzy Match: ${inputName}`);
+                        errors.push(`Insumo no encontrado: ${inputName}`);
                     }
                 }
                 
                 // 4. Distribute costs
+                console.log('[BOT-AGRO] Q4: distribute costs');
                 const costPerBatch = totalCalculatedCost / splitFactor;
                 const waterPerBatch = (parseFloat(water_liters) || 0) / splitFactor;
                 
@@ -161,9 +185,12 @@ const server = http.createServer(async (req, res) => {
                     };
                 });
                 
+                console.log('[BOT-AGRO] Q5: posting to core_agronomic_events');
                 await supaFetch('core_agronomic_events', 'POST', eventsToInsert);
+                console.log('[BOT-AGRO] Q5 done!');
 
                 // 6. Response
+                console.log('[BOT-AGRO] Closing request HTTP 200');
                 res.writeHead(200, { 'Content-Type': 'application/json' });
                 res.end(JSON.stringify({
                     success: true,
