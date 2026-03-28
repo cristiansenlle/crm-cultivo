@@ -1,0 +1,35 @@
+const { NodeSSH } = require('node-ssh');
+const fs = require('fs');
+const ssh = new NodeSSH();
+
+async function checkFinalSystem() {
+    await ssh.connect({
+        host: '109.199.99.126',
+        username: 'root',
+        password: 'FVRu0i2XiWUP93OtQfI7LvPKod'
+    });
+
+    // Run export command
+    await ssh.execCommand('n8n export:workflow --id=scpZdPe5Cp4MG98G --output=/root/export2.json');
+
+    // Read the exported file from VPS natively
+    const script = `
+const fs = require('fs');
+const wf = JSON.parse(fs.readFileSync('/root/export2.json', 'utf8'));
+const agentNode = wf.nodes.find(n => n.type === '@n8n/n8n-nodes-langchain.agent');
+const msg = agentNode.parameters.options.systemMessage || '';
+console.log("Includes 11111111?", msg.includes('11111111'));
+console.log("Length:", msg.length);
+console.log("End snippet:");
+console.log(msg.substring(Math.max(0, msg.length - 800)));
+`;
+
+    fs.writeFileSync('vps_temp.js', script);
+    await ssh.putFile('vps_temp.js', '/root/vps_temp.js');
+    let res = await ssh.execCommand('node /root/vps_temp.js');
+    console.log(res.stdout);
+
+    ssh.dispose();
+}
+
+checkFinalSystem().catch(console.error);

@@ -1,0 +1,11 @@
+FAILED: RangeError: Maximum call stack size exceeded
+    at deref (C:\Users\Cristian\.gemini\antigravity\crm cannabis\analyze_executions_v7.js:31:27)
+    at Array.map (<anonymous>)
+    at deref (C:\Users\Cristian\.gemini\antigravity\crm cannabis\analyze_executions_v7.js:36:52)
+    at deref (C:\Users\Cristian\.gemini\antigravity\crm cannabis\analyze_executions_v7.js:34:56)
+    at Array.map (<anonymous>)
+    at deref (C:\Users\Cristian\.gemini\antigravity\crm cannabis\analyze_executions_v7.js:36:52)
+    at deref (C:\Users\Cristian\.gemini\antigravity\crm cannabis\analyze_executions_v7.js:34:56)
+    at deref (C:\Users\Cristian\.gemini\antigravity\crm cannabis\analyze_executions_v7.js:34:56)
+    at deref (C:\Users\Cristian\.gemini\antigravity\crm cannabis\analyze_executions_v7.js:39:51)
+    at deref (C:\Users\Cristian\.gemini\antigravity\crm cannabis\analyze_executions_v7.js:34:56)

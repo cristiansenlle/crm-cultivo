@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CANNABIS-CORE 360 OS - Analytics</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Supabase SDK & Config -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <!-- HTML2PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- Theme Toggle -->
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Barra Lateral -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="ph-fill ph-plant"></i>
+                <span>CORE 360</span>
+            </div>
+            <nav class="nav-menu">\n                <a href="index.html" class="nav-item"><i class="ph ph-squares-four"></i> Panel Principal</a>
+                <a href="cultivo.html" class="nav-item"><i class="ph ph-thermometer"></i> Salas de Cultivo</a>
+                <a href="tareas.html" class="nav-item"><i class="ph ph-check-square"></i> Gestor de Tareas</a>
+                <a href="insumos.html" class="nav-item"><i class="ph ph-warehouse"></i> Bodega e Insumos</a>
+                <a href="pos.html" class="nav-item"><i class="ph ph-shopping-cart"></i> Punto de Venta (POS)</a>
+                <a href="analytics.html" class="nav-item active"><i class="ph ph-chart-line-up"></i> Finanzas & ROI</a>
+                <a href="agronomy.html" class="nav-item"><i class="ph ph-projector-screen-chart"></i> Timeline\n                    Agronómico</a>
+                <a href="protocolos.html" class="nav-item"><i class="ph ph-book-open"></i> Protocolos & Recetas</a>
+            </nav>
+        </aside>
+
+        <!-- Contenido -->
+        <main class="main-content">
+            <header class="topbar">
+                <div class="search-bar">
+                    <i class="ph ph-magnifying-glass"></i>
+                    <input type="text" placeholder="Buscar reportes o gráficos...">
+                </div>
+                
+                <div class="topbar-controls" style="display: flex; gap: 15px; align-items: center; justify-content: flex-end; flex: 1;">
+                    
+                    
+                
+                    <div class="header-action-buttons" style="display: flex; align-items: center; gap: 12px; margin-left: auto;">
+                        <button id="themeToggleBtn" class="theme-toggle" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px 15px; color: var(--text-primary); display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s ease; white-space: nowrap; height: 40px;">
+                            <i class="ph ph-sun" style="font-size: 1.2rem;"></i>
+                            <span style="font-size: 0.85rem; font-weight: 600;">Tema</span>
+                        </button>
+                        
+                        <button class="btn-icon" onclick="logoutUser()" title="Cerrar Sesión" style="background: rgba(255, 61, 0, 0.1); border: 1px solid rgba(255, 61, 0, 0.2); border-radius: 8px; padding: 8px 15px; color: var(--color-red); display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s ease; white-space: nowrap; height: 40px;">
+                            <i class="ph ph-sign-out" style="font-size: 1.2rem;"></i>
+                            <span style="font-size: 0.85rem; font-weight: 600;">Salir</span>
+                        </button>
+                    </div>
+
+                    <div class="user-profile">
+                    <div class="avatar"><i class="ph ph-user"></i></div>
+                    <span>Operador Principal</span>
+                </div>
+                </div>
+            </header>
+
+            <div class="dashboard" style="padding: 0 3rem 2rem;">
+                <div class="header-section"
+                    style="margin-bottom: 2rem; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <h1>Módulo Financiero y Analytics</h1>
+                        <p style="color:var(--text-muted)">Visualización de Costos, Ventas y Rentabilidad (ROI).</p>
+                    </div>
+                </div>
+
+                <!-- Resumen Financiero -->
+                <div class="metrics-grid"
+                    style="margin-bottom: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px;">
+                    <div class="widget metric-card">
+                        <h3><i class="ph ph-trend-up"></i> Ingresos Netos (Facturado)</h3>
+                        <div class="value" id="totalRevenue"
+                            style="color: var(--color-green); font-size: 2rem; font-weight: bold; margin-top: 10px;">
+                            $0.00</div>
+                    </div>
+                    <div class="widget metric-card">
+                        <h3><i class="ph ph-trend-down"></i> Costos de Bodega</h3>
+                        <div class="value" id="totalCosts"
+                            style="color: var(--color-red); font-size: 2rem; font-weight: bold; margin-top: 10px;">$0.00
+                        </div>
+                    </div>
+                    <div class="widget metric-card">
+                        <h3><i class="ph ph-money"></i> Beneficio Bruto (ROI)</h3>
+                        <div class="value" id="netProfit"
+                            style="color: var(--color-blue); font-size: 2rem; font-weight: bold; margin-top: 10px;">
+                            $0.00</div>
+                    </div>
+                </div>
+
+                <!-- Gráficos ROI y Pasaporte PDF -->
+                <div class="charts-grid" style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
+                    <!-- Gráfico Principal -->
+                    <div class="chart-container"
+                        style="background: var(--bg-panel); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color);">
+                        <div
+                            style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 1rem; flex-wrap:wrap; gap:10px;">
+                            <h3 style="margin:0;">Rendimiento Comercial</h3>
+                            <div style="display:flex; gap: 10px;">
+                                <select id="timeFilterSelect" class="input-base"
+                                    style="padding: 5px 10px; background:var(--bg-dark); color:white; border:1px solid var(--border-color); border-radius:4px; font-size: 0.85rem;"
+                                    onchange="applyFilters()">
+                                    <option value="all">Histórico (Todo)</option>
+                                    <option value="mes">Último Mes</option>
+                                    <option value="trimestre">Último Trimestre</option>
+                                    <option value="semestre">Último Semestre</option>
+                                    <option value="ano">Último Año</option>
+                                </select>
+                                <select id="chartTypeSelect" class="input-base"
+                                    style="padding: 5px 10px; background:var(--bg-dark); color:white; border:1px solid var(--border-color); border-radius:4px; font-size: 0.85rem;"
+                                    onchange="renderChart()">
+                                    <option value="bar">Gráfico de Barras</option>
+                                    <option value="line">Gráfico de Líneas</option>
+                                    <option value="pie">Gráfico de Torta</option>
+                                    <option value="doughnut">Anillo (Doughnut)</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div style="position: relative; height: 350px; width: 100%;">
+                            <canvas id="salesChart"></canvas>
+                        </div>
+                    </div>
+
+                    <!-- Exportación PDF -->
+                    <div class="pdf-container"
+                        style="background: var(--bg-panel); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); display:flex; flex-direction:column; gap:15px;">
+                        <h3 style="margin-bottom: 0.5rem;"><i class="ph ph-file-pdf"></i> Pasaporte de Lote</h3>
+                        <p style="font-size: 0.85rem; color: var(--text-muted);">Genera un reporte oficial (PDF) de
+                            trazabilidad para entregar al cliente o a organismos reguladores con el certificado
+                            fitosanitario del cultivo.</p>
+
+                        <label>Seleccionar Lote a Exportar</label>
+                        <select id="loteSelectPdf" class="input-base"
+                            style="width:100%; padding: 10px; background:var(--bg-dark); color:white; border:1px solid var(--border-color); border-radius:4px;">
+                            <option value="">Cargando lotes en nube...</option>
+                        </select>
+
+                        <button class="btn-primary" onclick="generateBatchPassport()" style="margin-top:auto;"
+                            id="btnExportPDF"><i class="ph ph-download"></i> Descargar Pasaporte PDF</button>
+                    </div>
+                </div>
+
+                <div class="reports-tables-grid"
+                    style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+                    <div class="table-container"
+                        style="background: var(--bg-panel); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); display:flex; flex-direction:column;">
+                        <div
+                            style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem; flex-wrap:wrap; gap:10px;">
+                            <h3 style="margin:0;"><i class="ph ph-users"></i> Desglose por Cliente</h3>
+                            <div style="display:flex; gap:10px;">
+                                <input type="text" id="customerSearchInput" placeholder="Buscar cliente..."
+                                    class="input-base"
+                                    style="padding: 5px 10px; background:var(--bg-dark); color:white; border:1px solid var(--border-color); border-radius:4px; font-size: 0.85rem;"
+                                    oninput="renderTable()">
+                                <button class="btn-primary" style="padding: 5px 10px; font-size: 0.85rem;"
+                                    onclick="exportCustomerCSV()"><i class="ph ph-download"></i> CSV</button>
+                            </div>
+                        </div>
+                        <table style="width:100%; text-align:left; border-collapse: collapse;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--border-color); color:var(--text-muted);">
+                                    <th style="padding:10px;">Nombre del Cliente</th>
+                                    <th>Ctd. Transacciones</th>
+                                    <th>Volumen (g)</th>
+                                    <th>Ingreso Generado</th>
+                                </tr>
+                            </thead>
+                            <tbody id="customerSalesTableBody">
+                                <tr>
+                                    <td colspan="4" style="padding:15px; text-align:center;">Analizando métricas de
+                                        clientes...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="table-container"
+                        style="background: var(--bg-panel); padding: 20px; border-radius: 12px; border: 1px solid var(--border-color); display:flex; flex-direction:column;">
+                        <div
+                            style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 1rem; flex-wrap:wrap; gap:10px;">
+                            <h3 style="margin:0;"><i class="ph ph-list-numbers"></i> Historial</h3>
+                            <div style="display:flex; gap:10px;">
+                                <input type="text" id="txSearchInput" placeholder="Buscar transacción..."
+                                    class="input-base"
+                                    style="padding: 5px 10px; background:var(--bg-dark); color:white; border:1px solid var(--border-color); border-radius:4px; font-size: 0.85rem;"
+                                    oninput="renderTable()">
+                                <button class="btn-primary" style="padding: 5px 10px; font-size: 0.85rem;"
+                                    onclick="exportTxCSV()"><i class="ph ph-download"></i> CSV</button>
+                            </div>
+                        </div>
+                        <table style="width:100%; text-align:left; border-collapse: collapse;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--border-color); color:var(--text-muted);">
+                                    <th style="padding:10px;">ID Transacción</th>
+                                    <th>Fecha</th>
+                                    <th>Cliente</th>
+                                    <th>Lote</th>
+                                    <th>Gramos</th>
+                                    <th>Ingreso</th>
+                                </tr>
+                            </thead>
+                            <tbody id="salesTableBody">
+                                <tr>
+                                    <td colspan="6" style="padding:15px; text-align:center;">Sincronizando con base de
+                                        datos Nube...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Template Oculto para exportación PDF -->
+    <div id="pdfTemplate" style="display:none; padding:40px; background:white; color:black; font-family:sans-serif;">
+        <h1
+            style="color:#000; border-bottom:2px solid #ccc; padding-bottom:10px; display:flex; justify-content:space-between;">
+            CANNABIS-CORE 360
+            <span style="font-size:12px; color:#555">PASAPORTE OFICIAL DE TRAZABILIDAD</span>
+        </h1>
+        <br>
+        <h2 style="color:#2d3748; margin-bottom:5px;" id="pdfLoteName">Lote XYZ</h2>
+        <p style="margin:0; font-size:14px;"><strong>ID de Lote (Global):</strong> <span id="pdfId">-</span></p>
+        <p style="margin:5px 0; font-size:14px;"><strong>Fecha de Emisión del Documento:</strong> <span
+                id="pdfDate"></span></p>
+        <hr style="margin: 20px 0;">
+        <h3 style="color:#2d3748;">1. Especificaciones de Stock y Origen</h3>
+        <p style="font-size:14px;">Cepa Genética: <span id="pdfStrain">-</span></p>
+        <p style="font-size:14px;">Tipo de Cultivo u Origen: <span id="pdfType">-</span></p>
+        <p style="font-size:14px;">Peso Declarado: <span id="pdfQty">-</span> Gramos Secos</p>
+        <hr style="margin: 20px 0;">
+        <h3 style="color:#2d3748;">2. Declaración Fitosanitaria y Ambiente</h3>
+        <p style="font-size:14px;">El presente cultivo ha sido monitoreado utilizando el sensor CANNABIS-CORE 360 bajo
+            los rangos de Déficit de Presión de Vapor (VPD) estandarizados internacionalmente.</p>
+        <ul style="font-size:14px;">
+            <li>Temperatura Promedio del Ciclo: <strong id="pdfAvgTemp">-</strong></li>
+            <li>Déficit de Presión de Vapor (VPD) Promedio: <strong id="pdfAvgVpd">-</strong></li>
+        </ul>
+        <p style="font-size:14px; margin-top:10px;">Nutrición garantizada a través del módulo de fertirriego central.
+            Libre de metales pesados o agroquímicos residuales superior a la cuota permitida.</p>
+        <br><br><br>
+        <div style="display:flex; justify-content: space-between; align-items: flex-end; margin-top: 50px;">
+            <div style="text-align:center; border-top:1px solid #000; padding-top:5px; width:200px;">
+                Firma Autorizada
+            </div>
+            <div style="font-size:12px; color:#888;">
+                Core 360 Systems - ID Registro #0392X
+            </div>
+        </div>
+    </div>
+
+    <script src="analytics.js?v=1.1.0"></script>
+</body>
+
+</html>

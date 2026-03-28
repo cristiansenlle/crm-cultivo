@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CANNABIS-CORE 360 OS - Panel de Control</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- Chart.js for Live Graph -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Supabase SDK & Config -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <!-- Theme Toggle -->
+    <script src="theme.js"></script>
+    <style>#roomSelect { white-space: normal; width: auto; max-width: 100%; overflow: visible; text-overflow: unset; }</style>\n</head>
+
+<body>
+    <div class="app-container">
+        <!-- Barra Lateral -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="ph-fill ph-plant"></i>
+                <span>CORE 360</span>
+            </div>
+            <nav class="nav-menu">\n                <a href="index.html" class="nav-item"><i class="ph ph-squares-four"></i> Panel Principal</a>
+                <a href="cultivo.html" class="nav-item"><i class="ph ph-thermometer"></i> Salas de Cultivo</a>
+                <a href="tareas.html" class="nav-item"><i class="ph ph-check-square"></i> Gestor de Tareas</a>
+                <a href="insumos.html" class="nav-item"><i class="ph ph-warehouse"></i> Bodega e Insumos</a>
+                <a href="pos.html" class="nav-item"><i class="ph ph-shopping-cart"></i> Punto de Venta (POS)</a>
+                <a href="analytics.html" class="nav-item"><i class="ph ph-chart-line-up"></i> Finanzas & ROI</a>
+                <a href="agronomy.html" class="nav-item"><i class="ph ph-projector-screen-chart"></i> Timeline\n                    Agronómico</a>
+                <a href="protocolos.html" class="nav-item"><i class="ph ph-book-open"></i> Protocolos & Recetas</a>
+            </nav>
+            <div class="system-status">
+                <div class="status-indicator status-green" id="globalStatusDot"></div>
+                <span id="globalStatusText">Sistema Normal</span>
+                <button id="themeToggleBtn" class="theme-toggle">
+                    <i class="ph ph-sun"></i> Modo Claro
+                </button>
+            </div>
+        </aside>
+
+        <!-- Contenido Principal -->
+        <main class="main-content">
+            <header class="topbar">
+                <h1>Operaciones de Cultivo en Vivo</h1>
+                <div class="topbar-controls" style="display: flex; gap: 15px; align-items: center;">
+                    <div class="room-selector"
+                        style="display: flex; align-items: center; gap: 10px; background: var(--panel-dark); padding: 8px 15px; border-radius: 8px; border: 1px solid #333;">
+                        <i class="ph ph-house-line" style="color: var(--color-green); font-size: 1.2rem;"></i>
+                        <select id="roomSelect" onchange="changeRoom()"
+                            style="background: transparent; border: none; color: var(--text-primary); outline: none; font-family: inherit; font-size: 0.95rem; cursor: pointer; padding-right:10px;">
+                            <option value="sala1">Sala 1 (Floración)</option>
+                            <option value="sala2">Sala 2 (Vegetativo)</option>
+                        </select>
+                    </div>
+                    <button class="btn-primary" onclick="openAddRoomModal()"
+                        style="padding: 8px 15px; width: auto; font-size: 0.9rem; white-space: nowrap; flex-shrink: 0; white-space: nowrap; flex-shrink: 0;"><i class="ph ph-plus"></i> Nueva
+                        Sala</button>
+
+                    <button class="btn-primary" onclick="logoutUser()" style="background: transparent; border: 1px solid var(--color-red); color: var(--color-red); padding: 8px 15px; margin-left: 10px;"><i class="ph ph-sign-out"></i> Salir</button>
+                    <div class="user-profile" style="margin-left: 10px;">
+                        <img src="https://ui-avatars.com/api/?name=Admin+User&background=333&color=fff" alt="Admin">
+                    </div>
+                </div>
+            </header>
+
+            <div class="dashboard-grid">
+                <!-- Fila 1: Los 3 parámetros de telemetría -->
+                <div class="widget telemetry-widget glow-green" id="widget-temp">
+                    <div class="widget-header">
+                        <h3><i class="ph ph-thermometer-hot"></i> Temperatura</h3>
+                        <span class="badge" id="badge-temp">Óptima</span>
+                    </div>
+                    <div class="widget-value"><span id="val-temp">--</span>°C</div>
+                </div>
+
+                <div class="widget telemetry-widget glow-green" id="widget-hum">
+                    <div class="widget-header">
+                        <h3><i class="ph ph-drop"></i> Humedad</h3>
+                        <span class="badge" id="badge-hum">Óptima</span>
+                    </div>
+                    <div class="widget-value"><span id="val-hum">--</span>%</div>
+                </div>
+
+                <div class="widget telemetry-widget glow-green" id="widget-vpd">
+                    <div class="widget-header">
+                        <h3><i class="ph ph-waves"></i> VPD (Calculado)</h3>
+                        <span class="badge" id="badge-vpd">Óptimo</span>
+                    </div>
+                    <div class="widget-value"><span id="val-vpd">--</span> kPa</div>
+                </div>
+
+                <!-- Fila 2: Ingreso Manual -->
+                <div class="widget span-3" id="widget-telemetry-input">
+                    <div class="widget-header">
+                        <h3><i class="ph ph-keyboard"></i> Ingreso Manual de Telemetría</h3>
+                        <span style="font-size:0.75rem; color:var(--text-secondary);">También por WhatsApp: "Temp 26 hum
+                            60 sala 1"</span>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 15px; align-items:flex-end;">
+                        <div style="flex:1;">
+                            <label style="font-size: 0.8rem; color: var(--text-secondary);">Temp (°C)</label>
+                            <input type="number" id="manual-temp" step="0.1" placeholder="--"
+                                style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white;">
+                        </div>
+                        <div style="flex:1;">
+                            <label style="font-size: 0.8rem; color: var(--text-secondary);">Humedad (%)</label>
+                            <input type="number" id="manual-hum" step="0.1" placeholder="--"
+                                style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white;">
+                        </div>
+                        <button class="btn-primary" onclick="updateManualTelemetry()"
+                            style="padding: 9px 15px; width:auto; flex-shrink: 0;"><i class="ph ph-upload-simple"></i>
+                            Cargar</button>
+                    </div>
+                </div>
+                <!-- Fila 3: Valores de Referencia VPD (en fila) -->
+                <div class="widget span-4" style="padding: 15px 20px;">
+                    <div class="widget-header" style="margin-bottom: 12px;">
+                        <h3><i class="ph ph-book-open"></i> Rangos Óptimos VPD</h3>
+                    </div>
+                    <div style="display: flex; gap: 12px; flex-wrap: nowrap; overflow-x: auto;">
+                        <div
+                            style="flex:1; min-width:150px; padding: 10px 14px; border-radius: 8px; background: rgba(41,121,255,0.1); border-left: 4px solid var(--color-blue);">
+                            <strong style="display:block; font-size:0.85rem;">Propagación / Clones</strong>
+                            <span style="color:var(--text-secondary); font-size:0.8rem;">0.4 – 0.8 kPa</span>
+                        </div>
+                        <div
+                            style="flex:1; min-width:150px; padding: 10px 14px; border-radius: 8px; background: rgba(0,230,118,0.1); border-left: 4px solid var(--color-green);">
+                            <strong style="display:block; font-size:0.85rem;">Fase Vegetativa</strong>
+                            <span style="color:var(--text-secondary); font-size:0.8rem;">0.8 – 1.2 kPa</span>
+                        </div>
+                        <div
+                            style="flex:1; min-width:150px; padding: 10px 14px; border-radius: 8px; background: rgba(255,193,7,0.1); border-left: 4px solid var(--color-yellow);">
+                            <strong style="display:block; font-size:0.85rem;">Fase Floración</strong>
+                            <span style="color:var(--text-secondary); font-size:0.8rem;">1.2 – 1.6 kPa</span>
+                        </div>
+                        <div
+                            style="flex:1; min-width:150px; padding: 10px 14px; border-radius: 8px; background: rgba(255,61,0,0.1); border-left: 4px solid var(--color-red);">
+                            <strong style="display:block; font-size:0.85rem;">⚠️ Peligro</strong>
+                            <span style="color:var(--text-secondary); font-size:0.8rem;">&lt; 0.4 ó &gt; 1.6 kPa</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Fila 4: Gráficos de Historial -->
+                <div class="widget span-4 chart-widget" style="height: auto;">
+                    <div class="widget-header">
+                        <h3><i class="ph ph-chart-line-up"></i> Historial Ambiental</h3>
+                        <span id="polling-status" style="font-size:0.75rem; color:var(--color-green);"><i
+                                class="ph ph-circle-dashed"></i> Sincronizando Supabase...</span>
+                    </div>
+                    <div class="charts-grid"
+                        style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: 15px;">
+                        <div class="chart-container"
+                            style="height: 250px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px;">
+                            <h4
+                                style="text-align:center; color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 5px;">
+                                Temperatura (°C)</h4>
+                            <canvas id="tempChart"></canvas>
+                        </div>
+                        <div class="chart-container"
+                            style="height: 250px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px;">
+                            <h4
+                                style="text-align:center; color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 5px;">
+                                Humedad (%)</h4>
+                            <canvas id="humChart"></canvas>
+                        </div>
+                        <div class="chart-container"
+                            style="height: 250px; background: rgba(0,0,0,0.2); border-radius: 8px; padding: 10px;">
+                            <h4
+                                style="text-align:center; color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 5px;">
+                                VPD (kPa)</h4>
+                            <canvas id="vpdChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+    </div>
+    </main>
+    </div>
+
+    <!-- Modal Nueva Sala -->
+
+    <div class="emergency-overlay" id="addRoomModal">
+        <div class="alert-box" style="border-color: #333; box-shadow: none; padding: 2rem;">
+            <i class="ph ph-buildings" style="color: var(--color-green);"></i>
+            <h2 style="color: white; font-size: 1.5rem; margin-bottom: 1rem;">Añadir Nueva Sala</h2>
+
+            <form id="addRoomForm" style="display:flex; flex-direction:column; gap: 15px; text-align: left;">
+                <div>
+                    <label
+                        style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 5px; display: block;">Nombre
+                        de la Sala</label>
+                    <input type="text" id="newRoomName" placeholder="Ej: Sala C" required
+                        style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white;">
+                </div>
+                <div>
+                    <label
+                        style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 5px; display: block;">Fase
+                        Actual Inicial</label>
+                    <select id="newRoomPhase" required
+                        style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white;">
+                        <option value="Vegetativo">Vegetativo</option>
+                        <option value="Floración">Floración</option>
+                        <option value="Secado">Secado</option>
+                    </select>
+                </div>
+
+                <div style="display:flex; gap: 10px; margin-top: 10px;">
+                    <button type="button" onclick="closeAddRoomModal()"
+                        style="flex: 1; padding: 10px; border-radius: 6px; background: transparent; color: white; border: 1px solid #444;">Cancelar</button>
+                    <button type="submit" class="btn-primary" style="flex: 1; padding: 10px;"><i
+                            class="ph ph-check"></i> Añadir</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+
+</html>

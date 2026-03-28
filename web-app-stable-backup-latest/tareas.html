@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CANNABIS-CORE 360 OS - Panel de Control</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- Chart.js for Live Graph -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Supabase SDK & Config -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <!-- Theme Toggle -->
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Barra Lateral -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="ph-fill ph-plant"></i>
+                <span>CORE 360</span>
+            </div>
+            <nav class="nav-menu">
+                <a href="index.html" class="nav-item"><i class="ph ph-squares-four"></i> Panel Principal</a>
+                <a href="cultivo.html" class="nav-item"><i class="ph ph-thermometer"></i> Salas de Cultivo</a>
+                <a href="tareas.html" class="nav-item active"><i class="ph ph-check-square"></i> Gestor de Tareas</a>
+                <a href="insumos.html" class="nav-item"><i class="ph ph-warehouse"></i> Bodega e Insumos</a>
+                <a href="pos.html" class="nav-item"><i class="ph ph-shopping-cart"></i> Punto de Venta (POS)</a>
+                <a href="analytics.html" class="nav-item"><i class="ph ph-chart-line-up"></i> Finanzas & ROI</a>
+                <a href="agronomy.html" class="nav-item"><i class="ph ph-projector-screen-chart"></i> Timeline
+                    Agronómico</a>
+            </nav>
+            <div class="system-status">
+                <div class="status-indicator status-green" id="globalStatusDot"></div>
+                <span id="globalStatusText">Sistema Normal</span>
+                <button id="themeToggleBtn" class="theme-toggle">
+                    <i class="ph ph-sun"></i> Modo Claro
+                </button>
+            </div>
+        </aside>
+
+        <!-- Contenido Principal -->
+        <main class="main-content">
+            <header class="topbar">
+                <h1>Gestión de Tareas y Agenda</h1>
+                <div class="topbar-controls" style="display: flex; gap: 15px; align-items: center;">
+                    <div class="room-selector"
+                        style="display: flex; align-items: center; gap: 10px; background: var(--panel-dark); padding: 8px 15px; border-radius: 8px; border: 1px solid #333;">
+                        <i class="ph ph-house-line" style="color: var(--color-green); font-size: 1.2rem;"></i>
+                        <select id="roomSelect" onchange="changeRoom()"
+                            style="background: transparent; border: none; color: white; outline: none; font-family: inherit; font-size: 0.95rem; cursor: pointer; padding-right:10px;">
+                            <option value="roomA">Sala A (Floración)</option>
+                            <option value="roomB">Sala B (Vegetativo)</option>
+                        </select>
+                    </div>
+                    <button class="btn-primary" onclick="openAddRoomModal()"
+                        style="padding: 8px 15px; width: auto; font-size: 0.9rem;"><i class="ph ph-plus"></i> Nueva
+                        Sala</button>
+
+                    <button class="btn-icon"
+                        style="color: var(--color-red); cursor: pointer; margin-right: 15px; background: rgba(255, 61, 0, 0.1); border-radius: 8px; padding: 6px 10px; display: flex; align-items: center; gap: 5px; border: 1px solid rgba(255, 61, 0, 0.2); transition: all 0.2s ease;"
+                        onclick="logoutUser()" title="Cerrar Sesión">
+                        <i class="ph ph-sign-out" style="font-size: 1.2rem;"></i>
+                        <span style="font-size: 0.85rem; font-weight: 600;">Salir</span>
+                    </button>
+                    <div class="user-profile" style="margin-left: 10px;">
+                        <img src="https://ui-avatars.com/api/?name=Admin+User&background=333&color=fff" alt="Admin">
+                    </div>
+                </div>
+            </header>
+
+            <div class="dashboard-grid full-width-grid">
+                <!-- Carga de Operaciones a Calendar -->
+                <div class="widget span-4">
+                    <div class="widget-header">
+                        <h3><i class="ph ph-calendar-check"></i> Calendario de Operaciones</h3>
+                    </div>
+
+                    <form id="taskForm" class="task-form-horizontal">
+                        <div class="form-item medium">
+                            <label for="taskTitle">Descripción de la Tarea</label>
+                            <input type="text" id="taskTitle" placeholder="Ej: Poda apical en Sala B..." required>
+                        </div>
+
+                        <div class="form-item">
+                            <label for="taskDate">Fecha</label>
+                            <input type="date" id="taskDate" required>
+                        </div>
+
+                        <div class="form-item">
+                            <label for="taskTime">Hora</label>
+                            <input type="time" id="taskTime" required>
+                        </div>
+
+                        <div class="form-item small">
+                            <label for="taskRecurrence">Repetir (días)</label>
+                            <input type="number" id="taskRecurrence" placeholder="0" min="1">
+                        </div>
+
+                        <button type="submit" class="btn-primary">
+                            <i class="ph ph-calendar-plus"></i> Agendar Tarea
+                        </button>
+                    </form>
+
+                    <div id="taskFeedback"
+                        style="display:none; margin-top:15px; padding:10px; border-radius:4px; font-size:0.85rem; text-align:center; background: rgba(0, 230, 118, 0.1); color: var(--color-green); border: 1px solid var(--color-green);">
+                        Evento enviado al calendario con éxito.
+                    </div>
+                </div>
+
+                <!-- Visualización Elegante del Calendario de Google Embed (Full Width) -->
+                <div class="calendar-widget-full" style="grid-column: 1 / -1; width: 100%;">
+                    <div class="widget-header">
+                        <h3><i class="ph ph-calendar"></i> Tu Agenda y Operaciones Planificadas</h3>
+                    </div>
+                    <div
+                        style="margin-top:15px; border-radius:12px; overflow:hidden; border: 1px solid var(--border-color); box-shadow: 0 4px 6px rgba(0,0,0,0.3); background: var(--bg-card); position: relative; height: 750px; width: 100%;">
+                        <iframe
+                            src="https://calendar.google.com/calendar/embed?height=750&wkst=1&bgcolor=%231e1e24&ctz=America%2FArgentina%2FBuenos_Aires&showTitle=0&showPrint=1&showTabs=1&showCalendars=0&showTz=1&mode=WEEK&color=%2300E676&src=cristiansenlle%40gmail.com&color=%2333B679"
+                            style="border-width:0; position: absolute; top: 0; left: 0; width: 100%; height: 100%;"
+                            frameborder="0" scrolling="yes"></iframe>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals & Overlays -->
+    <div class="emergency-overlay" id="emergencyOverlay">
+        <div class="alert-box">
+            <i class="ph-fill ph-warning-octagon"></i>
+            <h2>ALERTA CRÍTICA</h2>
+            <p id="alertMessage">Los parámetros ambientales en la <span id="alertRoomName">Sala A</span> han excedido
+                los límites seguros.</p>
+            <button class="btn-danger" onclick="dismissAlert()">Reconocer y Cerrar</button>
+        </div>
+    </div>
+
+    <div class="emergency-overlay" id="addRoomModal">
+        <div class="alert-box" style="border-color: #333; box-shadow: none; padding: 2rem;">
+            <i class="ph ph-buildings" style="color: var(--color-green);"></i>
+            <h2 style="color: white; font-size: 1.5rem; margin-bottom: 1rem;">Añadir Nueva Sala</h2>
+
+            <form id="addRoomForm" style="display:flex; flex-direction:column; gap: 15px; text-align: left;">
+                <div>
+                    <label
+                        style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 5px; display: block;">Nombre
+                        de la Sala</label>
+                    <input type="text" id="newRoomName" placeholder="Ej: Sala C" required
+                        style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white;">
+                </div>
+                <div>
+                    <label
+                        style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 5px; display: block;">Fase
+                        Actual Inicial</label>
+                    <select id="newRoomPhase" required
+                        style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white;">
+                        <option value="Vegetativo">Vegetativo</option>
+                        <option value="Floración">Floración</option>
+                        <option value="Secado">Secado</option>
+                    </select>
+                </div>
+
+                <div style="display:flex; gap: 10px; margin-top: 10px;">
+                    <button type="button" onclick="closeAddRoomModal()"
+                        style="flex: 1; padding: 10px; border-radius: 6px; background: transparent; color: white; border: 1px solid #444;">Cancelar</button>
+                    <button type="submit" class="btn-primary" style="flex: 1; padding: 10px;"><i
+                            class="ph ph-check"></i> Añadir</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="main.js"></script>
+</body>
+
+</html>

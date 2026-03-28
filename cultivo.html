@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CANNABIS-CORE 360 OS - Módulo de Cultivo</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Supabase SDK & Config -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <!-- Theme Toggle -->
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Barra Lateral -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="ph-fill ph-plant"></i>
+                <span>CORE 360</span>
+            </div>
+            <nav class="nav-menu">\n                <a href="index.html" class="nav-item"><i class="ph ph-squares-four"></i> Panel Principal</a>
+                <a href="cultivo.html" class="nav-item active"><i class="ph ph-thermometer"></i> Salas de Cultivo</a>
+                <a href="tareas.html" class="nav-item"><i class="ph ph-check-square"></i> Gestor de Tareas</a>
+                <a href="insumos.html" class="nav-item"><i class="ph ph-warehouse"></i> Bodega e Insumos</a>
+                <a href="pos.html" class="nav-item"><i class="ph ph-shopping-cart"></i> Punto de Venta (POS)</a>
+                <a href="analytics.html" class="nav-item"><i class="ph ph-chart-line-up"></i> Finanzas & ROI</a>
+                <a href="agronomy.html" class="nav-item"><i class="ph ph-projector-screen-chart"></i> Timeline\n                    Agronómico</a>
+                <a href="protocolos.html" class="nav-item"><i class="ph ph-book-open"></i> Protocolos & Recetas</a>
+            </nav>
+            <div class="system-status">
+                <div class="status-indicator status-green" id="globalStatusDot"></div>
+                <span id="globalStatusText">Sistema Estructurado</span>
+                </div>
+        </aside>
+
+        <!-- Contenido Principal -->
+        <main class="main-content">
+            <header class="topbar">
+                <h1>Gestión de Lotes y Salas</h1>
+                
+                <div class="topbar-controls" style="display: flex; gap: 15px; align-items: center; justify-content: flex-end; flex: 1;">
+                    
+                    
+                
+                    <div class="header-action-buttons" style="display: flex; align-items: center; gap: 12px; margin-left: auto;">
+                        <button id="themeToggleBtn" class="theme-toggle" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px 15px; color: var(--text-primary); display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s ease; white-space: nowrap; height: 40px;">
+                            <i class="ph ph-sun" style="font-size: 1.2rem;"></i>
+                            <span style="font-size: 0.85rem; font-weight: 600;">Tema</span>
+                        </button>
+                        
+                        <button class="btn-icon" onclick="logoutUser()" title="Cerrar Sesión" style="background: rgba(255, 61, 0, 0.1); border: 1px solid rgba(255, 61, 0, 0.2); border-radius: 8px; padding: 8px 15px; color: var(--color-red); display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s ease; white-space: nowrap; height: 40px;">
+                            <i class="ph ph-sign-out" style="font-size: 1.2rem;"></i>
+                            <span style="font-size: 0.85rem; font-weight: 600;">Salir</span>
+                        </button>
+                    </div>
+
+                    <div class="user-profile">
+                    <img src="https://ui-avatars.com/api/?name=Admin+User&background=333&color=fff" alt="Admin">
+                </div>
+                </div>
+            </header>
+
+            <div class="dashboard-grid" style="grid-template-columns: 350px 1fr; align-items: start;">
+
+                <!-- Registrar Nuevo Cultivo -->
+                <div class="widget">
+                    <div class="widget-header">
+                        <h3><i class="ph ph-plus-circle"></i> Nuevo Lote / Batch</h3>
+                    </div>
+                    <form id="newCropForm" style="display:flex; flex-direction:column; gap: 15px; margin-top:20px;">
+                        <div>
+                            <label style="font-size: 0.85rem; color: var(--text-secondary);">Identificador (Ej:
+                                LOTE-001)</label>
+                            <input type="text" id="cropId" required placeholder="LOTE-001"
+                                style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white; margin-top:5px;">
+                        </div>
+                        <div style="display:flex; gap: 10px;">
+<div style="flex:1;">
+                            <label style="font-size: 0.85rem; color: var(--text-secondary);">Cepa / Variedad</label>
+                            <input type="text" id="cropStrain" required placeholder="Gelato #33"
+                                style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white; margin-top:5px;">
+                        </div>
+                            <div style="flex:1;">
+                                <label style="font-size: 0.85rem; color: var(--text-secondary);">Cant. Plantas</label>
+                                <input type="number" id="cropNumPlants" value="0" min="0" title="Población física del lote"
+                                    style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white; margin-top:5px;">
+                            </div>
+                        </div>
+                        <div>
+                            <label style="font-size: 0.85rem; color: var(--text-secondary);">Fecha de Inicio</label>
+                            <input type="date" id="cropDate" required
+                                style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white; margin-top:5px;">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.85rem; color: var(--text-secondary);">Estado Fenológico
+                                Inicial</label>
+                            <select id="cropStage"
+                                style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white; margin-top:5px;">
+                                <option value="germinacion">Propagación / Clones</option>
+                                <option value="vegetativo">Fase Vegetativa</option>
+                                <option value="floracion">Fase de Floración</option>
+                            </select>
+                        </div>
+
+                        <!-- Campos de Trazabilidad -->
+                        <div style="display:flex; gap: 10px; margin-top:5px;">
+                            <div style="flex:1;">
+                                <label style="font-size: 0.85rem; color: var(--text-secondary);">Origen</label>
+                                <select id="cropOrigen"
+                                    style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white; margin-top:5px;">
+                                    <option value="clon">Clon (Esqueje)</option>
+                                    <option value="semilla">Semilla</option>
+                                </select>
+                            </div>
+                            <div style="flex:1;">
+                                <label style="font-size: 0.85rem; color: var(--text-secondary);">Madre/Breeder</label>
+                                <input type="text" id="cropMadre" placeholder="Ej: Madre SD-02"
+                                    style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white; margin-top:5px;">
+                            </div>
+                        </div>
+
+                        <!-- Ubicación y Cosecha -->
+                        <div style="display:flex; gap: 10px; margin-top:5px;">
+                            <div style="flex:1;">
+                                <label style="font-size: 0.85rem; color: var(--text-secondary);">Sala/Ubicación</label>
+                                <select id="cropLocation"
+                                    style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white; margin-top:5px;">
+                                    <option value="">Cargando salas autorizadas...</option>
+                                </select>
+                            </div>
+                            <div style="flex:1;">
+                                <label style="font-size: 0.85rem; color: var(--text-secondary);">Días Floración</label>
+                                <input type="number" id="cropFlowerDays" value="65"
+                                    title="Se usará para proyectar la cosecha automáticamente al cambiar a fase Floración"
+                                    style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white; margin-top:5px;">
+                            </div>
+                        </div>
+
+                        <!-- Checkbox N8N -->
+                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
+                            <input type="checkbox" id="syncGCal" checked>
+                            <label for="syncGCal" style="font-size: 0.85rem; color: var(--text-secondary);">Agendar
+                                inicio y fechas estimadas en Google Calendar vía N8N</label>
+                        </div>
+
+                        <button type="submit" class="btn-primary" style="padding: 12px; margin-top: 5px;">
+                            <i class="ph ph-calendar-plus"></i> Registrar Lote
+                        </button>
+                    </form>
+                </div>
+
+                <!-- Lista de Cultivos Activos -->
+                <div class="widget">
+                    <div class="widget-header">
+                        <h3><i class="ph ph-plant"></i> Lotes Activos</h3>
+                    </div>
+                    <ul class="task-list" id="activeCropsList"
+                        style="margin-top:20px; display: flex; flex-direction: column; gap: 15px;">
+                        <!-- Renderizado por JS -->
+                    </ul>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal Transiciones Etapas (Veg/Flora) -->
+    <div class="emergency-overlay" id="modal-stage-transition"
+        style="display: none; background: rgba(0, 0, 0, 0.85); align-items:center; justify-content:center;">
+        <div class="alert-box"
+            style="border-color: #444; background: #1a1a1a; box-shadow: 0 0 40px rgba(0, 0, 0, 0.5); text-align: left; max-width: 400px; padding: 20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h2 id="stage-modal-title"
+                    style="margin:0; font-size:1.2rem; display:flex; align-items:center; gap:8px;"><i
+                        class="ph ph-sliders"></i> Configurar Etapa</h2>
+                <span style="font-size:1.5rem; cursor:pointer; color:#888;"
+                    onclick="document.getElementById('modal-stage-transition').style.display='none'">&times;</span>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="font-size: 0.85rem; color: var(--text-secondary);">Fotoperiodo (Horas Luz /
+                    Oscuridad):</label>
+                <div style="display:flex; gap:10px; margin-top:5px;">
+                    <div style="flex:1;">
+                        <input type="number" id="stage-light-hours" placeholder="Luz (ej. 18)"
+                            style="width: 100%; padding:10px; border-radius:6px; background:#111; color:#fff; border:1px solid #444;"
+                            value="18">
+                    </div>
+                    <div style="flex:1;">
+                        <input type="number" id="stage-dark-hours" placeholder="Osc (ej. 6)"
+                            style="width: 100%; padding:10px; border-radius:6px; background:#111; color:#fff; border:1px solid #444;"
+                            value="6">
+                    </div>
+                </div>
+                <small style="color:var(--text-secondary); display:block; margin-top:5px;">* Carga libre (>24hs
+                    permitido)</small>
+            </div>
+
+            <div id="flora-days-container" style="margin-bottom: 1rem; display:none;">
+                <label style="font-size: 0.85rem; color: var(--text-secondary);">Días Estimados de Floración:</label>
+                <input type="number" id="stage-flora-days" value="60"
+                    style="width: 100%; padding:10px; margin-top:5px; border-radius:6px; background:#111; color:#fff; border:1px solid #444;">
+            </div>
+
+            <button class="btn-primary" style="width: 100%; padding:12px; margin-top:10px;"
+                onclick="confirmStageTransition()">Avanzar de Etapa</button>
+        </div>
+    </div>
+
+    <!-- Modal Cosecha Húmeda -->
+    <div class="emergency-overlay" id="modal-stage-harvest-wet"
+        style="display: none; background: rgba(0, 0, 0, 0.85); align-items:center; justify-content:center;">
+        <div class="alert-box"
+            style="border-color: #444; background: #1a1a1a; max-width: 400px; padding: 20px; text-align: left;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h2
+                    style="margin:0; font-size:1.2rem; display:flex; align-items:center; gap:8px; color: var(--color-green);">
+                    <i class="ph ph-scissors"></i> Cosechar Lote
+                </h2>
+                <span style="font-size:1.5rem; cursor:pointer; color:#888;"
+                    onclick="document.getElementById('modal-stage-harvest-wet').style.display='none'">&times;</span>
+            </div>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="font-size: 0.85rem; color: var(--text-secondary);">Peso Húmedo Total (Gramos):</label>
+                <input type="number" id="stage-wet-weight" placeholder="Ej. 2500"
+                    style="width: 100%; padding:10px; margin-top:5px; border-radius:6px; background:#111; color:#fff; border:1px solid #444;">
+                <small style="color:var(--text-secondary); display:block; margin-top:5px;">* Peso inmediatamente tras el
+                    corte, antes del secado.</small>
+            </div>
+
+            <button class="btn-primary"
+                style="width: 100%; padding:12px; margin-top:10px; background-color: var(--color-green); border-color: var(--color-green);"
+                onclick="confirmHarvestWet()">Registrar Cosecha</button>
+        </div>
+    </div>
+
+    <!-- Modal Cosecha Seca -->
+    <div class="emergency-overlay" id="modal-stage-harvest-dry"
+        style="display: none; background: rgba(0, 0, 0, 0.85); align-items:center; justify-content:center;">
+        <div class="alert-box"
+            style="border-color: #444; background: #1a1a1a; max-width: 400px; padding: 20px; text-align: left;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h2
+                    style="margin:0; font-size:1.2rem; display:flex; align-items:center; gap:8px; color: var(--color-yellow);">
+                    <i class="ph ph-scales"></i> Gramos Secos Finales
+                </h2>
+                <span style="font-size:1.5rem; cursor:pointer; color:#888;"
+                    onclick="document.getElementById('modal-stage-harvest-dry').style.display='none'">&times;</span>
+            </div>
+
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:10px;">Ingresar el peso final seco.
+                Esto habilitará el stock en el Punto de Venta automáticamente vía N8N.</p>
+
+            <div style="margin-bottom: 1rem;">
+                <label style="font-size: 0.85rem; color: var(--text-secondary);">Peso Seco Total (Gramos):</label>
+                <input type="number" id="stage-dry-weight" placeholder="Ej. 650"
+                    style="width: 100%; padding:10px; margin-top:5px; border-radius:6px; background:#222; color:#fff; border:1px solid #555;">
+            </div>
+
+            <button class="btn-primary"
+                style="width: 100%; padding:12px; margin-top:10px; background-color: var(--color-yellow); border-color: var(--color-yellow); color:#000;"
+                onclick="confirmHarvestDry()">Cargar al Stock (POS)</button>
+        </div>
+    </div>
+
+    <!-- Modal Reporte Evento Agronómico (Rediseñado) -->
+    <div class="emergency-overlay" id="modal-agronomic-event"
+        style="display: none; background: rgba(0, 0, 0, 0.4); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); align-items:center; justify-content:center; z-index: 2000;">
+        <div class="alert-box"
+            style="border: 1px solid rgba(255, 255, 255, 0.1); background: var(--panel-dark); box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); text-align: left; max-width: 480px; width: 95%; padding: 28px; border-radius: 20px; position: relative; overflow: hidden;">
+
+            <!-- Decoración sutil de fondo -->
+            <div
+                style="position: absolute; top: -50px; right: -50px; width: 120px; height: 120px; background: var(--color-blue); opacity: 0.05; border-radius: 50%; filter: blur(40px);">
+            </div>
+
+            <div
+                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; position: relative;">
+                <h2
+                    style="margin:0; font-size:1.4rem; font-weight: 800; display:flex; align-items:center; gap:12px; color: var(--text-primary);">
+                    <div
+                        style="width: 40px; height: 40px; background: rgba(41, 121, 255, 0.1); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: var(--color-blue);">
+                        <i class="ph-fill ph-bug-beetle" style="font-size: 1.5rem;"></i>
+                    </div>
+                    Evento Agronómico
+                </h2>
+                <button class="btn-icon"
+                    style="background: rgba(255,255,255,0.05); border-radius: 50%; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; color: var(--text-secondary); cursor: pointer; border: none;"
+                    onclick="document.getElementById('modal-agronomic-event').style.display='none'">
+                    <i class="ph ph-x" style="font-size: 1.2rem;"></i>
+                </button>
+            </div>
+
+            <p style="font-size:0.95rem; color:var(--text-secondary); margin-bottom:24px; line-height: 1.5;">
+                Registra incidencias, alertas de plagas o notas de manejo para la trazabilidad del lote.
+            </p>
+
+            <input type="hidden" id="event-batch-id">
+            <input type="hidden" id="event-room-id">
+
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label
+                    style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">
+                    <i class="ph ph-tag"></i> Categoría del Evento
+                </label>
+                <select id="event-type"
+                    style="width: 100%; border: 1px solid rgba(255,255,255,0.1); background: var(--bg-dark);">
+                    <option value="Plaga">🚨 Detección de Plaga / Hongo</option>
+                    <option value="Fase">🧬 Cambio de Fase (Manual)</option>
+                    <option value="Info">📝 Observación / Nota General</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 30px;">
+                <label
+                    style="font-size: 0.85rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; display: block; margin-bottom: 8px;">
+                    <i class="ph ph-note-pencil"></i> Detalles y Hallazgos
+                </label>
+                <textarea id="event-description"
+                    placeholder="Describe lo que has observado (ej. Arañuela roja en el envés de las hojas inferiores)..."
+                    style="width: 100%; min-height: 100px; padding: 14px; border-radius: 12px; background: var(--bg-dark); color: var(--text-primary); border: 1px solid rgba(255,255,255,0.1); resize: vertical; font-family: inherit; font-size: 0.95rem;"></textarea>
+            </div>
+
+            <button class="btn-primary"
+                style="width: 100%; padding:16px; border-radius: 14px; font-weight: 700; font-size: 1rem; display: flex; align-items: center; justify-content: center; gap: 10px; background: var(--color-blue); border: none; color: white; box-shadow: 0 10px 20px -5px rgba(41, 121, 255, 0.3); transition: all 0.3s ease;"
+                onclick="submitAgronomicEvent()">
+                <i class="ph ph-floppy-disk" style="font-size: 1.2rem;"></i>
+                Guardar Reporte
+            </button>
+        </div>
+    </div>
+
+    <!-- Modal Historial Agronómico -->
+    <div class="emergency-overlay" id="modalAgronomicHistory"
+        style="display: none; background: rgba(0, 0, 0, 0.85); align-items:center; justify-content:center; z-index: 2000;">
+        <div class="alert-box"
+            style="border-color: var(--color-blue); background: var(--bg-panel); box-shadow: 0 0 40px rgba(0, 0, 0, 0.5); text-align: left; width: 90%; max-width: 700px; padding: 20px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h2 id="modalHistoryTitle"
+                    style="margin:0; font-size:1.2rem; display:flex; align-items:center; gap:8px; color: var(--color-blue);">
+                    <i class="ph ph-clock-counter-clockwise"></i> Historial Agronómico
+                </h2>
+                <button class="btn-icon" style="color: var(--text-secondary); cursor: pointer;"
+                    onclick="closeHistoryModal()"><i class="ph ph-x"></i></button>
+            </div>
+
+            <div
+                style="max-height: 400px; overflow-y: auto; background: var(--bg-dark); border-radius: 6px; border: 1px solid #333; padding: 10px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                    <thead>
+                        <tr style="border-bottom: 1px solid #444; color: var(--text-secondary); text-align: left;">
+                            <th style="padding: 8px;">Fecha</th>
+                            <th style="padding: 8px;">Tipo</th>
+                            <th style="padding: 8px;">Detalle</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody">
+                        <!-- Llenado dinámicamente js -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Editar Lote -->
+                <div class="emergency-overlay" id="modal-edit-batch"
+        style="display: none; background: rgba(0, 0, 0, 0.45); align-items:center; justify-content:center; z-index: 2000; backdrop-filter: blur(8px);">
+        <div class="alert-box"
+            style="border: 1px solid rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.12); color: #fff; backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5); border-radius: 16px; max-width: 600px; width: 95%; padding: 30px; text-align: left; transition: all 0.3s ease;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h2 style="margin:0; font-size:1.3rem; display:flex; align-items:center; gap:10px; color: #fff; text-shadow: 0 0 10px rgba(255,255,255,0.1);">
+                    <i class="ph ph-pencil-simple" style="color: var(--color-blue);"></i> Editar Lote Agronómico
+                </h2>
+                <button class="btn-icon" style="color: rgba(255,255,255,0.9); font-weight: 500; cursor: pointer; transition: 0.2s;"
+                    onclick="document.getElementById('modal-edit-batch').style.display='none'" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='var(--text-secondary)'"><i class="ph ph-x"></i></button>
+            </div>
+
+            <input type="hidden" id="editBatchOriginalId">
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 15px; margin-bottom: 25px;">
+                <!-- Row 1 -->
+                <div style="display: flex; flex-direction: column;">
+                    <label style="font-size: 0.85rem; color: rgba(255,255,255,0.9); font-weight: 500; margin-bottom: 6px; letter-spacing: 0.3px;">ID del Lote</label>
+                    <input type="text" id="editBatchId" disabled
+                        style="padding:12px; border-radius:10px; background:rgba(255, 255, 255, 0.15); color:#fff; border: 1px solid rgba(255,255,255,0.2); border-bottom: 2px solid rgba(255,255,255,0.4); opacity: 0.6; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);">
+                </div>
+                <div style="display: flex; flex-direction: column;">
+                    <label style="font-size: 0.85rem; color: rgba(255,255,255,0.9); font-weight: 500; margin-bottom: 6px; letter-spacing: 0.3px;">Cepa / Variedad</label>
+                    <input type="text" id="editBatchStrain"
+                        style="padding:12px; border-radius:10px; background:rgba(255, 255, 255, 0.15); color:#fff; border: 1px solid rgba(255,255,255,0.2); border-bottom: 2px solid rgba(255,255,255,0.4); transition: all 0.3s ease; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);">
+                </div>
+
+                <!-- Row 2 -->
+                <div style="display: flex; flex-direction: column;">
+                    <label style="font-size: 0.85rem; color: rgba(255,255,255,0.9); font-weight: 500; margin-bottom: 6px; letter-spacing: 0.3px;">Origen</label>
+                    <select id="editBatchOrigen"
+                        style="padding:12px; border-radius:10px; background:rgba(255, 255, 255, 0.15); color:#fff; border: 1px solid rgba(255,255,255,0.2); border-bottom: 2px solid rgba(255,255,255,0.4); transition: all 0.3s ease; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2); appearance: none;">
+                        <option value="clon">Clon (Esqueje)</option>
+                        <option value="semilla">Semilla</option>
+                    </select>
+                </div>
+                <div style="display: flex; flex-direction: column;">
+                    <label style="font-size: 0.85rem; color: rgba(255,255,255,0.9); font-weight: 500; margin-bottom: 6px; letter-spacing: 0.3px;">Madre/Breeder</label>
+                    <input type="text" id="editBatchMadre"
+                        style="padding:12px; border-radius:10px; background:rgba(255, 255, 255, 0.15); color:#fff; border: 1px solid rgba(255,255,255,0.2); border-bottom: 2px solid rgba(255,255,255,0.4); transition: all 0.3s ease; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);">
+                </div>
+
+                <!-- Row 3 -->
+                <div style="display: flex; flex-direction: column;">
+                    <label style="font-size: 0.85rem; color: rgba(255,255,255,0.9); font-weight: 500; margin-bottom: 6px; letter-spacing: 0.3px;">Días de Floración</label>
+                    <input type="number" id="editBatchFlowerDays"
+                        style="padding:12px; border-radius:10px; background:rgba(255, 255, 255, 0.15); color:#fff; border: 1px solid rgba(255,255,255,0.2); border-bottom: 2px solid rgba(255,255,255,0.4); transition: all 0.3s ease; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);">
+                </div>
+                <div style="display: flex; flex-direction: column;">
+                    <label style="font-size: 0.85rem; color: rgba(255,255,255,0.9); font-weight: 500; margin-bottom: 6px; letter-spacing: 0.3px;">Cant. Plantas</label>
+                    <input type="number" id="editBatchPlants" min="0" placeholder="0"
+                        style="padding:12px; border-radius:10px; background:rgba(255, 255, 255, 0.15); color:#fff; border: 1px solid rgba(255,255,255,0.2); border-bottom: 2px solid rgba(255,255,255,0.4); transition: all 0.3s ease; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);">
+                </div>
+
+                <!-- Row 4 (Full Width) -->
+                <div style="display: flex; flex-direction: column; grid-column: span 2;">
+                    <label style="font-size: 0.85rem; color: rgba(255,255,255,0.9); font-weight: 500; margin-bottom: 6px; letter-spacing: 0.3px;">Ubicación / Sala del Cultivo</label>
+                    <select id="editBatchLocation"
+                        style="padding:12px; border-radius:10px; background:rgba(255, 255, 255, 0.15); color:#fff; border: 1px solid rgba(255,255,255,0.2); border-bottom: 2px solid rgba(255,255,255,0.4); transition: all 0.3s ease; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2); appearance: none;">
+                        <!-- Se llenará dinámicamente -->
+                    </select>
+                </div>
+            </div>
+
+            <button class="btn-primary" style="width: 100%; padding:15px; border-radius: 12px; font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%); border: 1px solid rgba(255,255,255,0.2); color: white; box-shadow: 0 10px 25px -5px rgba(41, 121, 255, 0.5); transition: all 0.3s ease;"
+                onclick="confirmEditBatch()" onmouseover="this.style.transform='translateY(-2px)';" onmouseout="this.style.transform='none';">
+                <i class="ph ph-floppy-disk" style="font-size: 1.3rem;"></i> Confirmar Cambios
+            </button>
+        </div>
+    </div>
+
+
+
+
+    <!-- Modal Success -->
+    <div class="emergency-overlay" id="successOverlayCrop"
+        style="display: none; background: rgba(0, 0, 0, 0.85); align-items:center; justify-content:center;">
+        <div class="alert-box" style="border-color: var(--color-green); box-shadow: 0 0 40px rgba(0, 230, 118, 0.2);">
+            <i class="ph-fill ph-check-circle" style="color: var(--color-green);"></i>
+            <h2 style="color: var(--color-green);">CULTIVO REGISTRADO</h2>
+            <p>El lote ha sido ingresado. Se enviaron a n8n las notificaciones para sincronizar los calendarios de
+                cambio de fase.</p>
+            <button class="btn-primary" onclick="closeSuccessCrop()">Aceptar</button>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="cultivo.js?v=1.1.0"></script>
+</body>
+
+</html>

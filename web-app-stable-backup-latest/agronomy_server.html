@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CANNABIS-CORE 360 OS - Timeline Agronómico</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- Chart.js and Adapter for Time -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Supabase SDK & Config -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <!-- Theme Toggle -->
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Barra Lateral -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="ph-fill ph-plant"></i>
+                <span>CORE 360</span>
+            </div>
+            <nav class="nav-menu">
+                <a href="index.html" class="nav-item"><i class="ph ph-squares-four"></i> Panel Principal</a>
+                <a href="cultivo.html" class="nav-item"><i class="ph ph-thermometer"></i> Salas de Cultivo</a>
+                <a href="tareas.html" class="nav-item"><i class="ph ph-check-square"></i> Gestor de Tareas</a>
+                <a href="pos.html" class="nav-item"><i class="ph ph-storefront"></i> Punto de Venta</a>
+                <a href="insumos.html" class="nav-item"><i class="ph ph-package"></i> Bodega e Insumos</a>
+                <a href="analytics.html" class="nav-item"><i class="ph ph-chart-line-up"></i> Finanzas & ROI</a>
+                <a href="agronomy.html" class="nav-item active"><i class="ph ph-projector-screen-chart"></i> Timeline
+                    Agronómico</a>
+            </nav>
+        </aside>
+
+        <!-- Contenido -->
+        <main class="main-content">
+            <header class="topbar">
+                <div class="search-bar">
+                    <i class="ph ph-magnifying-glass"></i>
+                    <input type="text" placeholder="Buscar reportes o gráficos...">
+                </div>
+                <div class="user-profile">
+                    <div class="avatar"><i class="ph ph-user"></i></div>
+                    <span>Operador Principal</span>
+                </div>
+            </header>
+
+            <div class="dashboard" style="padding: 0 3rem 2rem;">
+                <div class="header-section"
+                    style="margin-bottom: 2rem; display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <h1>Timeline Agronómico (Eventos & Telemetría)</h1>
+                        <p style="color:var(--text-muted)">Correlación visual de clima histórico, plagas y tareas en
+                            tiempo real.</p>
+                    </div>
+                </div>
+
+                <!-- Gráfico Chart.js -->
+                <div class="widget" style="padding: 20px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom: 15px;">
+                        <div>
+                            <h3 style="margin-bottom: 0.5rem; display:flex; align-items:center; gap:8px;">
+                                <i class="ph ph-chart-scatter"></i> Línea de Tiempo Integral
+                            </h3>
+                            <p style="font-size: 0.85rem; color: var(--text-muted);">
+                                Visualiza líneas de Temp y VPD interceptadas por eventos de plagas <span
+                                    style="color:#ef4444">(Rojo)</span>, fases <span
+                                    style="color:#eab308">(Amarillo)</span> y tareas del calendario <span
+                                    style="color:#22c55e">(Verde)</span>.
+                            </p>
+                        </div>
+                        <div style="display:flex; gap: 10px;">
+                            <select id="filterRoom"
+                                style="padding:8px 15px; border-radius:6px; background:#111; color:#fff; border:1px solid #444;"
+                                onchange="applyAgronomyFilters()">
+                                <option value="all">Todas las Salas</option>
+                                <option value="sala-veg-1">Sala Veg 1</option>
+                                <option value="sala-flo-1">Sala Floración 1</option>
+                                <option value="sala-flo-2">Sala Floración 2</option>
+                            </select>
+
+                            <select id="filterBatch"
+                                style="padding:8px 15px; border-radius:6px; background:#111; color:#fff; border:1px solid #444;"
+                                onchange="applyAgronomyFilters()">
+                                <option value="all">Todos los Lotes</option>
+                                <!-- Se llenará dinámicamente -->
+                            </select>
+                        </div>
+                    </div>
+                    <div style="position: relative; height: 500px; width: 100%;">
+                        <canvas id="agronomyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script src="agronomy.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CANNABIS-CORE 360 OS - POS & Management</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Supabase SDK & Config -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <!-- Theme Toggle -->
+    <script src="theme.js"></script>
+</head>
+
+<body>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="ph-fill ph-plant"></i>
+                <span>CORE 360</span>
+            </div>
+            <nav class="nav-menu">\n                <a href="index.html" class="nav-item"><i class="ph ph-squares-four"></i> Panel Principal</a>
+                <a href="cultivo.html" class="nav-item"><i class="ph ph-thermometer"></i> Salas de Cultivo</a>
+                <a href="tareas.html" class="nav-item"><i class="ph ph-check-square"></i> Gestor de Tareas</a>
+                <a href="insumos.html" class="nav-item"><i class="ph ph-warehouse"></i> Bodega e Insumos</a>
+                <a href="pos.html" class="nav-item active"><i class="ph ph-shopping-cart"></i> Punto de Venta (POS)</a>
+                <a href="analytics.html" class="nav-item"><i class="ph ph-chart-line-up"></i> Finanzas & ROI</a>
+                <a href="agronomy.html" class="nav-item"><i class="ph ph-projector-screen-chart"></i> Timeline\n                    Agronómico</a>
+                <a href="protocolos.html" class="nav-item"><i class="ph ph-book-open"></i> Protocolos & Recetas</a>
+            </nav>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <header class="topbar">
+                <h1>Punto de Venta (POS)</h1>
+                
+                <div class="topbar-controls" style="display: flex; gap: 15px; align-items: center; justify-content: flex-end; flex: 1;">
+                    
+                    
+                
+                    <div class="header-action-buttons" style="display: flex; align-items: center; gap: 12px; margin-left: auto;">
+                        <button id="themeToggleBtn" class="theme-toggle" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px 15px; color: var(--text-primary); display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s ease; white-space: nowrap; height: 40px;">
+                            <i class="ph ph-sun" style="font-size: 1.2rem;"></i>
+                            <span style="font-size: 0.85rem; font-weight: 600;">Tema</span>
+                        </button>
+                        
+                        <button class="btn-icon" onclick="logoutUser()" title="Cerrar Sesión" style="background: rgba(255, 61, 0, 0.1); border: 1px solid rgba(255, 61, 0, 0.2); border-radius: 8px; padding: 8px 15px; color: var(--color-red); display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s ease; white-space: nowrap; height: 40px;">
+                            <i class="ph ph-sign-out" style="font-size: 1.2rem;"></i>
+                            <span style="font-size: 0.85rem; font-weight: 600;">Salir</span>
+                        </button>
+                    </div>
+
+                    <div class="user-profile">
+                    <img src="https://ui-avatars.com/api/?name=Admin+User&background=333&color=fff" alt="Admin">
+                </div>
+                </div>
+            </header>
+
+            <div class="dashboard-grid pos-grid">
+
+                <!-- Products Panel -->
+                <div class="widget span-3 products-panel">
+                    <div class="widget-header">
+                        <h3><i class="ph ph-storefront"></i> Inventario</h3>
+                        <div class="search-bar">
+                            <i class="ph ph-magnifying-glass"></i>
+                            <input type="text" placeholder="Buscar cepas o extractos...">
+                        </div>
+                    </div>
+
+                    <div class="inventory-grid" id="posInventoryGrid">
+                        <!-- Items inyectados por pos.js desde Bodega -->
+                    </div>
+                </div>
+
+                <!-- Checkout Panel -->
+                <div class="widget cart-panel">
+                    <div class="widget-header">
+                        <h3><i class="ph ph-shopping-cart"></i> Orden Actual</h3>
+                    </div>
+
+                    <div class="client-selector">
+                        <select id="clientSelect" onchange="toggleCustomClientInput(this.value)">
+                            <option value="walk_in" selected>Cliente Casual (Estándar)</option>
+                            <option value="vip_1">John Doe (Nivel VIP - 10% Desc.)</option>
+                            <option value="wholesale_1">Dispensario X (Mayorista - 30% Desc.)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group client-name-input" id="customClientContainer" style="margin-bottom: 20px;">
+                        <input type="text" id="customClientName" placeholder="Nombre del cliente casual (Opcional)"
+                            style="background: var(--bg-dark); color: white; border: 1px solid #444; border-radius: 6px; padding: 10px; width: 100%; font-family: inherit;">
+                    </div>
+
+                    <script>
+                        function toggleCustomClientInput(val) {
+                            const container = document.getElementById('customClientContainer');
+                            if (val === 'walk_in') {
+                                container.style.display = 'block';
+                            } else {
+                                container.style.display = 'none';
+                                document.getElementById('customClientName').value = '';
+                            }
+                        }
+                    </script>
+
+                    <div class="cart-items" id="cartList">
+                        <!-- Items injected here by JS -->
+                        <div class="empty-cart-msg">El carrito está vacío</div>
+                    </div>
+
+                    <div class="cart-totals">
+                        <div class="total-row">
+                            <span>Subtotal</span>
+                            <span id="posSubtotal">$0.00</span>
+                        </div>
+                        <div class="total-row discount">
+                            <span>Descuento (Nivel)</span>
+                            <span id="posDiscount">-$0.00</span>
+                        </div>
+                        <div class="total-row grand-total">
+                            <span>Total</span>
+                            <span id="posTotal" class="glow-text">$0.00</span>
+                        </div>
+                    </div>
+
+                    <button id="btnCompletarVenta" class="btn-primary btn-large" onclick="processSale()">
+                        <i class="ph ph-check-circle"></i> Completar Venta
+                    </button>
+                </div>
+            </div>
+
+            <!-- Sales History: Bot + Web -->
+            <div style="padding: 0 3rem 3rem;">
+                <div class="widget span-4">
+                    <div class="widget-header">
+                        <h3><i class="ph ph-receipt"></i> Historial de Ventas <span
+                                style="font-size:0.75rem;color:var(--text-secondary);">(Web + Bot WhatsApp)</span></h3>
+                        <button class="btn-icon" onclick="loadSalesHistory()" title="Actualizar">
+                            <i class="ph ph-arrows-clockwise"></i> Actualizar
+                        </button>
+                    </div>
+                    <table style="width:100%; border-collapse:collapse; margin-top:10px;">
+                        <thead>
+                            <tr style="border-bottom:1px solid #333;">
+                                <th
+                                    style="padding:0.5rem 0; font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; font-weight:600;">
+                                    Fecha / Hora</th>
+                                <th
+                                    style="padding:0.5rem 0; font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; font-weight:600;">
+                                    Origen</th>
+                                <th
+                                    style="padding:0.5rem 0; font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; font-weight:600;">
+                                    Lote</th>
+                                <th
+                                    style="padding:0.5rem 0; font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; font-weight:600;">
+                                    Gramos</th>
+                                <th
+                                    style="padding:0.5rem 0; font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; font-weight:600;">
+                                    Precio/g</th>
+                                <th
+                                    style="padding:0.5rem 0; font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; font-weight:600;">
+                                    Cliente</th>
+                                <th
+                                    style="padding:0.5rem 0; font-size:0.75rem; color:var(--text-secondary); text-transform:uppercase; font-weight:600;">
+                                    Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="salesHistoryBody">
+                            <tr>
+                                <td colspan="7" style="text-align:center; padding:1.5rem; color:var(--text-secondary);">
+                                    Cargando...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Success Modal -->
+            <div class="emergency-overlay" id="successOverlay">
+                <div class="alert-box success-box">
+                    <i class="ph-fill ph-check-circle"></i>
+                    <h2 style="color:var(--color-green)">VENTA COMPLETADA</h2>
+                    <p>Inventario descontado. Transacción registrada en el CRM.</p>
+                    <button class="btn-primary" style="margin-top:1.5rem" onclick="closeSuccess()">Nueva Venta</button>
+                </div>
+            </div>
+
+            <script src="pos.js?v=1.1.0"></script>
+</body>
+
+</html>

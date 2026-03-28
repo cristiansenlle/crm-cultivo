@@ -1,0 +1,11 @@
+node_modules
+.wwebjs_auth
+.wwebjs_cache
+.env
+*.log
+package-lock.json
+backups/
+temp/
+.DS_Store
+*.json
+*.sql

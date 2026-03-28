@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CANNABIS-CORE 360 OS - Login</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: var(--bg-dark);
+            background-image:
+                radial-gradient(circle at top right, rgba(0, 230, 118, 0.05) 0%, transparent 40%),
+                radial-gradient(circle at bottom left, rgba(41, 121, 255, 0.05) 0%, transparent 40%);
+            overflow: hidden;
+        }
+
+        .login-container {
+            width: 100%;
+            max-width: 420px;
+            padding: 40px;
+            background: rgba(26, 29, 39, 0.6);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            border-radius: 24px;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Light theme overrides built-in the file to override the background */
+        [data-theme="light"] {
+            background-color: var(--bg-dark);
+            background-image: none;
+        }
+
+        [data-theme="light"] .login-container {
+            background: rgba(255, 255, 255, 0.8);
+            border: 1px solid rgba(0, 0, 0, 0.05);
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.05);
+        }
+
+        .brand-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .brand-header .logo-icon {
+            font-size: 3.5rem;
+            color: var(--color-green);
+            margin-bottom: 10px;
+            filter: drop-shadow(0 0 10px rgba(0, 230, 118, 0.4));
+        }
+
+        .brand-header h1 {
+            font-size: 1.8rem;
+            font-weight: 800;
+            margin: 0;
+            color: var(--text-primary);
+            letter-spacing: -0.5px;
+        }
+
+        .brand-header p {
+            font-size: 0.9rem;
+            color: var(--text-secondary);
+            margin-top: 5px;
+        }
+
+        .error-message {
+            background: rgba(255, 61, 0, 0.1);
+            color: var(--color-red);
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            margin-bottom: 20px;
+            display: none;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid rgba(255, 61, 0, 0.2);
+        }
+
+        .btn-login {
+            width: 100%;
+            padding: 14px;
+            border-radius: 12px;
+            background: var(--color-green);
+            color: #000;
+            font-weight: 800;
+            font-size: 1rem;
+            border: none;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 25px;
+            box-shadow: 0 10px 20px rgba(0, 230, 118, 0.2);
+        }
+
+        .btn-login:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 15px 25px rgba(0, 230, 118, 0.3);
+            background: #00c853;
+        }
+
+        .btn-login:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .input-icon-wrapper {
+            position: relative;
+        }
+
+        .input-icon-wrapper i {
+            position: absolute;
+            left: 14px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .input-icon-wrapper input {
+            padding-left: 40px !important;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- Scripts requeridos -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+
+    <div class="login-container">
+        <div class="brand-header">
+            <i class="ph-fill ph-plant logo-icon"></i>
+            <h1>CORE 360</h1>
+            <p>Sistema Operativo de Producción</p>
+        </div>
+
+        <div id="login-error" class="error-message">
+            <i class="ph-fill ph-warning-circle"></i>
+            <span id="login-error-text">Credenciales inválidas</span>
+        </div>
+
+        <form id="login-form">
+            <div class="form-group" style="margin-bottom: 20px;">
+                <label>Correo Electrónico</label>
+                <div class="input-icon-wrapper">
+                    <i class="ph ph-envelope-simple"></i>
+                    <input type="email" id="email" required placeholder="admin@core360.com">
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Contraseña</label>
+                <div class="input-icon-wrapper">
+                    <i class="ph ph-lock-key"></i>
+                    <input type="password" id="password" required placeholder="••••••••">
+                </div>
+            </div>
+
+            <button type="submit" class="btn-login" id="btn-submit">
+                <span>Ingresar</span>
+                <i class="ph ph-arrow-right"></i>
+            </button>
+        </form>
+    </div>
+
+    <!-- Login Logic -->
+    <script src="login.js"></script>
+</body>
+
+</html>

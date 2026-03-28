@@ -1,0 +1,70 @@
+    <div class="emergency-overlay" id="modal-edit-batch"
+        style="display: none; background: rgba(0, 0, 0, 0.45); align-items:center; justify-content:center; z-index: 2000; backdrop-filter: blur(8px);">
+        <div class="alert-box"
+            style="border: 1px solid rgba(255, 255, 255, 0.3); background: rgba(255, 255, 255, 0.12); color: #fff; backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5); border-radius: 16px; max-width: 600px; width: 95%; padding: 30px; text-align: left; transition: all 0.3s ease;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px;">
+                <h2 style="margin:0; font-size:1.3rem; display:flex; align-items:center; gap:10px; color: #fff; text-shadow: 0 0 10px rgba(255,255,255,0.1);">
+                    <i class="ph ph-pencil-simple" style="color: var(--color-blue);"></i> Editar Lote Agronómico
+                </h2>
+                <button class="btn-icon" style="color: rgba(255,255,255,0.9); font-weight: 500; cursor: pointer; transition: 0.2s;"
+                    onclick="document.getElementById('modal-edit-batch').style.display='none'" onmouseover="this.style.color='#fff'" onmouseout="this.style.color='var(--text-secondary)'"><i class="ph ph-x"></i></button>
+            </div>
+
+            <input type="hidden" id="editBatchOriginalId">
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 15px; margin-bottom: 25px;">
+                <!-- Row 1 -->
+                <div style="display: flex; flex-direction: column;">
+                    <label style="font-size: 0.85rem; color: rgba(255,255,255,0.9); font-weight: 500; margin-bottom: 6px; letter-spacing: 0.3px;">ID del Lote</label>
+                    <input type="text" id="editBatchId" disabled
+                        style="padding:12px; border-radius:10px; background:rgba(255, 255, 255, 0.15); color:#fff; border: 1px solid rgba(255,255,255,0.2); border-bottom: 2px solid rgba(255,255,255,0.4); opacity: 0.6; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);">
+                </div>
+                <div style="display: flex; flex-direction: column;">
+                    <label style="font-size: 0.85rem; color: rgba(255,255,255,0.9); font-weight: 500; margin-bottom: 6px; letter-spacing: 0.3px;">Cepa / Variedad</label>
+                    <input type="text" id="editBatchStrain"
+                        style="padding:12px; border-radius:10px; background:rgba(255, 255, 255, 0.15); color:#fff; border: 1px solid rgba(255,255,255,0.2); border-bottom: 2px solid rgba(255,255,255,0.4); transition: all 0.3s ease; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);">
+                </div>
+
+                <!-- Row 2 -->
+                <div style="display: flex; flex-direction: column;">
+                    <label style="font-size: 0.85rem; color: rgba(255,255,255,0.9); font-weight: 500; margin-bottom: 6px; letter-spacing: 0.3px;">Origen</label>
+                    <select id="editBatchOrigen"
+                        style="padding:12px; border-radius:10px; background:rgba(255, 255, 255, 0.15); color:#fff; border: 1px solid rgba(255,255,255,0.2); border-bottom: 2px solid rgba(255,255,255,0.4); transition: all 0.3s ease; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2); appearance: none;">
+                        <option value="clon">Clon (Esqueje)</option>
+                        <option value="semilla">Semilla</option>
+                    </select>
+                </div>
+                <div style="display: flex; flex-direction: column;">
+                    <label style="font-size: 0.85rem; color: rgba(255,255,255,0.9); font-weight: 500; margin-bottom: 6px; letter-spacing: 0.3px;">Madre/Breeder</label>
+                    <input type="text" id="editBatchMadre"
+                        style="padding:12px; border-radius:10px; background:rgba(255, 255, 255, 0.15); color:#fff; border: 1px solid rgba(255,255,255,0.2); border-bottom: 2px solid rgba(255,255,255,0.4); transition: all 0.3s ease; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);">
+                </div>
+
+                <!-- Row 3 -->
+                <div style="display: flex; flex-direction: column;">
+                    <label style="font-size: 0.85rem; color: rgba(255,255,255,0.9); font-weight: 500; margin-bottom: 6px; letter-spacing: 0.3px;">Días de Floración</label>
+                    <input type="number" id="editBatchFlowerDays"
+                        style="padding:12px; border-radius:10px; background:rgba(255, 255, 255, 0.15); color:#fff; border: 1px solid rgba(255,255,255,0.2); border-bottom: 2px solid rgba(255,255,255,0.4); transition: all 0.3s ease; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);">
+                </div>
+                <div style="display: flex; flex-direction: column;">
+                    <label style="font-size: 0.85rem; color: rgba(255,255,255,0.9); font-weight: 500; margin-bottom: 6px; letter-spacing: 0.3px;">Cant. Plantas</label>
+                    <input type="number" id="editBatchPlants" min="0" placeholder="0"
+                        style="padding:12px; border-radius:10px; background:rgba(255, 255, 255, 0.15); color:#fff; border: 1px solid rgba(255,255,255,0.2); border-bottom: 2px solid rgba(255,255,255,0.4); transition: all 0.3s ease; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2);">
+                </div>
+
+                <!-- Row 4 (Full Width) -->
+                <div style="display: flex; flex-direction: column; grid-column: span 2;">
+                    <label style="font-size: 0.85rem; color: rgba(255,255,255,0.9); font-weight: 500; margin-bottom: 6px; letter-spacing: 0.3px;">Ubicación / Sala del Cultivo</label>
+                    <select id="editBatchLocation"
+                        style="padding:12px; border-radius:10px; background:rgba(255, 255, 255, 0.15); color:#fff; border: 1px solid rgba(255,255,255,0.2); border-bottom: 2px solid rgba(255,255,255,0.4); transition: all 0.3s ease; box-shadow: inset 0 2px 5px rgba(0,0,0,0.2); appearance: none;">
+                        <!-- Se llenará dinámicamente -->
+                    </select>
+                </div>
+            </div>
+
+            <button class="btn-primary" style="width: 100%; padding:15px; border-radius: 12px; font-weight: 700; font-size: 1.05rem; display: flex; align-items: center; justify-content: center; gap: 8px; background: linear-gradient(135deg, #00c6ff 0%, #0072ff 100%); border: 1px solid rgba(255,255,255,0.2); color: white; box-shadow: 0 10px 25px -5px rgba(41, 121, 255, 0.5); transition: all 0.3s ease;"
+                onclick="confirmEditBatch()" onmouseover="this.style.transform='translateY(-2px)';" onmouseout="this.style.transform='none';">
+                <i class="ph ph-floppy-disk" style="font-size: 1.3rem;"></i> Confirmar Cambios
+            </button>
+        </div>
+    </div>

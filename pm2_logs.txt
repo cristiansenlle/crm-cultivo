@@ -1,0 +1,1 @@
+[TAILING] Tailing last 200 lines for [bot-wa] process (change the value with --lines option)
