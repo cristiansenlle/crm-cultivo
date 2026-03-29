@@ -32,15 +32,40 @@ function getCurrentData() {
     return roomsData[currentRoomId];
 }
 
-// Configs for Charts
-const commonChartOptions = {
-    responsive: true, maintainAspectRatio: false,
-    scales: {
-        x: { grid: { display: false }, ticks: { color: '#AAA' } },
-        y: { grid: { color: '#333' }, ticks: { color: '#AAA' } }
-    },
-    plugins: { legend: { display: false } },
-    elements: { point: { radius: 3 } }
+// Colors dynamically resolved against CSS variables
+function getChartColors() {
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    return {
+        textColor: isLight ? '#4B5563' : '#8F97B3', // text-secondary
+        gridColor: isLight ? '#E5E7EB' : '#333333',
+        pointBg: isLight ? '#FFFFFF' : '#121212'
+    };
+}
+
+function getCommonChartOptions() {
+    const colors = getChartColors();
+    return {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+            x: { grid: { display: false }, ticks: { color: colors.textColor } },
+            y: { grid: { color: colors.gridColor }, ticks: { color: colors.textColor } }
+        },
+        plugins: { legend: { display: false } },
+        elements: { point: { radius: 3 } }
+    };
+}
+
+window.updateChartsTheme = function() {
+    if (!tempChartInstance || !humChartInstance || !vpdChartInstance) return;
+    const colors = getChartColors();
+    const instances = [tempChartInstance, humChartInstance, vpdChartInstance];
+    instances.forEach(chart => {
+        chart.options.scales.x.ticks.color = colors.textColor;
+        chart.options.scales.y.ticks.color = colors.textColor;
+        chart.options.scales.y.grid.color = colors.gridColor;
+        chart.data.datasets.forEach(ds => ds.pointBackgroundColor = colors.pointBg);
+        chart.update();
+    });
 };
 
 function createGradient(ctx, color) {
@@ -58,6 +83,9 @@ function initCharts() {
         return;
     }
 
+    const opts = getCommonChartOptions();
+    const colors = getChartColors();
+
     // Temp Chart
     const ctxTemp = document.getElementById('tempChart').getContext('2d');
     tempChartInstance = new Chart(ctxTemp, {
@@ -67,10 +95,10 @@ function initCharts() {
             datasets: [{
                 label: 'Temp (°C)', data: [...data.tempHistory],
                 borderColor: '#FF3D00', backgroundColor: createGradient(ctxTemp, 'rgba(255, 61, 0, 0.5)'),
-                borderWidth: 2, fill: true, tension: 0.4, pointBackgroundColor: '#121212', pointBorderColor: '#FF3D00'
+                borderWidth: 2, fill: true, tension: 0.4, pointBackgroundColor: colors.pointBg, pointBorderColor: '#FF3D00'
             }]
         },
-        options: { ...commonChartOptions, scales: { ...commonChartOptions.scales, y: { ...commonChartOptions.scales.y, suggestedMin: 18, suggestedMax: 32 } } }
+        options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, suggestedMin: 18, suggestedMax: 32 } } }
     });
 
     // Hum Chart
@@ -82,10 +110,10 @@ function initCharts() {
             datasets: [{
                 label: 'Hum (%)', data: [...data.humHistory],
                 borderColor: '#2979FF', backgroundColor: createGradient(ctxHum, 'rgba(41, 121, 255, 0.5)'),
-                borderWidth: 2, fill: true, tension: 0.4, pointBackgroundColor: '#121212', pointBorderColor: '#2979FF'
+                borderWidth: 2, fill: true, tension: 0.4, pointBackgroundColor: colors.pointBg, pointBorderColor: '#2979FF'
             }]
         },
-        options: { ...commonChartOptions, scales: { ...commonChartOptions.scales, y: { ...commonChartOptions.scales.y, suggestedMin: 30, suggestedMax: 80 } } }
+        options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, suggestedMin: 30, suggestedMax: 80 } } }
     });
 
     // VPD Chart
@@ -97,10 +125,10 @@ function initCharts() {
             datasets: [{
                 label: 'VPD (kPa)', data: [...data.vpdHistory],
                 borderColor: '#00E676', backgroundColor: createGradient(ctxVpd, 'rgba(0, 230, 118, 0.5)'),
-                borderWidth: 2, fill: true, tension: 0.4, pointBackgroundColor: '#121212', pointBorderColor: '#00E676'
+                borderWidth: 2, fill: true, tension: 0.4, pointBackgroundColor: colors.pointBg, pointBorderColor: '#00E676'
             }]
         },
-        options: { ...commonChartOptions, scales: { ...commonChartOptions.scales, y: { ...commonChartOptions.scales.y, suggestedMin: 0.5, suggestedMax: 1.8 } } }
+        options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, suggestedMin: 0.5, suggestedMax: 1.8 } } }
     });
 }
 
@@ -562,36 +590,3 @@ async function pollLatestTelemetry(roomId) {
         console.error('[Polling] Error consultando Supabase:', error);
     }
 }
-
-async function checkBotStatus() {
-    try {
-        const response = await fetch('/status.json');
-        if (!response.ok) throw new Error('Not found');
-        const data = await response.json();
-        
-        const dot = document.getElementById('waStatusDot');
-        const text = document.getElementById('waStatusText');
-        if (!dot || !text) return;
-
-        if (data.status === 'online') {
-            dot.style.background = '#2ecc71';
-            text.innerText = 'WhatsApp: Conectado';
-        } else if (data.status === 'awaiting_qr') {
-            dot.style.background = '#f1c40f';
-            text.innerText = 'WhatsApp: Esperando QR';
-        } else {
-            dot.style.background = '#e74c3c';
-            text.innerText = 'WhatsApp: Desconectado';
-        }
-    } catch (e) {
-        const dot = document.getElementById('waStatusDot');
-        const text = document.getElementById('waStatusText');
-        if (dot && text) {
-            dot.style.background = '#e74c3c';
-            text.innerText = 'WhatsApp: Error Check';
-        }
-    }
-}
-
-setInterval(checkBotStatus, 15000);
-checkBotStatus();

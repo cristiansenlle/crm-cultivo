@@ -71,6 +71,7 @@
 }
 
 [data-theme="light"] .sidebar {
+    overflow: hidden;
     background-color: var(--panel-dark);
     border-right-color: #E5E7EB;
 }
@@ -371,14 +372,15 @@ body {
 .app-container {
     display: grid;
     grid-template-columns: 250px 1fr;
-    height: 100vh;
+    height: 100dvh;
+    box-sizing: border-box;
     overflow: hidden;
 }
 
 /* Sidebar */
 .sidebar {
     background-color: var(--panel-dark);
-    padding: 2rem 1.5rem;
+    padding: 2rem 1.5rem 4rem 1.5rem; /* added bottom padding to clear taskbar */
     display: flex;
     flex-direction: column;
     border-right: 1px solid #333;
@@ -404,6 +406,24 @@ body {
     flex-direction: column;
     gap: 1rem;
     flex-grow: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 5px; /* Prevent scrollbar overlap */
+}
+
+/* Custom minimal scrollbar for nav */
+.nav-menu::-webkit-scrollbar {
+    width: 6px;
+}
+.nav-menu::-webkit-scrollbar-track {
+    background: transparent;
+}
+.nav-menu::-webkit-scrollbar-thumb {
+    background-color: rgba(255,255,255,0.1);
+    border-radius: 4px;
+}
+[data-theme="light"] .nav-menu::-webkit-scrollbar-thumb {
+    background-color: rgba(0,0,0,0.1);
 }
 
 .nav-item {
@@ -475,7 +495,8 @@ body {
 .main-content {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100dvh;
+    box-sizing: border-box;
     overflow-y: auto;
 }
 
