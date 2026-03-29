@@ -156,16 +156,26 @@ function renderTable() {
                 clientLabel = 'Mayorista (Dispensario X)';
             }
 
-            const isOpex = sale.tx_id && sale.tx_id.startsWith('OPEX');
+            const isOpex = (sale.tx_id && sale.tx_id.startsWith('OPEX')) || sale.client === 'proveedor_opex';
             const color = isOpex ? "var(--color-red)" : "var(--color-green)";
             const sign = isOpex ? "-" : "+";
             const amount = isOpex ? parseFloat(sale.cost_of_goods).toFixed(2) : parseFloat(sale.revenue).toFixed(2);
             const qtyStr = isOpex ? '-' : `${sale.qty_sold}g`;
-            const clientOut = isOpex ? '<i class="ph ph-shopping-bag" style="color:var(--color-red)"></i> ' + clientLabel : clientLabel;
+            
+            let displayTxId = sale.tx_id || 'INFO-SISTEMA';
+            if (isOpex && displayTxId && displayTxId.startsWith('OPEX-')) {
+                const parts = displayTxId.split('-');
+                if (parts.length >= 2) displayTxId = parts[0] + '-' + parts[1];
+            } else if (isOpex) {
+                displayTxId = 'OPEX-MANUAL';
+            }
+            if (isOpex) clientLabel = 'Gasto / Proveedor';
+
+            const clientOut = isOpex ? '<i class="ph ph-shopping-cart" style="color:var(--color-red)"></i> ' + clientLabel : clientLabel;
 
             html += `
             <tr style="border-bottom: 1px solid var(--border-color);">
-                <td style="padding:10px; font-family:monospace; font-size:0.85rem">${sale.tx_id}</td>
+                <td style="padding:10px; font-family:monospace; font-size:0.85rem">${displayTxId}</td>
                 <td style="color:var(--text-muted);">${dateStr}</td>
                 <td style="text-transform: capitalize;">${clientOut}</td>
                 <td><strong>${sale.item_id}</strong></td>
@@ -299,8 +309,8 @@ function exportTxCSV() {
             clientLabel = 'Casual (Consumidor Final)';
         }
 
-        const isOpex = sale.tx_id && sale.tx_id.startsWith('OPEX-');
-        const rev = isOpex ? -Math.abs(parseFloat(sale.cost_of_goods)) : parseFloat(sale.revenue);
+        const isOpex = (sale.tx_id && sale.tx_id.startsWith('OPEX-')) || sale.client === 'proveedor_opex';
+        const rev = isOpex ? -Math.abs(parseFloat(sale.cost_of_goods || 0)) : parseFloat(sale.revenue || 0);
         csvContent += `"${sale.tx_id}","${dateStr}","${clientLabel}","${sale.item_id}",${sale.qty_sold},${rev.toFixed(2)}\n`;
     });
 

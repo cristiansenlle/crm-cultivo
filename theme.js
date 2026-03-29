@@ -27,6 +27,7 @@ function initThemeToggle() {
         document.documentElement.setAttribute('data-theme', next);
         localStorage.setItem('core360_theme', next);
         updateBtn(next);
+        if (typeof window.updateChartsTheme === 'function') window.updateChartsTheme();
     });
 }
 
