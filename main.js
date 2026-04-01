@@ -239,7 +239,7 @@ async function loadSensorsForRoom() {
         
         const manualSelect = document.getElementById('manualSensorSelect');
         if (manualSelect) {
-            manualSelect.innerHTML = '<option value="default">Promedio / Sala General</option>';
+            manualSelect.innerHTML = '<option value="default">Sensor 1 (Promedio General)</option>';
             data.forEach(s => {
                 const opt = document.createElement('option');
                 opt.value = s.id;
@@ -267,6 +267,9 @@ async function loadSensorsForRoom() {
                             <span class="badge badge-indigo" style="font-size:0.75rem;"><i class="ph ph-thermometer"></i> ${s.id.substring(0,8)}</span>
                         </div>
                         <div>
+                            <button class="btn-primary" style="padding:5px 10px; font-size:0.8rem; margin-right:5px;" onclick="renameSensor('${s.id}', '${s.name}')">
+                                <i class="ph ph-pencil"></i>
+                            </button>
                             <button class="btn-danger" style="padding:5px 10px; font-size:0.8rem;" onclick="deleteSensor('${s.id}')">
                                 <i class="ph ph-trash"></i>
                             </button>
@@ -306,6 +309,18 @@ window.deleteSensor = async function(id) {
         await loadSensorsForRoom();
     } catch(e) {
         console.error("Error eliminando sensor:", e);
+    }
+}
+
+window.renameSensor = async function(id, currentName) {
+    const newName = prompt('Ingrese el nuevo nombre para el sensor:', currentName);
+    if (!newName || newName.trim() === '' || newName === currentName) return;
+    try {
+        await window.sbClient.from('core_sensors').update({ name: newName.trim() }).eq('id', id);
+        await loadSensorsForRoom();
+        pollLatestTelemetry(currentRoomId);
+    } catch(e) {
+        console.error("Error renombrando sensor:", e);
     }
 }
 
@@ -601,7 +616,7 @@ async function pollLatestTelemetry(roomId) {
         
         dataRev.forEach(t => {
             const sId = t.sensor_id || 'default';
-            const sName = t.core_sensors && t.core_sensors.name ? t.core_sensors.name : (sId === 'default' ? 'Promedio / Sala General' : 'Sensor ' + sId.substring(0,4));
+            const sName = t.core_sensors && t.core_sensors.name ? t.core_sensors.name : (sId === 'default' ? 'Sensor 1 (Promedio General)' : 'Sensor ' + sId.substring(0,4));
             if(!telemetryBySensor[sId]) telemetryBySensor[sId] = { name: sName, labels: [], temps: [], hums: [], vpds: [] };
             
             const timeStr = new Date(t.created_at).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit' });
