@@ -106,13 +106,21 @@
                     <div class="widget-value"><span id="val-vpd">--</span> kPa</div>
                 </div>
 
-                <!-- Fila 2: Ingreso Manual -->
-                <div class="widget span-3" id="widget-telemetry-input">
+                <!-- Fila 2: Ingreso Manual y Sensores -->
+                <div class="widget span-2" id="widget-telemetry-input">
                     <div class="widget-header">
                         <h3><i class="ph ph-keyboard"></i> Ingreso Manual de Telemetría</h3>
-                        <span style="font-size:0.75rem; color:var(--text-secondary);">También por WhatsApp: "Temp 26 hum 60 sala 1"</span>
+                        <span style="font-size:0.75rem; color:var(--text-secondary);">También vía WhatsApp</span>
                     </div>
-                    <div style="display: flex; gap: 10px; margin-top: 15px; align-items:flex-end;">
+                    <!-- Selector de sensor -->
+                    <div style="margin-top: 10px;">
+                        <label style="font-size: 0.8rem; color: var(--text-secondary);">Destino (Sensor)</label>
+                        <select id="manualSensorSelect"
+                            style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white; margin-top: 5px;">
+                            <option value="default">Promedio / Sala General</option>
+                        </select>
+                    </div>
+                    <div style="display: flex; gap: 10px; margin-top: 10px; align-items:flex-end;">
                         <div style="flex:1;">
                             <label style="font-size: 0.8rem; color: var(--text-secondary);">Temp (°C)</label>
                             <input type="number" id="manual-temp" step="0.1" placeholder="--"
@@ -125,6 +133,32 @@
                         </div>
                         <button class="btn-primary" onclick="updateManualTelemetry()"
                             style="padding: 9px 15px; width:auto; flex-shrink: 0;"><i class="ph ph-upload-simple"></i> Cargar</button>
+                    </div>
+                </div>
+
+                <!-- Admin de Sensores -->
+                <div class="widget span-2" style="border-color:var(--color-purple);">
+                    <div style="display:flex; justify-content:space-between; align-items:center;">
+                        <h3 style="margin:0; font-size:1.1rem; display:flex; align-items:center; gap:8px;">
+                            <i class="ph ph-thermometer" style="color:var(--color-purple);"></i> Sensores Registrados
+                        </h3>
+                    </div>
+                    
+                    <form id="newSensorForm" style="display:flex; gap: 10px; margin-top:10px; align-items:flex-end;">
+                        <div style="flex:1;">
+                            <label style="font-size: 0.8rem; color: var(--text-secondary);">Nueva Ubicación/Sensor</label>
+                            <input type="text" id="sensorName" required placeholder="Ej: Foco, Puerta"
+                                style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white; margin-top:5px;">
+                        </div>
+                        <button type="submit" class="btn-primary" style="padding: 9px; background:var(--color-purple); border-color:var(--color-purple);">
+                            <i class="ph ph-plus"></i> Añadir a Sala Selecta
+                        </button>
+                    </form>
+
+                    <div style="margin-top:10px; max-height: 120px; overflow-y: auto;">
+                        <ul class="task-list" id="activeSensorsList" style="display: flex; flex-direction: column; gap: 8px; font-size: 0.85rem;">
+                            <li style="color:#888; text-align:center; padding:10px;">Cargando sensores...</li>
+                        </ul>
                     </div>
                 </div>
                 <!-- Fila 3: Valores de Referencia VPD (en fila) -->

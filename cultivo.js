@@ -17,13 +17,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     await cargarSelectInsumos();
     await fetchInventoryForAgronomy();
 
-    // Sensores Hook
-    const sensorForm = document.getElementById('newSensorForm');
-    if (sensorForm) sensorForm.addEventListener('submit', handleNewSensor);
-
     // Cargar Lotes Activos desde la Nube
     await loadBatches();
-    await loadSensors();
 });
 
 async function fetchInventoryForAgronomy() {
@@ -93,85 +88,7 @@ async function loadBatches() {
     }
 }
 
-async function loadSensors() {
-    if (!window.sbClient) return;
-    try {
-        const { data: sensors, error } = await window.sbClient.from('core_sensors').select(`
-            id, name, room_id, created_at,
-            core_rooms (name)
-        `).order('created_at', { ascending: false });
-        
-        if (error && error.code === '42P01') {
-            console.warn("La tabla core_sensors no existe aún.");
-            return;
-        } else if (error) throw error;
 
-        const list = document.getElementById('activeSensorsList');
-        if (!list) return;
-
-        list.innerHTML = '';
-        if (!sensors || sensors.length === 0) {
-            list.innerHTML = '<li style="color:#888; text-align:center; padding:10px;">Ningún sensor configurado.</li>';
-            return;
-        }
-
-        sensors.forEach(s => {
-            const roomName = s.core_rooms ? s.core_rooms.name : coreRoomsMap[s.room_id] || 'Desconocido';
-            const li = document.createElement('li');
-            li.style.display = 'flex';
-            li.style.justifyContent = 'space-between';
-            li.style.alignItems = 'center';
-            li.innerHTML = `
-                <div>
-                    <h4 style="margin:0; font-size:0.95rem;">${s.name}</h4>
-                    <span class="badge badge-indigo" style="font-size:0.75rem;"><i class="ph ph-map-pin"></i> ${roomName}</span>
-                </div>
-                <div>
-                    <button class="btn-danger" style="padding:5px 10px; font-size:0.8rem;" onclick="deleteSensor('${s.id}')">
-                        <i class="ph ph-trash"></i>
-                    </button>
-                </div>
-            `;
-            list.appendChild(li);
-        });
-
-    } catch(e) {
-        console.error("Error al cargar sensores:", e);
-    }
-}
-
-async function handleNewSensor(e) {
-    e.preventDefault();
-    if (!window.sbClient) return;
-    const loc = document.getElementById('sensorLocation').value;
-    const name = document.getElementById('sensorName').value;
-
-    try {
-        const { error } = await window.sbClient.from('core_sensors').insert([{
-            room_id: loc,
-            name: name
-        }]);
-        if (error) {
-            alert('Asegurate de que se ejecutó el Script SQL de Migración primero.');
-            throw error;
-        }
-        e.target.reset();
-        await loadSensors();
-    } catch(err) {
-        console.error("Error creando sensor:", err);
-    }
-}
-
-window.deleteSensor = async function(id) {
-    if (!confirm('¿Estás seguro de eliminar el sensor? La telemetría huérfana perderá la etiqueta. (Quedará como "General de Sala" si fue migrada).')) return;
-    try {
-        await window.sbClient.from('core_sensors').delete().eq('id', id);
-        await loadSensors();
-    } catch(e) {
-        console.error("Error eliminando sensor:", e);
-        alert("Oh no, error al borrar: " + e.message);
-    }
-}
 
 async function cargarSelectInsumos() {
     const sel = document.getElementById('fertirriegoInsumo');

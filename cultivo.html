@@ -156,38 +156,6 @@
                     </form>
                 </div>
 
-                <!-- Admin de Sensores -->
-                <div class="widget" style="margin-top:20px; border-color:var(--color-purple);">
-                    <div style="display:flex; justify-content:space-between; align-items:center;">
-                        <h3 style="margin:0; font-size:1.1rem; display:flex; align-items:center; gap:8px;">
-                            <i class="ph ph-thermometer" style="color:var(--color-purple);"></i> Sensores Registrados
-                        </h3>
-                    </div>
-                    
-                    <form id="newSensorForm" style="display:flex; gap: 10px; margin-top:20px; align-items:flex-end;">
-                        <div style="flex:1;">
-                            <label style="font-size: 0.85rem; color: var(--text-secondary);">Sala/Carpa</label>
-                            <select id="sensorLocation" required
-                                style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white; margin-top:5px;">
-                                <option value="">Cargando salas...</option>
-                            </select>
-                        </div>
-                        <div style="flex:1;">
-                            <label style="font-size: 0.85rem; color: var(--text-secondary);">Nombre</label>
-                            <input type="text" id="sensorName" required placeholder="Ej: Foco, Puerta"
-                                style="width: 100%; padding: 10px; border-radius: 6px; border: 1px solid #444; background: var(--bg-dark); color: white; margin-top:5px;">
-                        </div>
-                        <button type="submit" class="btn-primary" style="padding: 12px; background:var(--color-purple); border-color:var(--color-purple);">
-                            <i class="ph ph-plus"></i>
-                        </button>
-                    </form>
-
-                    <div style="margin-top:20px;">
-                        <ul class="task-list" id="activeSensorsList" style="display: flex; flex-direction: column; gap: 10px;">
-                            <!-- JS load -->
-                        </ul>
-                    </div>
-                </div>
 
                 <!-- Lista de Cultivos Activos -->
                 <div class="widget">

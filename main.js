@@ -5,8 +5,10 @@ let tempChartInstance = null;
 let humChartInstance = null;
 let vpdChartInstance = null;
 
-let roomsData = {}; // Loaded dynamically from Supabase core_rooms
+let coreSensorsMap = {}; // id -> { name, room_id }
+let selectedSensorView = 'default';
 
+let roomsData = {}; // Loaded dynamically from Supabase core_rooms
 // Phase 4 - Intelligent Limits
 const vpdLimits = {
     'Clones': { min: 0.4, max: 0.8 },
@@ -75,89 +77,21 @@ function createGradient(ctx, color) {
     return gradient;
 }
 
-// Initialize Charts
+// Initialize Charts dynamically (rendered in pollLatestTelemetry)
 function initCharts() {
-    const data = getCurrentData();
-    if (!data) {
-        console.warn("[Init] No data available for charts yet.");
-        return;
-    }
+    if (tempChartInstance) tempChartInstance.destroy();
+    if (humChartInstance) humChartInstance.destroy();
+    if (vpdChartInstance) vpdChartInstance.destroy();
 
     const opts = getCommonChartOptions();
-    const colors = getChartColors();
-
-    // Temp Chart
-    const ctxTemp = document.getElementById('tempChart').getContext('2d');
-    tempChartInstance = new Chart(ctxTemp, {
-        type: 'line',
-        data: {
-            labels: [...data.labels],
-            datasets: [{
-                label: 'Temp (°C)', data: [...data.tempHistory],
-                borderColor: '#FF3D00', backgroundColor: createGradient(ctxTemp, 'rgba(255, 61, 0, 0.5)'),
-                borderWidth: 2, fill: true, tension: 0.4, pointBackgroundColor: colors.pointBg, pointBorderColor: '#FF3D00'
-            }]
-        },
-        options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, suggestedMin: 18, suggestedMax: 32 } } }
-    });
-
-    // Hum Chart
-    const ctxHum = document.getElementById('humChart').getContext('2d');
-    humChartInstance = new Chart(ctxHum, {
-        type: 'line',
-        data: {
-            labels: [...data.labels],
-            datasets: [{
-                label: 'Hum (%)', data: [...data.humHistory],
-                borderColor: '#2979FF', backgroundColor: createGradient(ctxHum, 'rgba(41, 121, 255, 0.5)'),
-                borderWidth: 2, fill: true, tension: 0.4, pointBackgroundColor: colors.pointBg, pointBorderColor: '#2979FF'
-            }]
-        },
-        options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, suggestedMin: 30, suggestedMax: 80 } } }
-    });
-
-    // VPD Chart
-    const ctxVpd = document.getElementById('vpdChart').getContext('2d');
-    vpdChartInstance = new Chart(ctxVpd, {
-        type: 'line',
-        data: {
-            labels: [...data.labels],
-            datasets: [{
-                label: 'VPD (kPa)', data: [...data.vpdHistory],
-                borderColor: '#00E676', backgroundColor: createGradient(ctxVpd, 'rgba(0, 230, 118, 0.5)'),
-                borderWidth: 2, fill: true, tension: 0.4, pointBackgroundColor: colors.pointBg, pointBorderColor: '#00E676'
-            }]
-        },
-        options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, suggestedMin: 0.5, suggestedMax: 1.8 } } }
-    });
-}
-
-// Update Active Room UI
-function changeRoom() {
-    currentRoomId = document.getElementById('roomSelect').value;
-    updateChartsVisuals();
-    updateUI();
-    // Actualizar campos manuales
-    const data = getCurrentData();
-    document.getElementById('manual-temp').value = data.temp;
-    document.getElementById('manual-hum').value = data.hum;
+    
+    tempChartInstance = new Chart(document.getElementById('tempChart').getContext('2d'), { type: 'line', data: { datasets: [] }, options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, suggestedMin: 18, suggestedMax: 32 } } } });
+    humChartInstance = new Chart(document.getElementById('humChart').getContext('2d'), { type: 'line', data: { datasets: [] }, options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, suggestedMin: 30, suggestedMax: 80 } } } });
+    vpdChartInstance = new Chart(document.getElementById('vpdChart').getContext('2d'), { type: 'line', data: { datasets: [] }, options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, suggestedMin: 0.5, suggestedMax: 1.8 } } } });
 }
 
 function updateChartsVisuals() {
-    const data = getCurrentData();
-    if (!data || !tempChartInstance || !humChartInstance || !vpdChartInstance) return;
-
-    tempChartInstance.data.labels = [...data.labels];
-    tempChartInstance.data.datasets[0].data = [...data.tempHistory];
-    tempChartInstance.update();
-
-    humChartInstance.data.labels = [...data.labels];
-    humChartInstance.data.datasets[0].data = [...data.humHistory];
-    humChartInstance.update();
-
-    vpdChartInstance.data.labels = [...data.labels];
-    vpdChartInstance.data.datasets[0].data = [...data.vpdHistory];
-    vpdChartInstance.update();
+    // Real-time redrawing happens in pollLatestTelemetry based on sensors
 }
 
 // Modal functions for adding rooms
@@ -177,48 +111,57 @@ function updateUI() {
     let status = 'optimal'; // optimal, warning, critical
 
     // Phase 4: Dynamic VPD Limits based on Room Phase
-    const phaseLimits = vpdLimits[data.phase] || { min: 0.4, max: 1.6 }; // Fallback generic limits
+    const phaseLimits = vpdLimits[data.phase] || { min: 0.4, max: 1.6 };
 
-    // Temp & Hum fallback statics, but VPD is now dynamic
-    if (data.temp > 30 || data.temp < 18 || data.vpd < phaseLimits.min || data.vpd > phaseLimits.max) {
+    // Decidir visualización según sensor seleccionado
+    let dispTemp = data.temp;
+    let dispHum = data.hum;
+    let dispVpd = data.vpd;
+
+    if (selectedSensorView !== 'default' && data.sensors && data.sensors[selectedSensorView]) {
+        // Mostrar valores exactos de el sensor seleccionado
+        const sData = data.sensors[selectedSensorView];
+        if (sData.temps.length > 0) {
+            dispTemp = sData.temps[sData.temps.length - 1];
+            dispHum = sData.hums[sData.hums.length - 1];
+            dispVpd = sData.vpds[sData.vpds.length - 1];
+        }
+    }
+
+    if (dispTemp > 30 || dispTemp < 18 || dispVpd < phaseLimits.min || dispVpd > phaseLimits.max) {
         status = 'critical';
-    } else if (data.temp > 28 || data.hum > 60 ||
-        (data.vpd >= (phaseLimits.max - 0.1) && data.vpd <= phaseLimits.max) ||
-        (data.vpd <= (phaseLimits.min + 0.1) && data.vpd >= phaseLimits.min)) {
-        // Warning if Temperature is High, Hum is High, or VPD is near limits
+    } else if (dispTemp > 28 || dispHum > 60 ||
+        (dispVpd >= (phaseLimits.max - 0.1) && dispVpd <= phaseLimits.max) ||
+        (dispVpd <= (phaseLimits.min + 0.1) && dispVpd >= phaseLimits.min)) {
         status = 'warning';
     }
 
-    // Apply Glow and Text based on Status
-    updateWidgetState('temp', data.temp.toFixed(1), status);
-    updateWidgetState('hum', data.hum.toFixed(1), status);
-    updateWidgetState('vpd', data.vpd.toFixed(2), status);
+    updateWidgetState('temp', dispTemp.toFixed(1), status);
+    updateWidgetState('hum', dispHum.toFixed(1), status);
+    updateWidgetState('vpd', dispVpd.toFixed(2), status);
 
-    // Global Status Update
     const globalDot = document.getElementById('globalStatusDot');
     const globalText = document.getElementById('globalStatusText');
-    const alertRoomName = document.getElementById('alertRoomName');
-
-    globalDot.className = 'status-indicator'; // reset
-    if (status === 'optimal') {
-        globalDot.classList.add('status-green');
-        globalText.innerText = `Sistema Normal (${data.name})`;
-    } else if (status === 'warning') {
-        globalDot.classList.add('status-yellow');
-        globalText.innerText = `Alerta en ${data.name}`;
-    } else {
-        globalDot.classList.add('status-red');
-        globalText.innerText = `⚠️ Revisar ${data.name}`;
+    if (globalDot && globalText) {
+        globalDot.className = 'status-indicator';
+        if (status === 'optimal') {
+            globalDot.classList.add('status-green');
+            globalText.innerText = `Sistema Normal (${data.name})`;
+        } else if (status === 'warning') {
+            globalDot.classList.add('status-yellow');
+            globalText.innerText = `Alerta en ${data.name}`;
+        } else {
+            globalDot.classList.add('status-red');
+            globalText.innerText = `⚠️ Revisar ${data.name}`;
+        }
     }
 }
 
 function updateWidgetState(id, value, status) {
     document.getElementById(`val-${id}`).innerText = value;
-
     const widget = document.getElementById(`widget-${id}`);
     const badge = document.getElementById(`badge-${id}`);
 
-    // Reset Classes
     widget.className = 'widget telemetry-widget';
     badge.className = 'badge';
 
@@ -235,6 +178,20 @@ function updateWidgetState(id, value, status) {
         badge.classList.add('badge-critical');
         badge.innerText = 'Crítico';
     }
+}
+
+// Update Active Room UI
+function changeRoom() {
+    currentRoomId = document.getElementById('roomSelect').value;
+    loadSensorsForRoom();
+    selectedSensorView = 'default';
+    if(document.getElementById('manualSensorSelect')) document.getElementById('manualSensorSelect').value = 'default';
+    
+    // Reset inputs
+    document.getElementById('manual-temp').value = '';
+    document.getElementById('manual-hum').value = '';
+    
+    pollLatestTelemetry(currentRoomId);
 }
 
 // Simulators for demo purposes
@@ -269,54 +226,124 @@ function dismissAlert() {
     // forzosamente los datos reales del gráfico por datos controlados
 }
 
+// --- SENSOR CRUD ---
+async function loadSensorsForRoom() {
+    if (!window.sbClient || !currentRoomId) return;
+    try {
+        const { data, error } = await window.sbClient.from('core_sensors')
+            .select('id, name, room_id, created_at')
+            .eq('room_id', currentRoomId)
+            .order('created_at', { ascending: false });
+            
+        if (error) throw error;
+        
+        const manualSelect = document.getElementById('manualSensorSelect');
+        if (manualSelect) {
+            manualSelect.innerHTML = '<option value="default">Promedio / Sala General</option>';
+            data.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.id;
+                opt.text = s.name;
+                manualSelect.appendChild(opt);
+                coreSensorsMap[s.id] = { name: s.name, room_id: s.room_id };
+            });
+            manualSelect.value = selectedSensorView; 
+        }
+
+        const list = document.getElementById('activeSensorsList');
+        if (list) {
+            list.innerHTML = '';
+            if (!data || data.length === 0) {
+                list.innerHTML = '<li style="color:#888; text-align:center; padding:10px;">Ningún sensor creado en esta sala.</li>';
+            } else {
+                data.forEach(s => {
+                    const li = document.createElement('li');
+                    li.style.display = 'flex';
+                    li.style.justifyContent = 'space-between';
+                    li.style.alignItems = 'center';
+                    li.innerHTML = `
+                        <div>
+                            <h4 style="margin:0; font-size:0.95rem;">${s.name}</h4>
+                            <span class="badge badge-indigo" style="font-size:0.75rem;"><i class="ph ph-thermometer"></i> ${s.id.substring(0,8)}</span>
+                        </div>
+                        <div>
+                            <button class="btn-danger" style="padding:5px 10px; font-size:0.8rem;" onclick="deleteSensor('${s.id}')">
+                                <i class="ph ph-trash"></i>
+                            </button>
+                        </div>
+                    `;
+                    list.appendChild(li);
+                });
+            }
+        }
+    } catch(e) {
+        console.error("Error cargando sensores:", e.message);
+    }
+}
+
+async function handleNewSensor(e) {
+    e.preventDefault();
+    if (!window.sbClient || !currentRoomId) return;
+    const name = document.getElementById('sensorName').value;
+
+    try {
+        const { error } = await window.sbClient.from('core_sensors').insert([{
+            room_id: currentRoomId,
+            name: name
+        }]);
+        if (error) throw error;
+        e.target.reset();
+        await loadSensorsForRoom();
+    } catch(err) {
+        console.error("Error creando sensor:", err);
+    }
+}
+
+window.deleteSensor = async function(id) {
+    if (!confirm('¿Estás seguro de eliminar el sensor de esta sala?')) return;
+    try {
+        await window.sbClient.from('core_sensors').delete().eq('id', id);
+        await loadSensorsForRoom();
+    } catch(e) {
+        console.error("Error eliminando sensor:", e);
+    }
+}
+
 // Update from Manual Inputs
 async function updateManualTelemetry(silentUpdate = false) {
     const tempInput = parseFloat(document.getElementById('manual-temp').value);
     const humInput = parseFloat(document.getElementById('manual-hum').value);
+    const sensorSelectVal = document.getElementById('manualSensorSelect').value;
 
     if (isNaN(tempInput) || isNaN(humInput)) {
         alert("Por favor ingrese valores válidos.");
         return;
     }
 
-    // Calcula VPD (Magnus formula: VPD = SVP - AVP)
     const calculatedVpd = calcVpd(tempInput, humInput);
-
-    // Actualiza Variables
     const data = getCurrentData();
-    data.temp = tempInput;
-    data.hum = humInput;
-    data.vpd = calculatedVpd;
-
-    // Actualiza Chart
-    pushChartData(data, data.temp, data.hum, data.vpd);
-    updateChartsVisuals();
-
-    // Actualiza Contenido Visual
-    updateUI();
-
-    // Re-evaluar estatus localmente para sincronizar a backend post-input
     let status = 'optimal';
     const phaseLimits = vpdLimits[data.phase] || { min: 0.4, max: 1.6 };
 
-    if (data.temp > 30 || data.temp < 18 || data.vpd < phaseLimits.min || data.vpd > phaseLimits.max) {
+    if (tempInput > 30 || tempInput < 18 || calculatedVpd < phaseLimits.min || calculatedVpd > phaseLimits.max) {
         status = 'critical';
-    } else if (data.temp > 28 || data.hum > 60 ||
-        (data.vpd >= (phaseLimits.max - 0.1) && data.vpd <= phaseLimits.max) ||
-        (data.vpd <= (phaseLimits.min + 0.1) && data.vpd >= phaseLimits.min)) {
+    } else if (tempInput > 28 || humInput > 60 ||
+        (calculatedVpd >= (phaseLimits.max - 0.1) && calculatedVpd <= phaseLimits.max) ||
+        (calculatedVpd <= (phaseLimits.min + 0.1) && calculatedVpd >= phaseLimits.min)) {
         status = 'warning';
     }
 
-    // SI LA ACTUALIZACION VINO DEL POLLING (WHATSAPP), NO LO REENVIAMOS AL BACKEND
     if (silentUpdate) return;
 
-    // Enviar a Webhook de n8n para Historial (Solo si es input humano web)
+    // Notar que enviamos directo a BD o al webhook, pero ahora mandando sensor_id. 
+    // Como el script pide N8N, usamos el webhook de N8N.
     const payload = {
         batch_id: currentRoomId,
+        sensor_id: sensorSelectVal === 'default' ? null : sensorSelectVal,
         phase: data.phase,
-        temp: data.temp,
-        humidity: data.hum,
-        vpd: data.vpd,
+        temp: tempInput,
+        humidity: humInput,
+        vpd: calculatedVpd,
         status: status,
         timestamp: new Date().toISOString()
     };
@@ -333,6 +360,8 @@ async function updateManualTelemetry(silentUpdate = false) {
             console.error("n8n Webhook Error al guardar telemetría:", response.status);
         } else {
             console.log("Telemetría Web enviada a n8n correctamente.");
+            // Forzar actualización visual leyendo base de datos
+            setTimeout(() => pollLatestTelemetry(currentRoomId), 1500);
         }
     } catch (error) {
         console.error("Error contactando Webhook de telemetría en n8n:", error);
@@ -412,6 +441,19 @@ window.addEventListener('DOMContentLoaded', () => {
     const taskForm = document.getElementById('taskForm');
     if (taskForm) {
         taskForm.addEventListener('submit', handleNewTask);
+    }
+    
+    const newSensorForm = document.getElementById('newSensorForm');
+    if (newSensorForm) {
+        newSensorForm.addEventListener('submit', handleNewSensor);
+    }
+
+    const sel = document.getElementById('manualSensorSelect');
+    if(sel) {
+        sel.addEventListener('change', (e) => {
+            selectedSensorView = e.target.value;
+            pollLatestTelemetry(currentRoomId);
+        });
     }
 
     // Lógica para Formulario de Alta de Sala de Cultivo
@@ -522,70 +564,135 @@ async function loadRoomsFromDB() {
 
 async function pollLatestTelemetry(roomId) {
     try {
-        if (!window.sbClient) {
-            console.warn('[Polling] sbClient not ready yet.');
-            return;
-        }
-        if (!roomId) return; // Not loaded yet
+        if (!window.sbClient || !roomId) return;
 
-        // Fetch the last 10 points to populate history on load/change
+        // Limite superior de 60 puntos para graficar (aprox ultimas 1 o 2 horas dependiendo frecuencia)
         const { data, error } = await window.sbClient
             .from('daily_telemetry')
-            .select('temperature_c, humidity_percent, created_at')
+            .select(`
+                temperature_c, humidity_percent, vpd_kpa, created_at, sensor_id,
+                core_sensors (name)
+            `)
             .eq('batch_id', roomId)
             .order('created_at', { ascending: false })
-            .limit(10);
+            .limit(60);
 
         if (error) {
             console.error('[Polling] Supabase error:', error.message);
             return;
         }
+
+        const rData = roomsData[roomId];
+        if (!rData) return;
+
         if (!data || data.length === 0) {
-            // If no data, reset history to avoid showing old room data
-            const rData = roomsData[roomId];
-            if (rData) {
-                rData.tempHistory = [];
-                rData.humHistory = [];
-                rData.vpdHistory = [];
-                rData.labels = [];
-                updateChartsVisuals();
-                updateUI();
-            }
+            rData.sensors = {};
+            rData.temp = 0; rData.hum = 0; rData.vpd = 0;
+            if (tempChartInstance) { tempChartInstance.data.datasets = []; tempChartInstance.update(); }
+            if (humChartInstance) { humChartInstance.data.datasets = []; humChartInstance.update(); }
+            if (vpdChartInstance) { vpdChartInstance.data.datasets = []; vpdChartInstance.update(); }
+            updateUI();
             return;
         }
 
+        // Procesar datos y agrupar por sensor
         const dataRev = [...data].reverse();
-        const latest = dataRev[dataRev.length - 1];
+        const telemetryBySensor = {};
         
-        const roomIdData = roomsData[roomId];
-        if (roomIdData) {
-            // Populate histories
-            roomIdData.labels = dataRev.map(row => new Date(row.created_at).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit' }));
-            roomIdData.tempHistory = dataRev.map(row => parseFloat(row.temperature_c));
-            roomIdData.humHistory = dataRev.map(row => parseFloat(row.humidity_percent));
-            roomIdData.vpdHistory = dataRev.map(row => calcVpd(parseFloat(row.temperature_c), parseFloat(row.humidity_percent)));
+        dataRev.forEach(t => {
+            const sId = t.sensor_id || 'default';
+            const sName = t.core_sensors && t.core_sensors.name ? t.core_sensors.name : (sId === 'default' ? 'Promedio / Sala General' : 'Sensor ' + sId.substring(0,4));
+            if(!telemetryBySensor[sId]) telemetryBySensor[sId] = { name: sName, labels: [], temps: [], hums: [], vpds: [] };
             
-            roomIdData.temp = parseFloat(latest.temperature_c);
-            roomIdData.hum = parseFloat(latest.humidity_percent);
-            roomIdData.vpd = calcVpd(roomIdData.temp, roomIdData.hum);
+            const timeStr = new Date(t.created_at).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit' });
+            telemetryBySensor[sId].labels.push(timeStr);
+            telemetryBySensor[sId].temps.push(parseFloat(t.temperature_c) || 0);
+            telemetryBySensor[sId].hums.push(parseFloat(t.humidity_percent) || 0);
+            telemetryBySensor[sId].vpds.push(calcVpd(parseFloat(t.temperature_c), parseFloat(t.humidity_percent)));
+        });
 
-            if (latest.created_at !== lastTelemetryTime[roomId]) {
-                lastTelemetryTime[roomId] = latest.created_at;
-                const timeStr = new Date(latest.created_at).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit' });
-                const pollingStatus = document.getElementById('polling-status');
-                if (pollingStatus) pollingStatus.innerHTML = `<i class="ph ph-check-circle"></i> Última sync: ${timeStr}`;
-                
-                document.getElementById('manual-temp').value = roomIdData.temp;
-                document.getElementById('manual-hum').value = roomIdData.hum;
+        rData.sensors = telemetryBySensor;
+        
+        // Calcular promedios generales para el macro (último valor de cada sensor)
+        let sumTemp = 0, sumHum = 0, sumVpd = 0;
+        let count = 0;
+        Object.keys(telemetryBySensor).forEach(sId => {
+            const s = telemetryBySensor[sId];
+            if(s.temps.length > 0) {
+                sumTemp += s.temps[s.temps.length - 1];
+                sumHum += s.hums[s.hums.length - 1];
+                sumVpd += s.vpds[s.vpds.length - 1];
+                count++;
             }
-
-            if (!tempChartInstance) {
-                initCharts();
-            } else {
-                updateChartsVisuals();
-            }
-            updateUI();
+        });
+        
+        if (count > 0) {
+            rData.temp = sumTemp / count;
+            rData.hum  = sumHum / count;
+            rData.vpd  = sumVpd / count;
         }
+
+        // UI de Sincronización
+        const latestRow = data[0]; 
+        if (latestRow.created_at !== lastTelemetryTime[roomId]) {
+            lastTelemetryTime[roomId] = latestRow.created_at;
+            const timeStr = new Date(latestRow.created_at).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit' });
+            const pollingStatus = document.getElementById('polling-status');
+            if (pollingStatus) pollingStatus.innerHTML = `<i class="ph ph-check-circle"></i> Última sync: ${timeStr}`;
+        }
+        
+        // Setup dinámico de gráficos Chart.js
+        if (!tempChartInstance) initCharts();
+        
+        const tempDatasets = [];
+        const humDatasets = [];
+        const vpdDatasets = [];
+        const colorPalette = ['#FF3D00', '#2979FF', '#00E676', '#E040FB', '#FFC107', '#00B0FF'];
+        let colorIdx = 0;
+        let longestLabels = [];
+
+        Object.keys(telemetryBySensor).forEach(sId => {
+            const sData = telemetryBySensor[sId];
+            const color = colorPalette[colorIdx % colorPalette.length];
+            
+            // Filtrar visualización (Si está en default mostramos todo, si está seleccionado 1, mostramos solo 1)
+            if (selectedSensorView !== 'default' && selectedSensorView !== sId) return;
+
+            if (sData.labels.length > longestLabels.length) longestLabels = sData.labels;
+
+            tempDatasets.push({
+                label: sData.name, data: sData.temps,
+                borderColor: color, fill: false, tension: 0.4, borderWidth: 2,
+                pointBackgroundColor: getChartColors().pointBg
+            });
+            humDatasets.push({
+                label: sData.name, data: sData.hums,
+                borderColor: color, fill: false, tension: 0.4, borderWidth: 2,
+                pointBackgroundColor: getChartColors().pointBg
+            });
+            vpdDatasets.push({
+                label: sData.name, data: sData.vpds,
+                borderColor: color, fill: false, tension: 0.4, borderWidth: 2,
+                pointBackgroundColor: getChartColors().pointBg
+            });
+            
+            colorIdx++;
+        });
+
+        tempChartInstance.data.labels = longestLabels;
+        tempChartInstance.data.datasets = tempDatasets;
+        tempChartInstance.update();
+
+        humChartInstance.data.labels = longestLabels;
+        humChartInstance.data.datasets = humDatasets;
+        humChartInstance.update();
+
+        vpdChartInstance.data.labels = longestLabels;
+        vpdChartInstance.data.datasets = vpdDatasets;
+        vpdChartInstance.update();
+
+        updateUI();
+
     } catch (error) {
         console.error('[Polling] Error consultando Supabase:', error);
     }
