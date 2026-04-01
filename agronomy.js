@@ -175,11 +175,59 @@ function renderAgronomyChart() {
         fEvents = fEvents.filter(e => e.batch_id === batchFilter);
     }
 
-    // --- Construcción de Datasets para Line (Telemetría) ---
-    // Agruparemos por día para simplificar la línea
-    const tempPoints = fTelemetry.map(t => ({ x: new Date(t.created_at).getTime(), y: parseFloat(t.temperature_c) || 0 }));
-    const vpdPoints = fTelemetry.map(t => ({ x: new Date(t.created_at).getTime(), y: parseFloat(t.vpd_kpa) || 0 }));
-    const humPoints = fTelemetry.map(t => ({ x: new Date(t.created_at).getTime(), y: parseFloat(t.humidity_percent) || 0 }));
+    // --- Construcción de Datasets para Line (Telemetría MULTISENSOR) ---
+    const sensorDatasets = [];
+    const telemetryBySensor = {};
+    
+    fTelemetry.forEach(t => {
+        const sId = t.sensor_id || 'default';
+        const sName = t.core_sensors && t.core_sensors.name ? t.core_sensors.name : (sId === 'default' ? 'General / Defecto' : 'Sensor ' + sId.substring(0,4));
+        if(!telemetryBySensor[sId]) telemetryBySensor[sId] = { name: sName, temps: [], hums: [], vpds: [] };
+        
+        const timestamp = new Date(t.created_at).getTime();
+        telemetryBySensor[sId].temps.push({ x: timestamp, y: parseFloat(t.temperature_c) || 0 });
+        telemetryBySensor[sId].hums.push({ x: timestamp, y: parseFloat(t.humidity_percent) || 0 });
+        telemetryBySensor[sId].vpds.push({ x: timestamp, y: parseFloat(t.vpd_kpa) || 0 });
+    });
+
+    const colorPalette = ['#3b82f6', '#f59e0b', '#10b981', '#ec4899', '#8b5cf6', '#14b8a6', '#ef4444'];
+    let colorIdx = 0;
+    
+    Object.keys(telemetryBySensor).forEach(sId => {
+        const sData = telemetryBySensor[sId];
+        const color = colorPalette[colorIdx % colorPalette.length];
+        colorIdx++;
+        
+        sensorDatasets.push({
+            label: `Temp (°C) [${sData.name}]`,
+            data: sData.temps,
+            borderColor: color,
+            backgroundColor: color + '1A', // Hex opacity
+            borderWidth: 2,
+            tension: 0.3,
+            yAxisID: 'y'
+        });
+        sensorDatasets.push({
+            label: `Hum (%) [${sData.name}]`,
+            data: sData.hums,
+            borderColor: color,
+            borderWidth: 2,
+            borderDash: [2, 2],
+            tension: 0.3,
+            yAxisID: 'yHum',
+            hidden: false
+        });
+        sensorDatasets.push({
+            label: `VPD (kPa) [${sData.name}]`,
+            data: sData.vpds,
+            borderColor: color,
+            borderWidth: 2,
+            borderDash: [5, 5],
+            tension: 0.3,
+            yAxisID: 'yVpd',
+            hidden: true 
+        });
+    });
 
     // --- Construcción de Datasets para Scatter (Eventos) ---
     const plagasPoints = [];
@@ -189,24 +237,55 @@ function renderAgronomyChart() {
     fEvents.forEach(ev => {
         const p = {
             x: new Date(ev.date_occurred).getTime(),
-            // Ubicamos los eventos en Y ligeramente fijados o dependientes de la escala principal para evitar que rompan el eje
-            // Lo pondremos fijo en el "piso" del gráfico (ej. Y = 10, o le daremos una escala propia)
             y: 0,
             description: ev.description,
             type: ev.event_type
         };
 
         if (ev.event_type === 'Plaga') {
-            p.y = 10; // Fila visual 1
+            p.y = 10; 
             plagasPoints.push(p);
         } else if (ev.event_type === 'Fase') {
-            p.y = 12; // Fila visual 2
+            p.y = 12; 
             fasesPoints.push(p);
         } else {
-            p.y = 8;  // Fila visual 3 (Aplicación, Riego, Info)
+            p.y = 8;  
             tareasPoints.push(p);
         }
     });
+
+    const scatterDatasets = [
+        {
+            type: 'scatter',
+            label: 'Plagas / Patógenos',
+            data: plagasPoints,
+            backgroundColor: '#ef4444', // Rojo
+            pointStyle: 'triangle',
+            pointRadius: 8,
+            pointHoverRadius: 10,
+            yAxisID: 'yEvents'
+        },
+        {
+            type: 'scatter',
+            label: 'Cambios de Fase',
+            data: fasesPoints,
+            backgroundColor: '#eab308', // Amarillo
+            pointStyle: 'rectRot',
+            pointRadius: 8,
+            pointHoverRadius: 10,
+            yAxisID: 'yEvents'
+        },
+        {
+            type: 'scatter',
+            label: 'Registro Aplicaciones / Riegos',
+            data: tareasPoints,
+            backgroundColor: '#22c55e', // Verde
+            pointStyle: 'rect',
+            pointRadius: 8,
+            pointHoverRadius: 10,
+            yAxisID: 'yEvents'
+        }
+    ];
 
     if (agronomyChartInstance) {
         agronomyChartInstance.destroy();
@@ -215,65 +294,7 @@ function renderAgronomyChart() {
     agronomyChartInstance = new Chart(ctx, {
         type: 'line', // Tipo global linea
         data: {
-            datasets: [
-                {
-                    label: 'Temperatura (°C)',
-                    data: tempPoints,
-                    borderColor: '#3b82f6', // Azul
-                    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-                    borderWidth: 2,
-                    tension: 0.3,
-                    yAxisID: 'y'
-                },
-                {
-                    label: 'Humedad Relativa (%)',
-                    data: humPoints,
-                    borderColor: '#06b6d4', // Cyan
-                    borderWidth: 2,
-                    borderDash: [2, 2],
-                    tension: 0.3,
-                    yAxisID: 'yHum'
-                },
-                {
-                    label: 'VPD (kPa)',
-                    data: vpdPoints,
-                    borderColor: '#a855f7', // Violeta
-                    borderWidth: 2,
-                    borderDash: [5, 5],
-                    tension: 0.3,
-                    yAxisID: 'yVpd'
-                },
-                {
-                    type: 'scatter',
-                    label: 'Plagas / Patógenos',
-                    data: plagasPoints,
-                    backgroundColor: '#ef4444', // Rojo
-                    pointStyle: 'triangle',
-                    pointRadius: 8,
-                    pointHoverRadius: 10,
-                    yAxisID: 'yEvents'
-                },
-                {
-                    type: 'scatter',
-                    label: 'Cambios de Fase',
-                    data: fasesPoints,
-                    backgroundColor: '#eab308', // Amarillo
-                    pointStyle: 'rectRot',
-                    pointRadius: 8,
-                    pointHoverRadius: 10,
-                    yAxisID: 'yEvents'
-                },
-                {
-                    type: 'scatter',
-                    label: 'Registro Aplicaciones / Riegos',
-                    data: tareasPoints,
-                    backgroundColor: '#22c55e', // Verde
-                    pointStyle: 'rect',
-                    pointRadius: 8,
-                    pointHoverRadius: 10,
-                    yAxisID: 'yEvents'
-                }
-            ]
+            datasets: [...sensorDatasets, ...scatterDatasets]
         },
         options: {
             responsive: true,
