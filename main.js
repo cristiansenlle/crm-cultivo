@@ -34,64 +34,105 @@ function getCurrentData() {
     return roomsData[currentRoomId];
 }
 
-// Colors dynamically resolved against CSS variables
-function getChartColors() {
+function getApexColors() {
     const isLight = document.documentElement.getAttribute('data-theme') === 'light';
     return {
-        textColor: isLight ? '#4B5563' : '#8F97B3', // text-secondary
-        gridColor: isLight ? '#E5E7EB' : '#333333',
-        pointBg: isLight ? '#FFFFFF' : '#121212'
+        text: isLight ? '#4B5563' : '#8F97B3',
+        grid: isLight ? '#E5E7EB' : '#333333',
+        bg: 'transparent'
     };
 }
 
-function getCommonChartOptions() {
-    const colors = getChartColors();
+function getApexOptions(id, group, yMin, yMax, yFormatter) {
+    const colors = getApexColors();
     return {
-        responsive: true, maintainAspectRatio: false,
-        scales: {
-            x: { grid: { display: false }, ticks: { color: colors.textColor } },
-            y: { grid: { color: colors.gridColor }, ticks: { color: colors.textColor } }
+        series: [],
+        chart: {
+            id: id,
+            group: group,
+            type: 'area',
+            height: 220,
+            background: colors.bg,
+            toolbar: { show: false },
+            animations: { enabled: true, easing: 'easeinout', speed: 800 },
+            parentHeightOffset: 0
         },
-        plugins: { legend: { display: false } },
-        elements: { point: { radius: 3 } }
+        colors: ['#FF3D00', '#2979FF', '#00E676', '#E040FB', '#FFC107', '#00B0FF'],
+        dataLabels: { enabled: false },
+        markers: {
+            size: 4,
+            strokeWidth: 2,
+            hover: { size: 6 }
+        },
+        stroke: { curve: 'smooth', width: 2 },
+        fill: {
+            type: 'gradient',
+            gradient: {
+                shadeIntensity: 1,
+                opacityFrom: 0.4,
+                opacityTo: 0.05,
+                stops: [0, 100]
+            }
+        },
+        grid: { borderColor: colors.grid, strokeDashArray: 4, xaxis: { lines: { show: true } }, yaxis: { lines: { show: true } } },
+        xaxis: {
+            type: 'datetime',
+            labels: { 
+                show: true,
+                style: { colors: colors.text },
+                datetimeUTC: false,
+                datetimeFormatter: {
+                    year: 'yyyy',
+                    month: 'MMM \'yy',
+                    day: 'dd MMM',
+                    hour: 'HH:mm',
+                    minute: 'HH:mm'
+                }
+            },
+            axisBorder: { show: false },
+            axisTicks: { show: false },
+            tooltip: { enabled: false }
+        },
+        yaxis: {
+            min: yMin, max: yMax,
+            labels: { style: { colors: colors.text }, formatter: yFormatter }
+        },
+        legend: { display: false, show: false },
+        theme: { mode: document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark' },
+        tooltip: {
+            theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark',
+            x: { show: true, format: 'HH:mm' }
+        }
     };
 }
 
-window.updateChartsTheme = function() {
-    if (!tempChartInstance || !humChartInstance || !vpdChartInstance) return;
-    const colors = getChartColors();
-    const instances = [tempChartInstance, humChartInstance, vpdChartInstance];
-    instances.forEach(chart => {
-        chart.options.scales.x.ticks.color = colors.textColor;
-        chart.options.scales.y.ticks.color = colors.textColor;
-        chart.options.scales.y.grid.color = colors.gridColor;
-        chart.data.datasets.forEach(ds => ds.pointBackgroundColor = colors.pointBg);
-        chart.update();
-    });
-};
-
-function createGradient(ctx, color) {
-    let gradient = ctx.createLinearGradient(0, 0, 0, 250);
-    gradient.addColorStop(0, color);
-    gradient.addColorStop(1, 'transparent');
-    return gradient;
-}
-
-// Initialize Charts dynamically (rendered in pollLatestTelemetry)
 function initCharts() {
     if (tempChartInstance) tempChartInstance.destroy();
     if (humChartInstance) humChartInstance.destroy();
     if (vpdChartInstance) vpdChartInstance.destroy();
 
-    const opts = getCommonChartOptions();
-    
-    tempChartInstance = new Chart(document.getElementById('tempChart').getContext('2d'), { type: 'line', data: { datasets: [] }, options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, suggestedMin: 18, suggestedMax: 32 } } } });
-    humChartInstance = new Chart(document.getElementById('humChart').getContext('2d'), { type: 'line', data: { datasets: [] }, options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, suggestedMin: 30, suggestedMax: 80 } } } });
-    vpdChartInstance = new Chart(document.getElementById('vpdChart').getContext('2d'), { type: 'line', data: { datasets: [] }, options: { ...opts, scales: { ...opts.scales, y: { ...opts.scales.y, suggestedMin: 0.5, suggestedMax: 1.8 } } } });
+    const tempOpts = getApexOptions('temp', 'syncGroup', 18, 35, (val) => val.toFixed(1) + '°C');
+    const humOpts = getApexOptions('hum', 'syncGroup', 30, 80, (val) => val.toFixed(1) + '%');
+    const vpdOpts = getApexOptions('vpd', 'syncGroup', 0.5, 2.0, (val) => val.toFixed(2) + 'k');
+
+    tempChartInstance = new ApexCharts(document.getElementById('tempChart'), tempOpts);
+    humChartInstance = new ApexCharts(document.getElementById('humChart'), humOpts);
+    vpdChartInstance = new ApexCharts(document.getElementById('vpdChart'), vpdOpts);
+
+    tempChartInstance.render();
+    humChartInstance.render();
+    vpdChartInstance.render();
 }
 
 function updateChartsVisuals() {
-    // Real-time redrawing happens in pollLatestTelemetry based on sensors
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    const mode = isLight ? 'light' : 'dark';
+    const c = getApexColors();
+    if (tempChartInstance) {
+        tempChartInstance.updateOptions({ theme: { mode }, grid: { borderColor: c.grid }, xaxis: { labels: { style: { colors: c.text } } }, yaxis: { labels: { style: { colors: c.text } } } });
+        humChartInstance.updateOptions({ theme: { mode }, grid: { borderColor: c.grid }, xaxis: { labels: { style: { colors: c.text } } }, yaxis: { labels: { style: { colors: c.text } } } });
+        vpdChartInstance.updateOptions({ theme: { mode }, grid: { borderColor: c.grid }, xaxis: { labels: { style: { colors: c.text } } }, yaxis: { labels: { style: { colors: c.text } } } });
+    }
 }
 
 // Modal functions for adding rooms
@@ -122,9 +163,9 @@ function updateUI() {
         // Mostrar valores exactos de el sensor seleccionado
         const sData = data.sensors[selectedSensorView];
         if (sData.temps.length > 0) {
-            dispTemp = sData.temps[sData.temps.length - 1];
-            dispHum = sData.hums[sData.hums.length - 1];
-            dispVpd = sData.vpds[sData.vpds.length - 1];
+            dispTemp = sData.temps[sData.temps.length - 1].y;
+            dispHum = sData.hums[sData.hums.length - 1].y;
+            dispVpd = sData.vpds[sData.vpds.length - 1].y;
         }
     }
 
@@ -191,6 +232,7 @@ function changeRoom() {
     document.getElementById('manual-temp').value = '';
     document.getElementById('manual-hum').value = '';
     
+    loadSensorsForRoom();
     pollLatestTelemetry(currentRoomId);
 }
 
@@ -239,7 +281,7 @@ async function loadSensorsForRoom() {
         
         const manualSelect = document.getElementById('manualSensorSelect');
         if (manualSelect) {
-            manualSelect.innerHTML = '<option value="default">Sensor 1 (Promedio General)</option>';
+            manualSelect.innerHTML = '<option value="default">Promedio / Sala General</option>';
             data.forEach(s => {
                 const opt = document.createElement('option');
                 opt.value = s.id;
@@ -258,19 +300,20 @@ async function loadSensorsForRoom() {
             } else {
                 data.forEach(s => {
                     const li = document.createElement('li');
-                    li.style.display = 'flex';
-                    li.style.justifyContent = 'space-between';
-                    li.style.alignItems = 'center';
+                    li.style.cssText = 'display: flex; justify-content: space-between; align-items: center; padding: 12px 14px; margin-bottom: 8px; background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);';
                     li.innerHTML = `
-                        <div>
-                            <h4 style="margin:0; font-size:0.95rem;">${s.name}</h4>
-                            <span class="badge badge-indigo" style="font-size:0.75rem;"><i class="ph ph-thermometer"></i> ${s.id.substring(0,8)}</span>
+                        <div style="display: flex; flex-direction: column; gap: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            <h4 style="margin: 0; font-size: 0.95rem; display: flex; align-items: center; gap: 6px; color: var(--text-primary);">
+                                <i class="ph ph-thermometer" style="color: var(--color-indigo); font-size: 1.1rem;"></i>
+                                <span style="font-weight: 600;">${s.name}</span>
+                            </h4>
+                            <span class="badge badge-indigo" style="font-size: 0.7rem; align-self: flex-start; padding: 2px 6px; margin-left: 20px;">ID: ${s.id.substring(0,8).toUpperCase()}</span>
                         </div>
-                        <div>
-                            <button class="btn-primary" style="padding:5px 10px; font-size:0.8rem; margin-right:5px;" onclick="renameSensor('${s.id}', '${s.name}')">
+                        <div style="display: flex; gap: 8px; align-items: center; flex-shrink: 0; padding-left: 10px;">
+                            <button class="btn-primary" style="padding: 6px; width: 32px; height: 32px; font-size: 1rem; display: flex; align-items: center; justify-content: center; border-radius: 6px; cursor: pointer;" onclick="renameSensor('${s.id}', '${s.name}')" title="Editar">
                                 <i class="ph ph-pencil"></i>
                             </button>
-                            <button class="btn-danger" style="padding:5px 10px; font-size:0.8rem;" onclick="deleteSensor('${s.id}')">
+                            <button style="padding: 6px; width: 32px; height: 32px; font-size: 1rem; display: flex; align-items: center; justify-content: center; border-radius: 6px; background-color: rgba(255, 59, 48, 0.1); color: #ff3b30; border: 1px solid rgba(255,59,48,0.2); cursor: pointer;" onclick="deleteSensor('${s.id}')" title="Eliminar">
                                 <i class="ph ph-trash"></i>
                             </button>
                         </div>
@@ -303,24 +346,62 @@ async function handleNewSensor(e) {
 }
 
 window.deleteSensor = async function(id) {
-    if (!confirm('¿Estás seguro de eliminar el sensor de esta sala?')) return;
+    if (!confirm('¿Estás seguro de eliminar el sensor de esta sala? Nota: Si el sensor ya tiene historial de telemetría asociado, no podrá eliminarse por seguridad.')) return;
     try {
-        await window.sbClient.from('core_sensors').delete().eq('id', id);
+        const { error } = await window.sbClient.from('core_sensors').delete().eq('id', id);
+        if (error) {
+            console.error("Supabase Error eliminando sensor:", error);
+            alert("No se pudo eliminar el sensor. Verifique si tiene datos históricos asociados (no se puede borrar un sensor con historial).");
+            return;
+        }
         await loadSensorsForRoom();
+        alert("Sensor eliminado exitosamente.");
     } catch(e) {
-        console.error("Error eliminando sensor:", e);
+        console.error("Error catched eliminando sensor:", e);
+        alert("Error de red eliminando el sensor.");
     }
 }
 
-window.renameSensor = async function(id, currentName) {
-    const newName = prompt('Ingrese el nuevo nombre para el sensor:', currentName);
-    if (!newName || newName.trim() === '' || newName === currentName) return;
+window.renameSensor = function(id, currentName) {
+    const modal = document.getElementById('editSensorModal');
+    if (!modal) return;
+    document.getElementById('editSensorIdInput').value = id;
+    document.getElementById('editSensorNameInput').value = currentName;
+    document.getElementById('editSensorFeedback').style.display = 'none';
+    modal.style.display = 'block';
+    setTimeout(() => document.getElementById('editSensorNameInput').focus(), 100);
+}
+
+window.closeEditSensorModal = function() {
+    const modal = document.getElementById('editSensorModal');
+    if (modal) modal.style.display = 'none';
+}
+
+window.confirmRenameSensor = async function() {
+    const id = document.getElementById('editSensorIdInput').value;
+    const newName = document.getElementById('editSensorNameInput').value.trim();
+    if (!newName) return;
+    
+    const feedback = document.getElementById('editSensorFeedback');
+    feedback.style.display = 'block';
+    feedback.innerText = 'Guardando...';
+    feedback.style.color = 'var(--text-secondary)';
+
     try {
-        await window.sbClient.from('core_sensors').update({ name: newName.trim() }).eq('id', id);
+        const { error } = await window.sbClient.from('core_sensors').update({ name: newName }).eq('id', id);
+        if (error) {
+            console.error("Supabase Error renombrando sensor:", error);
+            feedback.innerText = "Error del servidor al intentar renombrar.";
+            feedback.style.color = "var(--color-red)";
+            return;
+        }
         await loadSensorsForRoom();
         pollLatestTelemetry(currentRoomId);
+        window.closeEditSensorModal();
     } catch(e) {
-        console.error("Error renombrando sensor:", e);
+        console.error("Error catched renombrando sensor:", e);
+        feedback.innerText = "Error de red renombrando el sensor.";
+        feedback.style.color = "var(--color-red)";
     }
 }
 
@@ -570,6 +651,7 @@ async function loadRoomsFromDB() {
             if (select) select.value = currentRoomId;
             updateChartsVisuals();
             updateUI();
+            loadSensorsForRoom();
         }
         console.log(`[Rooms] Loaded ${data.length} room(s) from Supabase.`);
     } catch (e) {
@@ -603,9 +685,9 @@ async function pollLatestTelemetry(roomId) {
         if (!data || data.length === 0) {
             rData.sensors = {};
             rData.temp = 0; rData.hum = 0; rData.vpd = 0;
-            if (tempChartInstance) { tempChartInstance.data.datasets = []; tempChartInstance.update(); }
-            if (humChartInstance) { humChartInstance.data.datasets = []; humChartInstance.update(); }
-            if (vpdChartInstance) { vpdChartInstance.data.datasets = []; vpdChartInstance.update(); }
+            if (tempChartInstance) tempChartInstance.updateSeries([]);
+            if (humChartInstance) humChartInstance.updateSeries([]);
+            if (vpdChartInstance) vpdChartInstance.updateSeries([]);
             updateUI();
             return;
         }
@@ -613,30 +695,41 @@ async function pollLatestTelemetry(roomId) {
         // Procesar datos y agrupar por sensor
         const dataRev = [...data].reverse();
         const telemetryBySensor = {};
+        const globalLabelsSet = new Set();
         
         dataRev.forEach(t => {
             const sId = t.sensor_id || 'default';
-            const sName = t.core_sensors && t.core_sensors.name ? t.core_sensors.name : (sId === 'default' ? 'Sensor 1 (Promedio General)' : 'Sensor ' + sId.substring(0,4));
-            if(!telemetryBySensor[sId]) telemetryBySensor[sId] = { name: sName, labels: [], temps: [], hums: [], vpds: [] };
+            const sName = t.core_sensors && t.core_sensors.name ? t.core_sensors.name : (sId === 'default' ? 'Promedio / Sala General' : 'Sensor ' + sId.substring(0,4));
+            if(!telemetryBySensor[sId]) telemetryBySensor[sId] = { name: sName, temps: [], hums: [], vpds: [] };
             
-            const timeStr = new Date(t.created_at).toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit' });
-            telemetryBySensor[sId].labels.push(timeStr);
-            telemetryBySensor[sId].temps.push(parseFloat(t.temperature_c) || 0);
-            telemetryBySensor[sId].hums.push(parseFloat(t.humidity_percent) || 0);
-            telemetryBySensor[sId].vpds.push(calcVpd(parseFloat(t.temperature_c), parseFloat(t.humidity_percent)));
+            const tsMs = new Date(t.created_at).getTime();
+            
+            telemetryBySensor[sId].temps.push({ x: tsMs, y: parseFloat(t.temperature_c) || 0 });
+            telemetryBySensor[sId].hums.push({ x: tsMs, y: parseFloat(t.humidity_percent) || 0 });
+            telemetryBySensor[sId].vpds.push({ x: tsMs, y: parseFloat(t.vpd_kpa) || 0 });
         });
+
+        // Actualizar última lectura general en base al punto más reciente procesado
+        // Prioriza un promedio ('default'), o sino toma el último recibido
+        if (dataRev.length > 0) {
+            const p = dataRev[dataRev.length - 1]; // último cronológico
+            rData.temp = parseFloat(p.temperature_c) || 0;
+            rData.hum = parseFloat(p.humidity_percent) || 0;
+            rData.vpd = parseFloat(p.vpd_kpa) || 0;
+        }
 
         rData.sensors = telemetryBySensor;
         
-        // Calcular promedios generales para el macro (último valor de cada sensor)
-        let sumTemp = 0, sumHum = 0, sumVpd = 0;
         let count = 0;
+        let sumTemp = 0;
+        let sumHum = 0;
+        let sumVpd = 0;
         Object.keys(telemetryBySensor).forEach(sId => {
             const s = telemetryBySensor[sId];
             if(s.temps.length > 0) {
-                sumTemp += s.temps[s.temps.length - 1];
-                sumHum += s.hums[s.hums.length - 1];
-                sumVpd += s.vpds[s.vpds.length - 1];
+                sumTemp += s.temps[s.temps.length - 1].y;
+                sumHum += s.hums[s.hums.length - 1].y;
+                sumVpd += s.vpds[s.vpds.length - 1].y;
                 count++;
             }
         });
@@ -656,55 +749,36 @@ async function pollLatestTelemetry(roomId) {
             if (pollingStatus) pollingStatus.innerHTML = `<i class="ph ph-check-circle"></i> Última sync: ${timeStr}`;
         }
         
-        // Setup dinámico de gráficos Chart.js
+        // Setup dinámico de gráficos ApexCharts
         if (!tempChartInstance) initCharts();
         
         const tempDatasets = [];
         const humDatasets = [];
         const vpdDatasets = [];
-        const colorPalette = ['#FF3D00', '#2979FF', '#00E676', '#E040FB', '#FFC107', '#00B0FF'];
-        let colorIdx = 0;
-        let longestLabels = [];
 
         Object.keys(telemetryBySensor).forEach(sId => {
             const sData = telemetryBySensor[sId];
-            const color = colorPalette[colorIdx % colorPalette.length];
             
-            // Filtrar visualización (Si está en default mostramos todo, si está seleccionado 1, mostramos solo 1)
+            // Filtrar visualización
             if (selectedSensorView !== 'default' && selectedSensorView !== sId) return;
 
-            if (sData.labels.length > longestLabels.length) longestLabels = sData.labels;
-
             tempDatasets.push({
-                label: sData.name, data: sData.temps,
-                borderColor: color, fill: false, tension: 0.4, borderWidth: 2,
-                pointBackgroundColor: getChartColors().pointBg
+                name: sData.name, 
+                data: sData.temps
             });
             humDatasets.push({
-                label: sData.name, data: sData.hums,
-                borderColor: color, fill: false, tension: 0.4, borderWidth: 2,
-                pointBackgroundColor: getChartColors().pointBg
+                name: sData.name, 
+                data: sData.hums
             });
             vpdDatasets.push({
-                label: sData.name, data: sData.vpds,
-                borderColor: color, fill: false, tension: 0.4, borderWidth: 2,
-                pointBackgroundColor: getChartColors().pointBg
+                name: sData.name, 
+                data: sData.vpds
             });
-            
-            colorIdx++;
         });
 
-        tempChartInstance.data.labels = longestLabels;
-        tempChartInstance.data.datasets = tempDatasets;
-        tempChartInstance.update();
-
-        humChartInstance.data.labels = longestLabels;
-        humChartInstance.data.datasets = humDatasets;
-        humChartInstance.update();
-
-        vpdChartInstance.data.labels = longestLabels;
-        vpdChartInstance.data.datasets = vpdDatasets;
-        vpdChartInstance.update();
+        tempChartInstance.updateSeries(tempDatasets);
+        humChartInstance.updateSeries(humDatasets);
+        vpdChartInstance.updateSeries(vpdDatasets);
 
         updateUI();
 
