@@ -1,0 +1,4267 @@
+{
+  "name": "CRM Cannabis (V16 OpenRouter Paid)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "1e486438-63c3-4b31-8c90-e44f492f0479",
+      "name": "When clicking Execute workflow",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1008,
+        -4208
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "entities",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "c686dda0-4a67-416d-b82b-1381f6be74e9",
+      "name": "Webhook Entities",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        -4112
+      ],
+      "webhookId": "81bc9c3f-1f0f-43b9-a287-23543886b35f"
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{$json.body.action}}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "CREATE"
+            },
+            {
+              "value2": "READ"
+            },
+            {
+              "value2": "UPDATE"
+            },
+            {
+              "value2": "DELETE"
+            }
+          ]
+        }
+      },
+      "id": "45b644ba-9dd7-48cd-bd94-9c3415413bff",
+      "name": "CRUD Router",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        -704,
+        -4112
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO {{$json.body.entity}} (name) VALUES ('{{$json.body.data.name}}') RETURNING *",
+        "additionalFields": {}
+      },
+      "id": "2f96f60c-8cb4-45ed-8155-3f9c663b0215",
+      "name": "PG Create",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -4272
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "yfBYokjK02D81bok",
+          "name": "Postgres account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT * FROM {{$json.body.entity}}",
+        "additionalFields": {}
+      },
+      "id": "45470daf-6244-4548-ad9e-b950cd421b0c",
+      "name": "PG Read",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -4112
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "yfBYokjK02D81bok",
+          "name": "Postgres account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=UPDATE {{$json.body.entity}} SET name = '{{$json.body.data.name}}' WHERE id = '{{$json.body.data.id}}' RETURNING *",
+        "additionalFields": {}
+      },
+      "id": "9b5cb3d6-938b-4cab-abcf-f19eea427e59",
+      "name": "PG Update",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -3968
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "yfBYokjK02D81bok",
+          "name": "Postgres account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=DELETE FROM {{$json.body.entity}} WHERE id = '{{$json.body.data.id}}'",
+        "additionalFields": {}
+      },
+      "id": "e72e4f5b-b276-47e0-a3c0-3830c5168961",
+      "name": "PG Delete",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -3808
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "yfBYokjK02D81bok",
+          "name": "Postgres account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "telemetry",
+        "options": {}
+      },
+      "id": "be2dfcf3-f617-4137-b4c1-b5e3248fbc57",
+      "name": "Webhook Telemetry",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        -3616
+      ],
+      "webhookId": "3bac6f67-adcc-40ee-8fdb-e6e87545b358"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/daily_telemetry",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"batch_id\": \"{{$json.body.batch_id}}\",\n  \"room_id\": \"{{$json.body.batch_id}}\",\n  \"temperature_c\": {{$json.body.temp}},\n  \"humidity_percent\": {{$json.body.humidity}},\n  \"vpd_kpa\": {{$json.body.vpd}},\n  \"created_at\": \"{{$json.body.timestamp}}\",\n  \"sensor_id\": {{$json.body.sensor_id ? '\"' + $json.body.sensor_id + '\"' : 'null'}}\n}",
+        "options": {}
+      },
+      "id": "0b257b0a-e17b-43a7-8888-55d339d234e2",
+      "name": "Bypass PG",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -592,
+        -3616
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pos-sales",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "134a9395-a169-4cf2-859b-c9117bfec327",
+      "name": "Webhook POS Sales",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        -3408
+      ],
+      "webhookId": "b98d915b-ce95-45ed-8d9d-8ce23bda19ce"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO sales_tickets (totals_json, items_json, client_tier, created_at) VALUES ('{{JSON.stringify($json.body.totals)}}', '{{JSON.stringify($json.body.items)}}', '{{$json.body.client}}', '{{$json.body.timestamp}}') RETURNING id;",
+        "additionalFields": {}
+      },
+      "id": "71ba63ea-05a6-4e82-8a99-bb9cc2d34930",
+      "name": "PG Insert Sales",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        -3408
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "yfBYokjK02D81bok",
+          "name": "Postgres account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "cultivo-calendar",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "f14ae0bf-ce78-4c8a-90d6-1de0f13b8100",
+      "name": "Webhook Cultivos",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        -3216
+      ],
+      "webhookId": "cf7f14c8-b84a-40b1-b17b-0d19fa5643a0"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO crop_batches (batch_id, strain, start_date, current_stage) VALUES ('{{$json.body.id}}', '{{$json.body.strain}}', '{{$json.body.startDate}}', '{{$json.body.stage}}') RETURNING id;",
+        "additionalFields": {}
+      },
+      "id": "9c77cad4-9cec-4ed2-a02a-f937e03b3ffd",
+      "name": "PG Insert Crop",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -3312
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "yfBYokjK02D81bok",
+          "name": "Postgres account"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "tareas-calendar",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "13400db1-e7b8-40a6-ad5f-13c5460827bc",
+      "name": "Webhook Tareas Calendar",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        -3008
+      ],
+      "webhookId": "4bcab15d-f799-43f1-bc76-6211457d6c05"
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "primary"
+        },
+        "start": "={{$json.body.datetime}}",
+        "end": "={{$json.body.datetime}}",
+        "additionalFields": {
+          "summary": "={{$json.body.title}}"
+        }
+      },
+      "id": "bd96f97c-f487-4dbc-a7c3-d38f2694e528",
+      "name": "Google Calendar",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -592,
+        -3008
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "HKIwYYRVdjmy3V0a",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "path": "get-telemetry",
+        "responseMode": "lastNode",
+        "options": {
+          "responseHeaders": {
+            "entries": [
+              {
+                "name": "Access-Control-Allow-Origin",
+                "value": "*"
+              },
+              {
+                "name": "Access-Control-Allow-Methods",
+                "value": "GET, OPTIONS"
+              },
+              {
+                "name": "Access-Control-Allow-Headers",
+                "value": "*"
+              }
+            ]
+          }
+        }
+      },
+      "id": "6ec2a264-d08e-4da0-a14a-8937706b07bf",
+      "name": "Webhook Get Telemetry (WhatsApp)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -896,
+        -2816
+      ],
+      "webhookId": "f1cf8786-38a0-4888-ae96-4c2af86d21ac"
+    },
+    {
+      "parameters": {
+        "keepOnlySet": true,
+        "values": {
+          "number": [
+            {
+              "name": "temp",
+              "value": 26.5
+            },
+            {
+              "name": "hum",
+              "value": 50
+            }
+          ],
+          "string": [
+            {
+              "name": "room",
+              "value": "={{$node[\"Webhook Get Telemetry (WhatsApp)\"].json[\"query\"][\"room\"]}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "23066369-8e2e-4c63-b448-edf5b6b980b7",
+      "name": "Mock WhatsApp Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        -592,
+        -2816
+      ]
+    },
+    {
+      "parameters": {
+        "dataType": "string",
+        "value1": "={{$json.body.action}}",
+        "rules": {
+          "rules": [
+            {
+              "value2": "CREATE_CROP_BATCH"
+            },
+            {
+              "value2": "SCHEDULE_IPM"
+            },
+            {
+              "value2": "SCHEDULE_PRUNING"
+            },
+            {
+              "value2": "ADVANCE_STAGE"
+            },
+            {
+              "value2": "HARVEST_WET"
+            },
+            {
+              "value2": "UPDATE_STOCK"
+            }
+          ]
+        }
+      },
+      "id": "29f1f88e-de7f-4e02-b203-b749853b5ec2",
+      "name": "Router Cultivos",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 1,
+      "position": [
+        -704,
+        -3216
+      ]
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "primary"
+        },
+        "start": "={{new Date().toISOString()}}",
+        "end": "={{new Date().toISOString()}}",
+        "additionalFields": {
+          "summary": "=Registro de Lote: {{$json.body.id}} ({{$json.body.strain}})"
+        }
+      },
+      "id": "c2ff945f-89b9-4b00-af91-93a99ca624ac",
+      "name": "Cal: Nuevo Lote",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -400,
+        -3168
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "HKIwYYRVdjmy3V0a",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "primary"
+        },
+        "start": "={{new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString()}}",
+        "end": "={{new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString()}}",
+        "additionalFields": {
+          "summary": "=IPM: Aplicar {{$json.body.product}} en Lote {{$json.body.batchId}}"
+        }
+      },
+      "id": "9a6f24ed-69e0-4c3c-8072-ba9b0d831778",
+      "name": "Cal: Alerta IPM",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -400,
+        -3008
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "HKIwYYRVdjmy3V0a",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "primary"
+        },
+        "start": "={{new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()}}",
+        "end": "={{new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString()}}",
+        "additionalFields": {
+          "summary": "=REVISIÓN: {{$json.body.pruneType}} en Lote {{$json.body.batchId}}"
+        }
+      },
+      "id": "b52d8e4a-680a-4f81-bae8-dde8cd659ebc",
+      "name": "Cal: Alerta Poda",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -400,
+        -2864
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "HKIwYYRVdjmy3V0a",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "mode": "list",
+          "value": "primary"
+        },
+        "start": "={{$json.body.newStage === \"floracion\" ? new Date(Date.now() + ($json.body.floraDays || 60) * 24 * 60 * 60 * 1000).toISOString() : new Date().toISOString()}}",
+        "end": "={{$json.body.newStage === \"floracion\" ? new Date(Date.now() + ($json.body.floraDays || 60) * 24 * 60 * 60 * 1000).toISOString() : new Date().toISOString()}}",
+        "additionalFields": {
+          "description": "={{'Etapa Lote ' + $json.body.batchId + '\\nFotoperiodo: ' + $json.body.lightHours + 'h luz / ' + $json.body.darkHours + 'h oscuridad.'}}",
+          "summary": "={{$json.body.newStage === \"floracion\" ? \"COSECHA ESTIMADA: Lote \" + $json.body.batchId : \"Etapa \" + $json.body.newStage.toUpperCase() + \": Lote \" + $json.body.batchId}}"
+        }
+      },
+      "id": "241da8a6-e19b-4fb7-a87f-78ab29564979",
+      "name": "Cal: Estimador Cosecha",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        -400,
+        -2720
+      ],
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "HKIwYYRVdjmy3V0a",
+          "name": "Google Calendar account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "Mensaje",
+              "value": "={{'Cosecha Húmeda ' + $json.body.batchId + ': ' + $json.body.weightWet + 'g'}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5e29cc42-198e-4cc2-b55e-ebb9b92a94c0",
+      "name": "Registro Cosecha Húmeda",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -2560
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "Mensaje",
+              "value": "={{'Cosecha Seca ' + $json.body.batchId + ': ' + $json.body.weightDry + 'g listos para inventario POS.'}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "eb05940c-faa7-459b-9552-ec51e8dd5ed4",
+      "name": "Actualizar Stock POS",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        -400,
+        -2416
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wa-inbound",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "4bd42479-3fda-4138-bc57-dce0bb161e25",
+      "name": "Webhook WhatsApp",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -1008,
+        -2016
+      ],
+      "webhookId": "d6aa2cb3-abb0-42bf-988b-01da76a1a69e"
+    },
+    {
+      "parameters": {
+        "values": {
+          "number": [
+            {
+              "name": "temp",
+              "value": "={{parseFloat($json.body.body.split(' ')[1])}}"
+            },
+            {
+              "name": "humidity",
+              "value": "={{parseFloat($json.body.body.split(' ')[2])}}"
+            },
+            {
+              "name": "vpd",
+              "value": "={{ parseFloat((0.61078 * Math.exp((17.27 * parseFloat($json.body.body.split(' ')[1])) / (parseFloat($json.body.body.split(' ')[1]) + 237.3)) * (1 - parseFloat($json.body.body.split(' ')[2]) / 100)).toFixed(2)) }}"
+            }
+          ],
+          "string": [
+            {
+              "name": "room",
+              "value": "={{$json.body.body.split(' ')[3] || ''}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "8a785808-6f83-422c-bb99-5b8327d8f69c",
+      "name": "Extract TM Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        -496,
+        -2208
+      ]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "reply",
+              "value": "={{ '✅ Telemetría registrada: Temperatura ' + $('Extract TM Data').item.json.temp + '°C / Humedad ' + $('Extract TM Data').item.json.humidity + '% / VPD ' + $('Extract TM Data').item.json.vpd + ' kPa en lote/sala ' + $('Extract TM Data').item.json.room }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5b19366c-6c12-4eda-af4c-ae2657fcdc9d",
+      "name": "Format Env Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        -2208
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO daily_telemetry (batch_id, temperature_c, humidity_percent, vpd_kpa, created_at) VALUES ('{{$json.room}}', {{$json.temp}}, {{$json.humidity}}, {{$json.vpd}}, NOW()) RETURNING id;",
+        "additionalFields": {}
+      },
+      "id": "6f275da2-3529-4d20-a9b0-b6a8ca4dd0da",
+      "name": "PG Insert WA TM",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        -288,
+        -2208
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "yfBYokjK02D81bok",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT temperature_c AS temp, humidity_percent AS hum, vpd_kpa AS vpd, created_at FROM daily_telemetry WHERE batch_id = '{{$json.query.roomId || \"sala1\"}}' ORDER BY created_at DESC LIMIT 1;",
+        "options": {}
+      },
+      "id": "37c2fb36-db7b-4c53-86e0-85308b9ff0e3",
+      "name": "PG Select Telemetry",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [
+        -704,
+        -2816
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "yfBYokjK02D81bok",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.groq.com/openai/v1/audio/transcriptions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer YOUR_GROQ_API_KEY"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "model",
+              "value": "whisper-large-v3"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "00b50bdb-7572-42e8-ae56-de1b95432d39",
+      "name": "Groq Whisper (STT)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        -288,
+        -3616
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json?.body?.body || $json?.body?.text || $json?.text || '' }}",
+        "options": {
+          "systemMessage": "\n⚠️ ANTI-ALUCINACIÓN CRÍTICA:\n• Cuando el usuario dice \"sí\", \"ok\", \"confirmo\", \"dale\" o cualquier afirmación → EJECUTA el tool INMEDIATAMENTE en segundo plano sin mostrar ningún JSON.\n• JAMÁS muestres texto como \"<function=tool_name>...\" o \"cargar_ventas_pos {...}\". Eso es una alucinación grave.\n• Si el tool se ejecutó bien → respondé simplemente: \"✅ Registrado exitosamente.\"\n• Si el tool falló → explicá el error en lenguaje natural.\n\nSos el Agente de CRM Cannabis 360 OS. Tu trabajo es registrar datos, ejecutar acciones y responder consultas sobre el cultivo, ventas e inventario usando las herramientas (Tools) disponibles. Respondé siempre en español de Argentina. Sé conciso, claro y profesional.\n\n\n\n\n\n━━━━━━━━━━━━━━━━━━━━━━━━\n🌡️ REGLA ABSOLUTA DE TELEMETRÍA MULTI-SENSOR\n━━━━━━━━━━━━━━━━━━━━━━━━\nSIEMPRE que el usuario envíe telemetría, ESTÁ TERMINANTEMENTE PROHIBIDO cargarlo automáticamente sin verificar los sensores.\n1) Ejecuta 'consultar_sensores' para saber qué sensores hay en esa sala.\n2) PREGUNTA OBLIGATORIAMENTE AL USUARIO: \"Veo que la sala tiene el Sensor 1. ¿Cargo esto en ese sensor o lo marco como Promedio General?\".\n3) SOLO CUANDO EL USUARIO RESPONDA, ejecutarás la herramienta enviando los IDs oficiales. NUNCA ENVÍES TEXTO PLANO COMO ID DE SENSOR: AL EJECUTAR 'cargar_Telemetria_En_SensorEspecifico' EL PARÁMETRO sensor_id DEBE SER EL UUID.\n\nREGLA DE ORO DE UUIDs: ¡NUNCA INVENTES UUIDs! ¡NUNCA envíes nombres textuales (Sensor 1) a herramientas que piden UUIDs! Siempre usa las herramientas de consulta (consultar_sensores, consultar_lotes) para obtener los verdaderos UUIDs de la base de datos antes de guardar.",
+          "maxIterations": 20
+        }
+      },
+      "id": "47fc173c-3900-49df-aa5a-edd13e839fe5",
+      "name": "AI Agent (Function Calling)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        0,
+        -3760
+      ],
+      "continueOnFail": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Hoist Session ID').item.json.sessionId }}",
+        "contextWindowLength": 10,
+        "k": 0
+      },
+      "id": "d9d6f990-23f5-4498-a69e-477137d9f76f",
+      "name": "Window Buffer Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.2,
+      "position": [
+        -48,
+        -3568
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_batches?id=eq.{batch_id}",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "stage",
+              "valueProvider": "fieldValue",
+              "value": "{nueva_fase}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "batch_id",
+              "description": "ID del Lote (Ej.",
+              "type": "string"
+            },
+            {
+              "name": "nueva_fase",
+              "description": "Fase a la que se mueve (floracion, cosec.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "8dec99eb-9c9b-43fd-a787-a4179bb7654b",
+      "name": "avanzar_fase",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        -3616
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_inventory_quimicos",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "name",
+              "valueProvider": "fieldValue",
+              "value": "{nombre}"
+            },
+            {
+              "name": "type",
+              "valueProvider": "fieldValue",
+              "value": "{tipo}"
+            },
+            {
+              "name": "qty",
+              "valueProvider": "fieldValue",
+              "value": "{cantidad}"
+            },
+            {
+              "name": "unit_cost",
+              "valueProvider": "fieldValue",
+              "value": "{costo_unitario}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "nombre",
+              "description": "Nombre del insumo.",
+              "type": "string"
+            },
+            {
+              "name": "tipo",
+              "description": "fertilizante, sustrato o pesticida.",
+              "type": "string"
+            },
+            {
+              "name": "cantidad",
+              "description": "Litros/ml/gramos ingresados.",
+              "type": "number"
+            },
+            {
+              "name": "costo_unitario",
+              "description": "Costo por unidad.",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "c6bc9444-4505-4c70-a217-ce94040acfef",
+      "name": "ingresar_insumo",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        352,
+        -3616
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json;\nlet outputtext = '';\n\nif (item.error) {\n    const errStr = typeof item.error === 'string' ? item.error : (item.error.message || JSON.stringify(item.error));\n    outputtext = 'Error interno del modelo de IA: ' + errStr;\n} else if (item.output && item.output.trim() !== '') {\n    outputtext = item.output;\n} else if (item.text && item.text.trim() !== '') {\n    outputtext = item.text;\n} else if (item.response && item.response.trim() !== '') {\n    outputtext = item.response;\n} else {\n    try {\n        if (item.generations && item.generations[0] && item.generations[0][0]) {\n            outputtext = item.generations[0][0].text || '';\n        }\n    } catch(e) {}\n}\n\n// Resilience fallback: If no text was found but no error occurred\nif (!outputtext || outputtext.trim() === '') {\n    if (item.error) {\n        outputtext = 'Se produjo un error al procesar la solicitud.';\n    } else {\n        // Successful tool execution but empty final response\n        outputtext = '✅ Acción completada exitosamente.';\n    }\n}\n\nreturn [{ json: { response: outputtext } }];\n"
+      },
+      "id": "04fbb7db-3ede-4546-b299-efca74c35532",
+      "name": "Format WA Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        608,
+        -3760
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_batches?id=eq.{batch_id}",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "stage",
+              "valueProvider": "fieldValue",
+              "value": "cosecha"
+            },
+            {
+              "name": "weight_wet",
+              "valueProvider": "fieldValue",
+              "value": "{peso_gramos}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "batch_id",
+              "description": "ID del Lote (Ej.",
+              "type": "string"
+            },
+            {
+              "name": "peso_gramos",
+              "description": "Gramos humedos totales.",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "5dfda855-4598-475b-8b2e-3dcb0ded5730",
+      "name": "cosecha_humeda",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        -3472
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://109.199.99.126:5006/bot-agronomico",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "batches",
+              "valueProvider": "fieldValue",
+              "value": "{batches}"
+            },
+            {
+              "name": "inputs",
+              "valueProvider": "fieldValue",
+              "value": "{inputs}"
+            },
+            {
+              "name": "water_liters",
+              "valueProvider": "fieldValue",
+              "value": "{water_liters}"
+            },
+            {
+              "name": "event_type",
+              "valueProvider": "fieldValue",
+              "value": "{event_type}"
+            },
+            {
+              "name": "raw_description",
+              "valueProvider": "fieldValue",
+              "value": "{raw_description}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "batches",
+              "description": "Array JSON de IDs de lotes destino.",
+              "type": "string"
+            },
+            {
+              "name": "inputs",
+              "description": "Array JSON de insumos aplicados con nomb.",
+              "type": "string"
+            },
+            {
+              "name": "water_liters",
+              "description": "Litros totales de agua usados para dilui.",
+              "type": "number"
+            },
+            {
+              "name": "event_type",
+              "description": "Tipo de evento: Nutricion, Prevencion, A.",
+              "type": "string"
+            },
+            {
+              "name": "raw_description",
+              "description": "Descripcion completa en texto libre del .",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "6d25b98c-004b-4467-a2ef-a194ab44a139",
+      "name": "reportar_evento",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        352,
+        -3472
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/daily_telemetry",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "batch_id",
+              "valueProvider": "fieldValue",
+              "value": "{sala_o_lote}"
+            },
+            {
+              "name": "room_id",
+              "valueProvider": "fieldValue",
+              "value": "{sala_o_lote}"
+            },
+            {
+              "name": "temperature_c",
+              "valueProvider": "fieldValue",
+              "value": "{temperatura}"
+            },
+            {
+              "name": "humidity_percent",
+              "valueProvider": "fieldValue",
+              "value": "{humedad}"
+            },
+            {
+              "name": "vpd_kpa",
+              "valueProvider": "fieldValue",
+              "value": "{vpd}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "sala_o_lote",
+              "description": "ID oficial (UUID) del lote o de la sala .",
+              "type": "string"
+            },
+            {
+              "name": "temperatura",
+              "description": "Temperatura en grados C.",
+              "type": "number"
+            },
+            {
+              "name": "humedad",
+              "description": "Humedad Relativa en %.",
+              "type": "number"
+            },
+            {
+              "name": "vpd",
+              "description": "VPD en kPa (calculado por el agente).",
+              "type": "number"
+            }
+          ]
+        },
+        "description": "PELIGRO: Usa esta herramienta ÚNICAMENTE si le has preguntado al usuario y él te ha RESPONDIDO EXPLÍCITAMENTE que quiere marcar los datos como PROMEDIO GENERAL. Si el usuario no lo ha dicho, NO USES ESTA HERRAMIENTA. En su lugar, respóndele preguntándole a qué sensor cargar los datos."
+      },
+      "id": "6250114e-c793-4756-b339-2fe286d9e2c6",
+      "name": "cargar_PromedioGeneral_Confirmado",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        512,
+        -3472
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_inventory_cosechas",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "batch_id",
+              "valueProvider": "fieldValue",
+              "value": "{batch_id}"
+            },
+            {
+              "name": "strain",
+              "valueProvider": "fieldValue",
+              "value": "{cepa}"
+            },
+            {
+              "name": "dry_weight_g",
+              "valueProvider": "fieldValue",
+              "value": "{peso_seco_gramos}"
+            },
+            {
+              "name": "grams_available",
+              "valueProvider": "fieldValue",
+              "value": "{peso_seco_gramos}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "batch_id",
+              "description": "LOTE-001.",
+              "type": "string"
+            },
+            {
+              "name": "cepa",
+              "description": "Nombre de la flor.",
+              "type": "string"
+            },
+            {
+              "name": "peso_seco_gramos",
+              "description": "Gramos secos totales listos para venta.",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "720c0223-7fed-443d-a54f-26b20db31519",
+      "name": "cosecha_seca",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        656,
+        -3472
+      ]
+    },
+    {
+      "parameters": {
+        "model": "llama-3.1-8b-instant",
+        "options": {
+          "maxTokens": 500
+        }
+      },
+      "id": "d833318c-a431-4be2-a34f-fae7b7585555",
+      "name": "Groq (Llama 70B Versatile)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGroq",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        -3568
+      ],
+      "credentials": {
+        "groqApi": {
+          "id": "relM2SypDqndJWK2",
+          "name": "Groq account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "boolean": [
+            {
+              "value1": "={{ $json.body.hasMedia }}",
+              "value2": true
+            }
+          ]
+        }
+      },
+      "id": "eb024e13-e44f-494f-a5da-b041ca2d55c3",
+      "name": "IF Audio o Texto",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        -704,
+        -2016
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "for (const item of $input.all()) {\n  item.json.sessionId = item.json.body.sessionId || item.json.body.phone || 'usuario_anonimo';\n}\nreturn $input.all();"
+      },
+      "id": "77de67b1-251b-4f87-b886-b6bdac932fc1",
+      "name": "Hoist Session ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [
+        -880,
+        -2016
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_sales",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"tx_id\": \"TX-BOT-{item_id}-{qty}\", \"date\": \"{date}\", \"item_id\": \"{item_id}\", \"qty_sold\": {qty}, \"revenue\": {revenue}, \"client\": \"{client}\" }",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "item_id",
+              "description": "ID del lote vendido (ej.",
+              "type": "string"
+            },
+            {
+              "name": "qty",
+              "description": "Cantidad en gramos vendidos.",
+              "type": "number"
+            },
+            {
+              "name": "client",
+              "description": "Clasificación del cliente (ej.",
+              "type": "string"
+            },
+            {
+              "name": "revenue",
+              "description": "Ingreso total de la venta (cantidad * pr.",
+              "type": "number"
+            },
+            {
+              "name": "date",
+              "description": "Fecha y hora de la venta en formato ISO .",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "9f2f3916-7473-4ca2-90b7-30476ceffce9",
+      "name": "cargar_ventas_pos",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        -2720
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agent-sale",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "900f7d08-a835-4ff1-94ba-f591125b45bb",
+      "name": "Webhook Agent Sale",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        -1008,
+        -1600
+      ],
+      "webhookId": "agent-sale-12345"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE core_inventory_cosechas SET qty = qty - {{$json.body.qty}} WHERE id = '{{$json.body.item_id}}' RETURNING id;",
+        "options": {}
+      },
+      "id": "06e704c7-130d-4fa2-82af-7e4a6b27fbae",
+      "name": "PG Sale Update Stock",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [
+        -704,
+        -1600
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "yfBYokjK02D81bok",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ \"INSERT INTO core_sales (tx_id, item_id, qty_sold, revenue, client, date) VALUES ('TX-AI-\" + Date.now() + \"', '\" + $json.body.item_id + \"', \" + $json.body.qty + \", \" + $json.body.price + \", '\" + $json.body.client + \"', NOW()) RETURNING id;\" }}",
+        "options": {}
+      },
+      "id": "bf587210-06fa-4d20-9fda-1080c2c31823",
+      "name": "PG Sale Insert Record",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.2,
+      "position": [
+        -400,
+        -1600
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "yfBYokjK02D81bok",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "response",
+              "value": "Venta registrada exitosamente. Hemos deducido {{$json.body.qty}}g del {{$json.body.item_id}}."
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e7b4b62c-3ddd-45d2-9125-a763ff941078",
+      "name": "Format Sale Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 1,
+      "position": [
+        -96,
+        -1600
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_batches?select=id,strain,stage,location&order=id.asc",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "38f08168-fa5d-4f45-8831-0e3faf764fb9",
+      "name": "consultar_lotes",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        -3408
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_rooms?select=id,name,phase&order=name.asc",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "db12a2a9-021c-4b4b-a0ed-08d26a32ba05",
+      "name": "consultar_salas",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        -3520
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_inventory_quimicos?select=id,name,type,qty,min_stock,last_updated&order=name.asc",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "bca1f541-78e8-4dda-a530-af639349866c",
+      "name": "consultar_insumos",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        -3264
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_inventory_cosechas?select=id,name,qty,price,type&order=name.asc",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "1e173270-6f06-4d18-b1f0-b044103f225f",
+      "name": "consultar_stock_cosechas",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        -3120
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_agronomic_events?select=batch_id,room_id,event_type,description,date_occurred&order=date_occurred.desc&limit=20",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "d5c0c29c-cfb8-4260-80a6-daaa92044771",
+      "name": "consultar_eventos_agronomicos",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        -2960
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/daily_telemetry?select=batch_id,room_id,sensor_id,temperature_c,humidity_percent,vpd_kpa,created_at,core_sensors(name)&order=created_at.desc&limit=15",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "f69ca5e2-4fb9-4ae0-a9ee-71f4be2f52d6",
+      "name": "consultar_telemetria",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        -2816
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_sales?select=tx_id,item_id,qty_sold,revenue,client,customer_name,date&order=date.desc&limit=50",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "f7cbaabe-17f8-4309-a22e-6ada2b765ddc",
+      "name": "consultar_ventas",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        -2672
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_batches?id=eq.{batch_id}",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "stage",
+              "valueProvider": "fieldValue",
+              "value": "{nueva_fase}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "batch_id",
+              "description": "ID del Lote (Ej.",
+              "type": "string"
+            },
+            {
+              "name": "nueva_fase",
+              "description": "Fase a la que se mueve (floracion, cosec.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "eba50e76-68a0-4aef-8d64-f3ebf615ee41",
+      "name": "avanzar_fase_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        912,
+        -3616
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_inventory_quimicos",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "name",
+              "valueProvider": "fieldValue",
+              "value": "{nombre}"
+            },
+            {
+              "name": "type",
+              "valueProvider": "fieldValue",
+              "value": "{tipo}"
+            },
+            {
+              "name": "qty",
+              "valueProvider": "fieldValue",
+              "value": "{cantidad}"
+            },
+            {
+              "name": "unit_cost",
+              "valueProvider": "fieldValue",
+              "value": "{costo_unitario}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "nombre",
+              "description": "Nombre del insumo.",
+              "type": "string"
+            },
+            {
+              "name": "tipo",
+              "description": "fertilizante, sustrato o pesticida.",
+              "type": "string"
+            },
+            {
+              "name": "cantidad",
+              "description": "Litros/ml/gramos ingresados.",
+              "type": "number"
+            },
+            {
+              "name": "costo_unitario",
+              "description": "Costo por unidad.",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "3f111427-fcc1-471a-b8c4-f4bc9175adcd",
+      "name": "ingresar_insumo_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1072,
+        -3616
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_batches?id=eq.{batch_id}",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "stage",
+              "valueProvider": "fieldValue",
+              "value": "cosecha"
+            },
+            {
+              "name": "weight_wet",
+              "valueProvider": "fieldValue",
+              "value": "{peso_gramos}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "batch_id",
+              "description": "ID del Lote (Ej.",
+              "type": "string"
+            },
+            {
+              "name": "peso_gramos",
+              "description": "Gramos humedos totales.",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "11e74d4a-7d2f-4c35-9dd0-1e24961394f8",
+      "name": "cosecha_humeda_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        912,
+        -3472
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://109.199.99.126:5006/bot-agronomico",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "batches",
+              "valueProvider": "fieldValue",
+              "value": "{batches}"
+            },
+            {
+              "name": "inputs",
+              "valueProvider": "fieldValue",
+              "value": "{inputs}"
+            },
+            {
+              "name": "water_liters",
+              "valueProvider": "fieldValue",
+              "value": "{water_liters}"
+            },
+            {
+              "name": "event_type",
+              "valueProvider": "fieldValue",
+              "value": "{event_type}"
+            },
+            {
+              "name": "raw_description",
+              "valueProvider": "fieldValue",
+              "value": "{raw_description}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "batches",
+              "description": "Array JSON de IDs de lotes destino.",
+              "type": "string"
+            },
+            {
+              "name": "inputs",
+              "description": "Array JSON de insumos aplicados con nomb.",
+              "type": "string"
+            },
+            {
+              "name": "water_liters",
+              "description": "Litros totales de agua usados para dilui.",
+              "type": "number"
+            },
+            {
+              "name": "event_type",
+              "description": "Tipo de evento: Nutricion, Prevencion, A.",
+              "type": "string"
+            },
+            {
+              "name": "raw_description",
+              "description": "Descripcion completa en texto libre del .",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "d7c0ec8f-f41c-40d4-88ef-be7addfaccd6",
+      "name": "reportar_evento_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1072,
+        -3472
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/daily_telemetry",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "batch_id",
+              "valueProvider": "fieldValue",
+              "value": "{sala_o_lote}"
+            },
+            {
+              "name": "room_id",
+              "valueProvider": "fieldValue",
+              "value": "{sala_o_lote}"
+            },
+            {
+              "name": "temperature_c",
+              "valueProvider": "fieldValue",
+              "value": "{temperatura}"
+            },
+            {
+              "name": "humidity_percent",
+              "valueProvider": "fieldValue",
+              "value": "{humedad}"
+            },
+            {
+              "name": "vpd_kpa",
+              "valueProvider": "fieldValue",
+              "value": "{vpd}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "sala_o_lote",
+              "description": "ID oficial (UUID) del lote o de la sala .",
+              "type": "string"
+            },
+            {
+              "name": "temperatura",
+              "description": "Temperatura en grados C.",
+              "type": "number"
+            },
+            {
+              "name": "humedad",
+              "description": "Humedad Relativa en %.",
+              "type": "number"
+            },
+            {
+              "name": "vpd",
+              "description": "VPD en kPa (calculado por el agente).",
+              "type": "number"
+            }
+          ]
+        },
+        "description": "PELIGRO: Usa esta herramienta ÚNICAMENTE si le has preguntado al usuario y él te ha RESPONDIDO EXPLÍCITAMENTE que quiere marcar los datos como PROMEDIO GENERAL. Si el usuario no lo ha dicho, NO USES ESTA HERRAMIENTA. En su lugar, respóndele preguntándole a qué sensor cargar los datos."
+      },
+      "id": "92fe4b4d-5fef-4b3c-a972-67ff14979fe2",
+      "name": "cargar_PromedioGeneral_Confirmado_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1216,
+        -3472
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_inventory_cosechas",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "batch_id",
+              "valueProvider": "fieldValue",
+              "value": "{batch_id}"
+            },
+            {
+              "name": "strain",
+              "valueProvider": "fieldValue",
+              "value": "{cepa}"
+            },
+            {
+              "name": "dry_weight_g",
+              "valueProvider": "fieldValue",
+              "value": "{peso_seco_gramos}"
+            },
+            {
+              "name": "grams_available",
+              "valueProvider": "fieldValue",
+              "value": "{peso_seco_gramos}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "batch_id",
+              "description": "LOTE-001.",
+              "type": "string"
+            },
+            {
+              "name": "cepa",
+              "description": "Nombre de la flor.",
+              "type": "string"
+            },
+            {
+              "name": "peso_seco_gramos",
+              "description": "Gramos secos totales listos para venta.",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "8676674f-16bb-40db-b3e4-6ffedb8a8107",
+      "name": "cosecha_seca_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1376,
+        -3472
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_sales",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"tx_id\": \"TX-BOT-{item_id}-{qty}\", \"date\": \"{date}\", \"item_id\": \"{item_id}\", \"qty_sold\": {qty}, \"revenue\": {revenue}, \"client\": \"{client}\" }",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "item_id",
+              "description": "ID del lote vendido (ej.",
+              "type": "string"
+            },
+            {
+              "name": "qty",
+              "description": "Cantidad en gramos vendidos.",
+              "type": "number"
+            },
+            {
+              "name": "client",
+              "description": "Clasificación del cliente (ej.",
+              "type": "string"
+            },
+            {
+              "name": "revenue",
+              "description": "Ingreso total de la venta (cantidad * pr.",
+              "type": "number"
+            },
+            {
+              "name": "date",
+              "description": "Fecha y hora de la venta en formato ISO .",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "aa2156cb-df1d-40f3-abd7-c8e661b0fbef",
+      "name": "cargar_ventas_pos_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        912,
+        -2720
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_batches?select=id,strain,stage,location&order=id.asc",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "2c815d09-f485-4e29-a0a4-882d57211a0f",
+      "name": "consultar_lotes_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        752,
+        -3408
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_inventory_quimicos?select=id,name,type,qty,min_stock,last_updated&order=name.asc",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "1bc70974-1a79-4d50-9778-97ec8e3d9c45",
+      "name": "consultar_insumos_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        752,
+        -3264
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_inventory_cosechas?select=id,name,qty,price,type&order=name.asc",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "0923441c-0d45-4f27-bcc0-f191372356cb",
+      "name": "consultar_stock_cosechas_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        752,
+        -3120
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_agronomic_events?select=batch_id,room_id,event_type,description,date_occurred&order=date_occurred.desc&limit=20",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "8a6c2fa8-08fd-4c16-93b4-dff80fdc71d5",
+      "name": "consultar_eventos_agronomicos_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        752,
+        -2960
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/daily_telemetry?select=batch_id,room_id,sensor_id,temperature_c,humidity_percent,vpd_kpa,created_at,core_sensors(name)&order=created_at.desc&limit=15",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "5ef8e4e9-e51a-4bd2-af83-881b84c17126",
+      "name": "consultar_telemetria_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        752,
+        -2816
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_sales?select=tx_id,item_id,qty_sold,revenue,client,date&order=date.desc&limit=20",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "de15b406-1365-4095-bc77-742f9f1787bf",
+      "name": "consultar_ventas_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        752,
+        -2672
+      ]
+    },
+    {
+      "parameters": {
+        "model": "anthropic/claude-3.7-sonnet:thinking",
+        "options": {
+          "maxTokens": 500
+        }
+      },
+      "id": "732ceede-5019-4e38-a39a-2d132cf50eb9",
+      "name": "OpenRouter (GPT-OSS 120B)",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenRouter",
+      "typeVersion": 1,
+      "position": [
+        800,
+        -3568
+      ],
+      "credentials": {
+        "openRouterApi": {
+          "id": "CN5018CsgxQLJts8",
+          "name": "OpenRouter account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Hoist Session ID').item.json.sessionId }}",
+        "contextWindowLength": 10,
+        "k": 0
+      },
+      "id": "9c1c704e-60fc-41e6-be86-c5574029db13",
+      "name": "Window Buffer Memory (Groq)",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.2,
+      "position": [
+        800,
+        -3408
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json?.body?.body || $json?.body?.text || $json?.text || '' }}",
+        "options": {
+          "systemMessage": "\n⚠️ ANTI-ALUCINACIÓN CRÍTICA:\n• Cuando el usuario dice \"sí\", \"ok\", \"confirmo\", \"dale\" o cualquier afirmación → EJECUTA el tool INMEDIATAMENTE en segundo plano sin mostrar ningún JSON.\n• JAMÁS muestres texto como \"<function=tool_name>...\" o \"cargar_ventas_pos {...}\". Eso es una alucinación grave.\n• Si el tool se ejecutó bien → respondé simplemente: \"✅ Registrado exitosamente.\"\n• Si el tool falló → explicá el error en lenguaje natural.\n\nSos el Agente de CRM Cannabis 360 OS. Tu trabajo es registrar datos, ejecutar acciones y responder consultas sobre el cultivo, ventas e inventario usando las herramientas (Tools) disponibles. Respondé siempre en español de Argentina. Sé conciso, claro y profesional.\n\n\n\n\n\n━━━━━━━━━━━━━━━━━━━━━━━━\n🌡️ REGLA ABSOLUTA DE TELEMETRÍA MULTI-SENSOR\n━━━━━━━━━━━━━━━━━━━━━━━━\nSIEMPRE que el usuario envíe telemetría, ESTÁ TERMINANTEMENTE PROHIBIDO cargarlo automáticamente sin verificar los sensores.\n1) Ejecuta 'consultar_sensores' para saber qué sensores hay en esa sala.\n2) PREGUNTA OBLIGATORIAMENTE AL USUARIO: \"Veo que la sala tiene el Sensor 1. ¿Cargo esto en ese sensor o lo marco como Promedio General?\".\n3) SOLO CUANDO EL USUARIO RESPONDA, ejecutarás la herramienta enviando los IDs oficiales. NUNCA ENVÍES TEXTO PLANO COMO ID DE SENSOR: AL EJECUTAR 'cargar_Telemetria_En_SensorEspecifico' EL PARÁMETRO sensor_id DEBE SER EL UUID.\n\nREGLA DE ORO DE UUIDs: ¡NUNCA INVENTES UUIDs! ¡NUNCA envíes nombres textuales (Sensor 1) a herramientas que piden UUIDs! Siempre usa las herramientas de consulta (consultar_sensores, consultar_lotes) para obtener los verdaderos UUIDs de la base de datos antes de guardar.",
+          "maxIterations": 20
+        }
+      },
+      "id": "5b144e41-5ee9-4e49-b7c9-f68d1908e992",
+      "name": "AI Agent (Groq Fallback)",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.6,
+      "position": [
+        400,
+        -3968
+      ],
+      "continueOnFail": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_batches",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "id",
+              "valueProvider": "fieldValue",
+              "value": "{batch_id}"
+            },
+            {
+              "name": "strain",
+              "valueProvider": "fieldValue",
+              "value": "{cepa}"
+            },
+            {
+              "name": "stage",
+              "valueProvider": "fieldValue",
+              "value": "{fase_inicial}"
+            },
+            {
+              "name": "location",
+              "valueProvider": "fieldValue",
+              "value": "{sala}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "batch_id",
+              "description": "ID del nuevo lote (Ej: LOTE-2-2026).",
+              "type": "string"
+            },
+            {
+              "name": "cepa",
+              "description": "Nombre de la genética o cepa (Ej: Nicole.",
+              "type": "string"
+            },
+            {
+              "name": "fase_inicial",
+              "description": "Fase inicial (clon/vegetativo/floracion).",
+              "type": "string"
+            },
+            {
+              "name": "sala",
+              "description": "Sala de ubicación inicial (Ej: sala-veg-.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "9200ff95-695c-4915-a013-fadcc4bbe5fb",
+      "name": "crear_lote",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        352,
+        -3312
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_batches",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "id",
+              "valueProvider": "fieldValue",
+              "value": "{batch_id}"
+            },
+            {
+              "name": "strain",
+              "valueProvider": "fieldValue",
+              "value": "{cepa}"
+            },
+            {
+              "name": "stage",
+              "valueProvider": "fieldValue",
+              "value": "{fase_inicial}"
+            },
+            {
+              "name": "location",
+              "valueProvider": "fieldValue",
+              "value": "{sala}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "batch_id",
+              "description": "ID del nuevo lote (Ej: LOTE-2-2026).",
+              "type": "string"
+            },
+            {
+              "name": "cepa",
+              "description": "Nombre de la genética o cepa (Ej: Nicole.",
+              "type": "string"
+            },
+            {
+              "name": "fase_inicial",
+              "description": "Fase inicial (clon/vegetativo/floracion).",
+              "type": "string"
+            },
+            {
+              "name": "sala",
+              "description": "Sala de ubicación inicial (Ej: sala-veg-.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "d14992ab-05f1-4702-adfc-c9d754aed525",
+      "name": "crear_lote_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        352,
+        -3168
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.error ? true : false }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d3db9a83-c658-498b-bea4-784199446148",
+      "name": "If Agent 1 Failed",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        208,
+        -3760
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_sales?select=customer_name,client,revenue,item_id,date&order=date.desc&limit=100",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "430a7d77-2fc5-42dd-8092-9c79264a3079",
+      "name": "consultar_clientes",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        -2512
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_rooms?select=id,name,phase&order=name.asc",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        }
+      },
+      "id": "2c409199-fd83-4b42-956b-b30f5dfac407",
+      "name": "consultar_salas_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        -3520
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ response: $json.output }) }}",
+        "options": {}
+      },
+      "id": "e788cc08-9c96-44e7-afb0-c17d8bcc9901",
+      "name": "Responder a WhatsApp PM2",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        400,
+        -3760
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_protocols?select=*&order=created_at.desc",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        }
+      },
+      "id": "161954d2-f044-4c61-b53c-483dbfafcc6c",
+      "name": "consultar_protocolos",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -80,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_protocols",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "title",
+              "valueProvider": "fieldValue",
+              "value": "{title}"
+            },
+            {
+              "name": "stage",
+              "valueProvider": "fieldValue",
+              "value": "{stage}"
+            },
+            {
+              "name": "topic",
+              "valueProvider": "fieldValue",
+              "value": "{topic}"
+            },
+            {
+              "name": "content",
+              "valueProvider": "fieldValue",
+              "value": "{content}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "title",
+              "description": "Título descriptivo corto del protocolo.",
+              "type": "string"
+            },
+            {
+              "name": "stage",
+              "description": "Etapa (Seleccionar una: General, Germina.",
+              "type": "string"
+            },
+            {
+              "name": "topic",
+              "description": "Tema (Seleccionar una: Nutrición / Riego.",
+              "type": "string"
+            },
+            {
+              "name": "content",
+              "description": "Instrucciones paso a paso detalladas.",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "7bcaec58-6d20-4525-81b9-c2c0971c53b9",
+      "name": "crear_protocolo",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        -80,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_inventory_quimicos?id=eq.{insumo_id}",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"qty\": {nuevo_stock} }",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "insumo_id",
+              "description": "ID del insumo obtenido en consultar_insu.",
+              "type": "string"
+            },
+            {
+              "name": "nuevo_stock",
+              "description": "Cantidad total matemática resultante lue.",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "eb2d11c7-cf40-4f0a-b19b-88c8624df9a7",
+      "name": "actualizar_stock_insumo",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        400,
+        -3840
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_inventory_quimicos?id=eq.{insumo_id}",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"qty\": {nuevo_stock} }",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "insumo_id",
+              "description": "ID del insumo obtenido en consultar_insu.",
+              "type": "string"
+            },
+            {
+              "name": "nuevo_stock",
+              "description": "Cantidad total matemática resultante.",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "cbda5eb2-9ea9-4ec2-b5af-4373f87e69a8",
+      "name": "actualizar_stock_insumo_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        400,
+        -4032
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_inventory_cosechas?id=eq.{cosecha_id}",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"qty\": {nuevo_stock} }",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "cosecha_id",
+              "description": "ID de la cosecha ej.",
+              "type": "string"
+            },
+            {
+              "name": "nuevo_stock",
+              "description": "Cantidad matemática resultante en gramos.",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "c83bddb8-0961-458a-a861-6cc0a51c8dda",
+      "name": "actualizar_stock_cosecha",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        400,
+        -4240
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_inventory_cosechas?id=eq.{cosecha_id}",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{ \"qty\": {nuevo_stock} }",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "cosecha_id",
+              "description": "ID de la cosecha ej.",
+              "type": "string"
+            },
+            {
+              "name": "nuevo_stock",
+              "description": "Cantidad matemática resultante en gramos.",
+              "type": "number"
+            }
+          ]
+        }
+      },
+      "id": "8bf11279-d96a-4848-80de-1a6f5a83e727",
+      "name": "actualizar_stock_cosecha_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        400,
+        -4432
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_sensors?select=id,name,room_id&order=name.asc",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": []
+        },
+        "description": "HERRAMIENTA OBLIGATORIA. DEBES ejecutar esto SIEMPRE antes de guardar telemetría, para buscar el UUID real y exacto del sensor que el usuario pida. Si no usas esta herramienta antes de intentar guardar en un sensor específico, el sistema EXPLOTARÁ con un Error 409 por inventar un UUID falso."
+      },
+      "id": "node_t61r5mkymhju7595cd60u8",
+      "name": "consultar_sensores",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        64,
+        -3320
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/core_sensors?select=id,name,room_id&order=name.asc",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            }
+          ]
+        },
+        "description": "HERRAMIENTA OBLIGATORIA. DEBES ejecutar esto SIEMPRE antes de guardar telemetría, para buscar el UUID real y exacto del sensor que el usuario pida. Si no usas esta herramienta antes de intentar guardar en un sensor específico, el sistema EXPLOTARÁ con un Error 409 por inventar un UUID falso."
+      },
+      "id": "node_i6nffvay8hjlvforywa7m",
+      "name": "consultar_sensores_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        208,
+        -3320
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/daily_telemetry",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "batch_id",
+              "valueProvider": "fieldValue",
+              "value": "{sala_o_lote}"
+            },
+            {
+              "name": "room_id",
+              "valueProvider": "fieldValue",
+              "value": "{sala_o_lote}"
+            },
+            {
+              "name": "temperature_c",
+              "valueProvider": "fieldValue",
+              "value": "{temperatura}"
+            },
+            {
+              "name": "humidity_percent",
+              "valueProvider": "fieldValue",
+              "value": "{humedad}"
+            },
+            {
+              "name": "vpd_kpa",
+              "valueProvider": "fieldValue",
+              "value": "{vpd}"
+            },
+            {
+              "name": "sensor_id",
+              "valueProvider": "fieldValue",
+              "value": "{sensor_id}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "sala_o_lote",
+              "description": "ID oficial (UUID) del lote o de la sala .",
+              "type": "string"
+            },
+            {
+              "name": "temperatura",
+              "description": "Temperatura en grados C.",
+              "type": "number"
+            },
+            {
+              "name": "humedad",
+              "description": "Humedad Relativa en %.",
+              "type": "number"
+            },
+            {
+              "name": "vpd",
+              "description": "VPD en kPa (calculado por el agente).",
+              "type": "number"
+            },
+            {
+              "name": "sensor_id",
+              "description": "¡PELIGRO TÉCNICO! Este campo REQUIERE ESTRICTAMENTE un formato UUID (ej: 123e4567-e89b-12d3). ¡NUNCA envíes nombres de texto como 'Sensor 1' o fallará! Debes ejecutar PRIMERO la herramienta 'consultar_sensores' para conseguir el UUID de este sensor, sin excepciones. Si no tienes el UUID largo, NO EJECUTES ESTA HERRAMIENTA.",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "Usa esta herramienta cuando el usuario te indique que la telemetría pertenece a un sensor específico, o después de que le hayas preguntado y te haya respondido su preferencia."
+      },
+      "id": "node_6f2meq6rwvp8qx417fnd2v",
+      "name": "cargar_Telemetria_En_SensorEspecifico",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        512,
+        -3322
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/daily_telemetry",
+        "sendHeaders": true,
+        "parametersHeaders": {
+          "values": [
+            {
+              "name": "apikey",
+              "valueProvider": "fieldValue",
+              "value": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Authorization",
+              "valueProvider": "fieldValue",
+              "value": "Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI1Nzc2NTAsImV4cCI6MjA4ODE1MzY1MH0.Hx6t3ZFZj6TGei8c99bfdwUfJ1ce5XaGM4IuUBJUeC8"
+            },
+            {
+              "name": "Content-Type",
+              "valueProvider": "fieldValue",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "valueProvider": "fieldValue",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "parametersBody": {
+          "values": [
+            {
+              "name": "batch_id",
+              "valueProvider": "fieldValue",
+              "value": "{sala_o_lote}"
+            },
+            {
+              "name": "room_id",
+              "valueProvider": "fieldValue",
+              "value": "{sala_o_lote}"
+            },
+            {
+              "name": "temperature_c",
+              "valueProvider": "fieldValue",
+              "value": "{temperatura}"
+            },
+            {
+              "name": "humidity_percent",
+              "valueProvider": "fieldValue",
+              "value": "{humedad}"
+            },
+            {
+              "name": "vpd_kpa",
+              "valueProvider": "fieldValue",
+              "value": "{vpd}"
+            },
+            {
+              "name": "sensor_id",
+              "valueProvider": "fieldValue",
+              "value": "{sensor_id}"
+            }
+          ]
+        },
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "sala_o_lote",
+              "description": "ID oficial (UUID) del lote o de la sala .",
+              "type": "string"
+            },
+            {
+              "name": "temperatura",
+              "description": "Temperatura en grados C.",
+              "type": "number"
+            },
+            {
+              "name": "humedad",
+              "description": "Humedad Relativa en %.",
+              "type": "number"
+            },
+            {
+              "name": "vpd",
+              "description": "VPD en kPa (calculado por el agente).",
+              "type": "number"
+            },
+            {
+              "name": "sensor_id",
+              "description": "¡PELIGRO TÉCNICO! Este campo REQUIERE ESTRICTAMENTE un formato UUID (ej: 123e4567-e89b-12d3). ¡NUNCA envíes nombres de texto como 'Sensor 1' o fallará! Debes ejecutar PRIMERO la herramienta 'consultar_sensores' para conseguir el UUID de este sensor, sin excepciones. Si no tienes el UUID largo, NO EJECUTES ESTA HERRAMIENTA.",
+              "type": "string"
+            }
+          ]
+        },
+        "description": "Usa esta herramienta cuando el usuario te indique que la telemetría pertenece a un sensor específico, o después de que le hayas preguntado y te haya respondido su preferencia."
+      },
+      "id": "node_1ycdnb1xr8a9umd1vb0v9",
+      "name": "cargar_Telemetria_En_SensorEspecifico_groq",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        1216,
+        -3322
+      ]
+    }
+  ],
+  "connections": {
+    "Webhook Entities": {
+      "main": [
+        [
+          {
+            "node": "CRUD Router",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CRUD Router": {
+      "main": [
+        [
+          {
+            "node": "PG Create",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG Read",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG Update",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "PG Delete",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Telemetry": {
+      "main": [
+        [
+          {
+            "node": "Bypass PG",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook POS Sales": {
+      "main": [
+        [
+          {
+            "node": "PG Insert Sales",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Cultivos": {
+      "main": [
+        [
+          {
+            "node": "Router Cultivos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Tareas Calendar": {
+      "main": [
+        [
+          {
+            "node": "Google Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Get Telemetry (WhatsApp)": {
+      "main": [
+        [
+          {
+            "node": "PG Select Telemetry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Router Cultivos": {
+      "main": [
+        [
+          {
+            "node": "PG Insert Crop",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Cal: Nuevo Lote",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cal: Alerta IPM",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cal: Alerta Poda",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Cal: Estimador Cosecha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook WhatsApp": {
+      "main": [
+        [
+          {
+            "node": "Hoist Session ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract TM Data": {
+      "main": [
+        [
+          {
+            "node": "PG Insert WA TM",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Insert WA TM": {
+      "main": [
+        [
+          {
+            "node": "Format Env Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq Whisper (STT)": {
+      "main": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "avanzar_fase": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ingresar_insumo": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent (Function Calling)": {
+      "main": [
+        [
+          {
+            "node": "If Agent 1 Failed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cosecha_humeda": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "reportar_evento": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cosecha_seca": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Audio o Texto": {
+      "main": [
+        [
+          {
+            "node": "Groq Whisper (STT)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Hoist Session ID": {
+      "main": [
+        [
+          {
+            "node": "IF Audio o Texto",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Sale Update Stock": {
+      "main": [
+        [
+          {
+            "node": "PG Sale Insert Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PG Sale Insert Record": {
+      "main": [
+        [
+          {
+            "node": "Format Sale Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cargar_ventas_pos": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_lotes": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_insumos": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_stock_cosechas": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_eventos_agronomicos": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_telemetria": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_ventas": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Window Buffer Memory (Groq)": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent (Groq Fallback)": {
+      "main": [
+        [
+          {
+            "node": "Responder a WhatsApp PM2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "avanzar_fase_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ingresar_insumo_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cosecha_humeda_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "reportar_evento_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cosecha_seca_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cargar_ventas_pos_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_lotes_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_insumos_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_stock_cosechas_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_eventos_agronomicos_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_telemetria_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_ventas_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook Agent Sale": {
+      "main": [
+        [
+          {
+            "node": "PG Sale Update Stock",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "crear_lote": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "crear_lote_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Groq (Llama 70B Versatile)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter (GPT-OSS 120B)": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Agent 1 Failed": {
+      "main": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format WA Response",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Responder a WhatsApp PM2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_clientes": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_salas": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_salas_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_protocolos": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "crear_protocolo": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_sensores": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "consultar_sensores_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cargar_Telemetria_En_SensorEspecifico": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cargar_PromedioGeneral_Confirmado": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cargar_Telemetria_En_SensorEspecifico_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "cargar_PromedioGeneral_Confirmado_groq": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent (Groq Fallback)",
+            "type": "ai_tool",
+            "index": 0
+          },
+          {
+            "node": "AI Agent (Function Calling)",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {},
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "tags": []
+}
