@@ -3206,7 +3206,7 @@
           "values": [
             {
               "name": "sala_o_lote",
-              "description": "ID oficial (UUID) del lote o de la sala .",
+              "description": "¡PELIGRO TÉCNICO! ID oficial (UUID) EXACTO del lote o de la sala. Debes OBTENER este UUID del campo 'room_id' que te devuelve la herramienta consultar_sensores. NUNCA envíes el nombre textual (ej: 'CARPA-1' o 'Carpa 1') o el sistema colapsará.",
               "type": "string"
             },
             {
