@@ -3141,7 +3141,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/daily_telemetry",
+        "url": "https://opnjrzixsrizdnphbjnq.supabase.co/rest/v1/rpc/insert_telemetry_by_name",
         "sendHeaders": true,
         "parametersHeaders": {
           "values": [
@@ -3171,42 +3171,37 @@
         "parametersBody": {
           "values": [
             {
-              "name": "batch_id",
+              "name": "p_room_name",
               "valueProvider": "fieldValue",
-              "value": "{sala_o_lote}"
+              "value": "{room_name}"
             },
             {
-              "name": "room_id",
+              "name": "p_sensor_name",
               "valueProvider": "fieldValue",
-              "value": "{sala_o_lote}"
+              "value": "{sensor_name}"
             },
             {
-              "name": "temperature_c",
+              "name": "p_temperature_c",
               "valueProvider": "fieldValue",
               "value": "{temperatura}"
             },
             {
-              "name": "humidity_percent",
+              "name": "p_humidity_percent",
               "valueProvider": "fieldValue",
               "value": "{humedad}"
-            },
-            {
-              "name": "vpd_kpa",
-              "valueProvider": "fieldValue",
-              "value": "{vpd}"
-            },
-            {
-              "name": "sensor_id",
-              "valueProvider": "fieldValue",
-              "value": "{sensor_id}"
             }
           ]
         },
         "placeholderDefinitions": {
           "values": [
             {
-              "name": "sala_o_lote",
-              "description": "¡PELIGRO TÉCNICO! ID oficial (UUID) EXACTO del lote o de la sala. Debes OBTENER este UUID del campo 'room_id' que te devuelve la herramienta consultar_sensores. NUNCA envíes el nombre textual (ej: 'CARPA-1' o 'Carpa 1') o el sistema colapsará.",
+              "name": "room_name",
+              "description": "El nombre vulgar/textual de la sala o carpa proporcionado por el usuario (ej: 'Carpa 1', 'Carpa Vege'). ¡Por favor NO intentes buscar ni usar códigos UUID aquí, el sistema necesita exclusivamente el nombre textual!",
+              "type": "string"
+            },
+            {
+              "name": "sensor_name",
+              "description": "El nombre vulgar/textual del sensor proporcionado por el usuario (ej: 'Sensor 1', 'Sensor 2'). Si el usuario refiere a un promedio oa toda la sala, déjalo vacío o usa 'Promedio'. ¡NUNCA uses códigos UUID aquí!",
               "type": "string"
             },
             {
@@ -3218,20 +3213,10 @@
               "name": "humedad",
               "description": "Humedad Relativa en %.",
               "type": "number"
-            },
-            {
-              "name": "vpd",
-              "description": "VPD en kPa (calculado por el agente).",
-              "type": "number"
-            },
-            {
-              "name": "sensor_id",
-              "description": "¡PELIGRO TÉCNICO! Este campo REQUIERE ESTRICTAMENTE un formato UUID (ej: 123e4567-e89b-12d3). ¡NUNCA envíes nombres de texto como 'Sensor 1' o fallará! Debes ejecutar PRIMERO la herramienta 'consultar_sensores' para conseguir el UUID de este sensor, sin excepciones. Si no tienes el UUID largo, NO EJECUTES ESTA HERRAMIENTA.",
-              "type": "string"
             }
           ]
         },
-        "description": "Usa esta herramienta cuando el usuario te indique que la telemetría pertenece a un sensor específico, o después de que le hayas preguntado y te haya respondido su preferencia."
+        "description": "Herramienta DEFINITIVA para guardar telemetría. Úsala siempre que el usuario informe valores de temperatura y humedad para una sala o sensor específico. ATENCIÓN: El cálculo del VPD lo hace internamente la base de datos automáticamente, por lo que tú como IA ya NO DEBES calcular el VPD ni enviarlo, solo debes enviar los números crudos reportados por el usuario."
       },
       "id": "node_6f2meq6rwvp8qx417fnd2v",
       "name": "cargar_Telemetria_En_SensorEspecifico",

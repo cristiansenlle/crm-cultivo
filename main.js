@@ -668,9 +668,9 @@ async function pollLatestTelemetry(roomId) {
             .from('daily_telemetry')
             .select(`
                 temperature_c, humidity_percent, vpd_kpa, created_at, sensor_id,
-                core_sensors!inner (name, room_id)
+                core_sensors (name)
             `)
-            .eq('core_sensors.room_id', roomId)
+            .eq('batch_id', roomId)
             .order('created_at', { ascending: false })
             .limit(60);
 
