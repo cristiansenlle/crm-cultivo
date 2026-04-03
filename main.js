@@ -663,14 +663,14 @@ async function pollLatestTelemetry(roomId) {
     try {
         if (!window.sbClient || !roomId) return;
 
-        // Limite superior de 60 puntos para graficar (aprox ultimas 1 o 2 horas dependiendo frecuencia)
+        // Limite superior de 60 puntos para graficar
         const { data, error } = await window.sbClient
             .from('daily_telemetry')
             .select(`
                 temperature_c, humidity_percent, vpd_kpa, created_at, sensor_id,
-                core_sensors (name)
+                core_sensors!inner (name, room_id)
             `)
-            .eq('batch_id', roomId)
+            .eq('core_sensors.room_id', roomId)
             .order('created_at', { ascending: false })
             .limit(60);
 
