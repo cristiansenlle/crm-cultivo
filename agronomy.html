@@ -114,17 +114,73 @@
                                     <option value="all">Todas</option>
                                 </select>
                             </div>
+                            <div id="sensorFilterContainer" style="display:flex; flex-direction:column; gap:4px;">
+                                <label style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Sensor</label>
+                                <select id="filterSensor" onchange="applyAgronomyFilters()" style="padding:8px 15px; border-radius:6px; background:#111; color:#fff; border:1px solid #444; height:38px; cursor:pointer;">
+                                    <option value="average_only">Solo Promedio de Sala</option>
+                                </select>
+                            </div>
                             <div style="display:flex; flex-direction:column; gap:4px;">
                                 <label style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Lote</label>
                                 <select id="filterBatch" onchange="applyAgronomyFilters()" style="padding:8px 15px; border-radius:6px; background:#111; color:#fff; border:1px solid #444; height:38px; cursor:pointer;">
                                     <option value="all">Todos</option>
                                 </select>
                             </div>
+                            <div style="display:flex; flex-direction:column; gap:4px; margin-left:10px;">
+                                <label style="font-size:0.75rem; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">Métricas a Graficar</label>
+                                <div style="display:flex; gap:12px; align-items:center; height:38px;">
+                                    <label style="color:var(--text-primary); font-size:0.85rem; cursor:pointer; display:flex; gap:4px; align-items:center;">
+                                        <input type="checkbox" id="showTemp" checked onchange="applyAgronomyFilters()" style="accent-color:#3b82f6; width:16px; height:16px;">
+                                        <span>Temp</span>
+                                    </label>
+                                    <label style="color:var(--text-primary); font-size:0.85rem; cursor:pointer; display:flex; gap:4px; align-items:center;">
+                                        <input type="checkbox" id="showHum" checked onchange="applyAgronomyFilters()" style="accent-color:#10b981; width:16px; height:16px;">
+                                        <span>Humedad</span>
+                                    </label>
+                                    <label style="color:var(--text-primary); font-size:0.85rem; cursor:pointer; display:flex; gap:4px; align-items:center;">
+                                        <input type="checkbox" id="showVpd" onchange="applyAgronomyFilters()" style="accent-color:#a855f7; width:16px; height:16px;">
+                                        <span>VPD</span>
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                     </div>
+                    
+                    <!-- Contenedor Leyenda Personalizada -->
+                    <div id="customLegendContainer" style="display: flex; flex-wrap: wrap; gap: 12px; margin-top: 15px; margin-bottom: 20px; justify-content: center; align-items: center; min-height: 25px;"></div>
+
                     <div style="position: relative; height: 500px; width: 100%;">
                         <canvas id="agronomyChart"></canvas>
                     </div>
+
+                    <!-- Modal Configuración de Estilo -->
+                    <div id="styleEditorBackdrop" onclick="closeStyleEditor()" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:9998; backdrop-filter:blur(3px);"></div>
+                    <div id="styleEditorModal" style="display:none; position:fixed; top:50%; left:50%; transform:translate(-50%, -50%); background:var(--panel-dark); padding:20px; border-radius:12px; border:1px solid #444; z-index:9999; width: 330px; box-shadow:0 10px 40px rgba(0,0,0,0.8);">
+                        <h3 id="styleEditorTitle" style="color:#fff; margin-top:0; font-size:1.1rem; border-bottom:1px solid #333; padding-bottom:10px;">Configurar Curva</h3>
+                        
+                        <input type="hidden" id="styleEditorDatasetIndex">
+                        <input type="hidden" id="styleEditorOriginalLabel">
+                        
+                        <label style="color:var(--text-muted); font-size:0.8rem; margin-top:15px; display:block; text-transform:uppercase; letter-spacing:0.5px;">Color de la Línea</label>
+                        <div style="display:flex; gap:12px; align-items:center; margin-top:8px;">
+                            <input type="color" id="styleEditorColor" style="width:60px; height:40px; border:none; border-radius:6px; cursor:pointer; background:transparent;">
+                            <button onclick="resetDatasetStyle()" style="background:#333; color:#fff; border:1px solid #444; border-radius:6px; padding:10px 15px; cursor:pointer; font-size:0.85rem; flex:1; transition:0.2s;">Restaurar Default</button>
+                        </div>
+
+                        <label style="color:var(--text-muted); font-size:0.8rem; margin-top:20px; display:block; text-transform:uppercase; letter-spacing:0.5px;">Formato de Línea</label>
+                        <select id="styleEditorDash" style="width:100%; padding:10px; border-radius:6px; background:#111; color:#fff; border:1px solid #444; margin-top:8px; height:42px;">
+                            <option value="solid">Línea Continua</option>
+                            <option value="dash_fine">Punteada Fina (Corto)</option>
+                            <option value="dash_thick">Punteada Gruesa (Largo)</option>
+                            <option value="dash_room">Punteada Extrema (Símil Promedio)</option>
+                        </select>
+
+                        <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:25px; border-top:1px solid #333; padding-top:15px;">
+                            <button onclick="closeStyleEditor()" style="background:transparent; color:var(--text-muted); border:none; cursor:pointer; font-weight:600; padding:8px 12px;">Cancelar</button>
+                            <button onclick="saveDatasetStyle()" style="background:var(--color-blue); color:#fff; border:none; border-radius:6px; padding:10px 18px; cursor:pointer; font-weight:bold; box-shadow:0 4px 10px rgba(41, 121, 255, 0.3);">Aplicar y Guardar</button>
+                        </div>
+                    </div>
+
                 </div>
             </div>
         </main>
