@@ -1,0 +1,58 @@
+
+---
+
+---
+Unit docker.service could not be found.
+---
+total 93988
+-rw-r--r--  1 root root    78210 Mar  6 03:26 bot_nodes_fix.json
+-rw-r--r--  1 root root    78210 Mar  6 03:24 bot_nodes_full.json
+-rw-r--r--  1 root root    86441 Mar  5 23:39 bypass_telemetry.sql
+-rw-r--r--  1 root root    78029 Mar  5 23:45 bypass_telemetry_err.sql
+-rw-r--r--  1 root root    77802 Mar  5 23:46 bypass_telemetry_exec.sql
+-rw-r--r--  1 root root    78007 Mar  5 23:43 bypass_telemetry_fix.sql
+-rw-r--r--  1 root root       59 Mar  5 23:18 check_logs.sql
+-rw-r--r--  1 root root       56 Mar  5 23:34 chk2.sql
+-rw-r--r--  1 root root       59 Mar  5 23:37 chk3.sql
+-rw-r--r--  1 root root       59 Mar  5 23:40 chk4.sql
+-rw-r--r--  1 root root       59 Mar  5 23:44 chk5.sql
+-rw-r--r--  1 root root       33 Mar  5 23:29 chk_cred.sql
+drwxr-xr-x  2 root root     4096 Mar  6 03:55 creds_backup.json
+drwxr-xr-x  2 root root     4096 Mar 28 18:18 crm-cannabis
+drwxr-xr-x  2 root root     4096 Apr  2 01:21 crm-cultivo
+-rw-r--r--  1 root root 93398983 Mar  4 04:30 crm_cannabis_backup_20260303_184235.zip
+-rw-r--r--  1 root root      586 Mar  6 03:15 decrypt_cred.js
+-rw-r--r--  1 root root    77117 Mar  5 23:17 enable_telemetry.sql
+-rw-r--r--  1 root root   284781 Mar  6 16:01 export2.json
+-rw-r--r--  1 root root     2420 Apr  3 16:44 funcion_telemetria.sql
+-rw-r--r--  1 root root   284781 Mar  9 23:15 latest_export.json
+-rw-r--r--  1 root root      825 Mar 24 05:11 migrate.js
+-rw-r--r--  1 root root   141302 Apr  2 00:43 n8n-crm-FINAL-MULTI-SENSOR.json
+-rw-r--r--  1 root root   131981 Mar 16 22:05 n8n-crm-cannabis-workflow.json
+drwxr-xr-x 16 root root     4096 Mar 24 05:10 node_modules
+-rw-r--r--  1 root root     5549 Apr  2 00:54 package-lock.json
+-rw-r--r--  1 root root       48 Mar 24 05:10 package.json
+-rw-r--r--  1 root root    77802 Mar  6 03:26 patch_workflow.sql
+-rw-r--r--  1 root root   127847 Mar 10 23:42 patched_creds_export.json
+-rw-r--r--  1 root root   135191 Mar 10 23:08 patched_export.json
+-rw-r--r--  1 root root     1298 Mar  6 03:20 pg_ddl.js
+-rw-r--r--  1 root root    77155 Mar  5 23:31 query_telemetry.sql
+-rw-r--r--  1 root root    77157 Mar  5 23:38 resp_telemetry.sql
+-rw-r--r--  1 root root     1791 Apr  2 00:54 run_migration.js
+-rw-r--r--  1 root root      136 Mar  5 23:37 set_logs.sql
+-rw-r--r--  1 root root      611 Mar  6 00:10 temp_check_db.js
+-rw-r--r--  1 root root     1505 Apr  2 00:22 temp_db_deploy.json
+-rw-r--r--  1 root root     1589 Apr  2 00:26 temp_db_deploy2.json
+-rw-r--r--  1 root root     1549 Apr  2 00:28 temp_db_deploy3.json
+-rw-r--r--  1 root root    80537 Mar 12 16:15 temp_nodes.json
+-rw-r--r--  1 root root   159133 Apr 15 19:05 temp_patch.sql
+-rw-r--r--  1 root root     1549 Apr  2 00:29 temp_wf.json
+-rw-r--r--  1 root root      132 Mar 12 16:15 update_prompt.sql
+-rw-r--r--  1 root root      437 Mar  6 06:28 vps_parser.js
+-rw-r--r--  1 root root      446 Mar  6 16:07 vps_temp.js
+-rw-r--r--  1 root root     8009 Mar 21 19:30 wf_connections.json
+-rw-r--r--  1 root root    86275 Mar 21 19:30 wf_ddl_update.sql
+-rw-r--r--  1 root root    85557 Mar 21 19:30 wf_ddl_update_clean.sql
+-rw-r--r--  1 root root   284781 Mar  6 06:11 wf_export.json
+-rw-r--r--  1 root root    77328 Mar 21 19:30 wf_nodes.json
+-rw-r--r--  1 root root     8793 Mar  5 23:24 wire_telemetry.sql

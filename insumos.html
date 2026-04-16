@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CANNABIS-CORE 360 OS - Bodega e Inventario</title>
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=1776292948794">
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -19,7 +19,7 @@
     <script src="theme.js"></script>
 </head>
 
-<body>
+<body class="hud-grid-bg">
     <div class="app-container">
         <!-- Barra Lateral -->
         <aside class="sidebar">
@@ -67,10 +67,17 @@
                 </div>
             </header>
 
-            <div class="dashboard-grid" style="grid-template-columns: 350px 1fr; align-items: start;">
+            <div class="dashboard-grid" style="grid-template-columns: auto 1fr; align-items: start;">
 
-                <!-- Ingreso de Mercadería -->
-                <div class="widget">
+                
+            <!-- Boton de Activacion Formulario -->
+            <div id="toggle-btn-insumo" class="glass-panel" style="padding: 15px; margin-bottom: 20px; grid-column: 1 / -1; cursor: pointer; text-align: center; border-color: var(--color-green);" onclick="const f = document.getElementById('ingreso-container'); f.style.display = f.style.display==='none'?'flex':'none';">
+                <i class="ph-fill ph-plus-circle" style="font-size: 2rem; color: var(--color-green); margin-bottom: 5px; display:block;"></i>
+                <h4 style="color: var(--text-primary); text-transform: uppercase;">Registrar Ingreso B2B / Compra Insumo</h4>
+            </div>
+            <!-- Contenedor original oculto inicial -->
+            <div id="ingreso-container" style="display:none; grid-column: span 1;"><!-- Ingreso de Mercadería -->
+                <div class="widget glass-panel">
                     <div class="widget-header">
                         <h3><i class="ph ph-package"></i> Ingreso de Mercadería</h3>
                     </div>
@@ -121,7 +128,7 @@
                 </div>
 
                 <!-- Visor de Inventario -->
-                <div class="widget">
+                <div class="widget glass-panel">
                     <div class="widget-header">
                         <h3><i class="ph ph-stack"></i> Estado del Inventario</h3>
                         <div class="tabs-header" style="display: flex; gap: 1rem;">
