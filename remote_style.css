@@ -1,29 +1,30 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Manrope:wght@400;600;800&display=swap');
 /* CANNABIS-CORE 360 Global Variables — Dark Theme (default) */
 :root {
     /* Brand Colors */
-    --bg-dark: #0f1117;
-    --panel-dark: #1a1d27;
-    --panel-hover: #22263a;
+    --bg-dark: #0F172A;
+    --panel-dark: rgba(30, 41, 59, 0.7);
+    --panel-hover: rgba(255, 255, 255, 0.05);
     --text-primary: #E8EAED;
     /* Warm off-white — less glare than pure white */
     --text-secondary: #8F97B3;
     /* Blue-grey muted — good contrast on dark bg */
     --text-muted: #5B6380;
     /* Dimmed — for hints and placeholders */
-    --text-accent: #B5FFDC;
+    --text-accent: #34D399;
     /* Tinted green — for highlight labels */
 
     /* Status Colors */
-    --color-green: #00E676;
+    --color-green: #10B981;
     --color-yellow: #FFEA00;
     --color-red: #FF3D00;
     --color-blue: #2979FF;
 
     /* Glow Effects */
-    --glow-green: 0 0 15px rgba(0, 230, 118, 0.4);
+    --glow-green: 0 0 15px rgba(16, 185, 129, 0.4);
     --glow-yellow: 0 0 15px rgba(255, 234, 0, 0.4);
     --glow-red: 0 0 25px rgba(255, 61, 0, 0.7);
-    --border-green: rgba(0, 230, 118, 0.6);
+    --border-green: rgba(16, 185, 129, 0.6);
     --border-yellow: rgba(255, 234, 0, 0.6);
     --border-red: rgba(255, 61, 0, 0.8);
 
@@ -33,16 +34,16 @@
 
 /* ===== LIGHT THEME ===== */
 [data-theme="light"] {
-    --bg-dark: #EEF1F5;
-    --panel-dark: #FFFFFF;
-    --panel-hover: #F4F6FA;
+    --bg-dark: #F8FAFC;
+    --panel-dark: rgba(255, 255, 255, 0.65);
+    --panel-hover: rgba(0, 0, 0, 0.05);
     --text-primary: #0D1117;
     /* Near-black ink — maximum clarity */
     --text-secondary: #4B5563;
     /* Medium grey — readable subtext */
     --text-muted: #9CA3AF;
     /* Light muted — hints, timestamps */
-    --text-accent: #065F46;
+    --text-accent: #059669;
     /* Deep teal — accent text */
 
     --color-green: #059669;
@@ -71,6 +72,7 @@
 }
 
 [data-theme="light"] .sidebar {
+    overflow: hidden;
     background-color: var(--panel-dark);
     border-right-color: #E5E7EB;
 }
@@ -355,25 +357,31 @@ small,
     box-sizing: border-box;
 }
 
+html,
 body {
-    font-family: 'Inter', sans-serif;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    font-family: 'Manrope', sans-serif;
     background-color: var(--bg-dark);
     color: var(--text-primary);
     line-height: 1.6;
-    overflow-x: hidden;
+    overflow: hidden;
 }
 
 /* Layout */
 .app-container {
     display: grid;
     grid-template-columns: 250px 1fr;
-    min-height: 100vh;
+    height: 100dvh;
+    box-sizing: border-box;
+    overflow: hidden;
 }
 
 /* Sidebar */
 .sidebar {
     background-color: var(--panel-dark);
-    padding: 2rem 1.5rem;
+    padding: 2rem 1.5rem 4rem 1.5rem; /* added bottom padding to clear taskbar */
     display: flex;
     flex-direction: column;
     border-right: 1px solid #333;
@@ -399,6 +407,24 @@ body {
     flex-direction: column;
     gap: 1rem;
     flex-grow: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 5px; /* Prevent scrollbar overlap */
+}
+
+/* Custom minimal scrollbar for nav */
+.nav-menu::-webkit-scrollbar {
+    width: 6px;
+}
+.nav-menu::-webkit-scrollbar-track {
+    background: transparent;
+}
+.nav-menu::-webkit-scrollbar-thumb {
+    background-color: rgba(255,255,255,0.1);
+    border-radius: 4px;
+}
+[data-theme="light"] .nav-menu::-webkit-scrollbar-thumb {
+    background-color: rgba(0,0,0,0.1);
 }
 
 .nav-item {
@@ -429,12 +455,19 @@ body {
 
 .system-status {
     display: flex;
+    flex-direction: column;
+    gap: 12px;
+    padding: 1.5rem;
+    border-top: 1px solid #333;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+    margin-top: auto;
+}
+
+.status-row {
+    display: flex;
     align-items: center;
     gap: 10px;
-    padding-top: 2rem;
-    border-top: 1px solid #333;
-    font-size: 0.9rem;
-    color: var(--text-secondary);
 }
 
 .status-indicator {
@@ -463,7 +496,8 @@ body {
 .main-content {
     display: flex;
     flex-direction: column;
-    height: 100vh;
+    height: 100dvh;
+    box-sizing: border-box;
     overflow-y: auto;
 }
 
@@ -553,7 +587,7 @@ body {
 /* Glowing States */
 .glow-green {
     border-color: var(--border-green);
-    box-shadow: inset 0 0 20px rgba(0, 230, 118, 0.05);
+    box-shadow: inset 0 0 20px rgba(16, 185, 129, 0.05);
 }
 
 .glow-yellow {
@@ -589,7 +623,7 @@ body {
 }
 
 .badge-optimal {
-    background-color: rgba(0, 230, 118, 0.1);
+    background-color: rgba(16, 185, 129, 0.1);
     color: var(--color-green);
 }
 
@@ -832,7 +866,7 @@ button {
 }
 
 .type-sativa {
-    background-color: rgba(0, 230, 118, 0.2);
+    background-color: rgba(16, 185, 129, 0.2);
     color: var(--color-green);
 }
 
@@ -968,7 +1002,7 @@ textarea {
     border: 1px solid #3a3a4a;
     border-radius: 8px;
     padding: 10px 14px;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Manrope', sans-serif;
     font-size: 0.9rem;
     width: 100%;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -984,7 +1018,7 @@ input[type="date"]:focus,
 input[type="time"]:focus,
 textarea:focus {
     border-color: var(--color-green);
-    box-shadow: 0 0 0 3px rgba(0, 230, 118, 0.12);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
 }
 
 input::placeholder {
@@ -997,7 +1031,7 @@ select {
     border: 1px solid #3a3a4a;
     border-radius: 8px;
     padding: 10px 36px 10px 14px;
-    font-family: 'Inter', sans-serif;
+    font-family: 'Manrope', sans-serif;
     font-size: 0.9rem;
     width: 100%;
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
@@ -1013,7 +1047,7 @@ select {
 
 select:focus {
     border-color: var(--color-green);
-    box-shadow: 0 0 0 3px rgba(0, 230, 118, 0.12);
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.12);
 }
 
 select option {
@@ -1145,4 +1179,87 @@ select option {
 
 .data-table tr:hover td {
     background: rgba(255, 255, 255, 0.02);
+}
+
+/* Expansion for Tasks Calendar */
+.full-width-grid {
+    padding: 1rem 1rem 3rem 1rem !important;
+}
+
+.calendar-widget-full {
+    background-color: var(--panel-dark);
+    border-radius: var(--border-radius);
+    padding: 1rem;
+    border: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+    transition: var(--transition);
+    overflow: hidden;
+}
+
+/* Next-Gen HUD Glassmorphism */
+.glass-panel {
+    background: rgba(30, 41, 59, 0.45);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    border-radius: var(--border-radius);
+    transition: var(--transition);
+}
+
+.glass-panel.hud-module {
+    border-top: 2px solid var(--color-green);
+}
+
+.glass-panel:hover {
+    border-color: rgba(52, 211, 153, 0.3);
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.15);
+}
+
+[data-theme="light"] .glass-panel {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.5);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="light"] .glass-panel:hover {
+    border-color: rgba(5, 150, 105, 0.4);
+}
+
+/* Glass Buttons */
+.glass-btn {
+    background: rgba(255, 255, 255, 0.05);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+    transition: all 0.2s ease;
+}
+.glass-btn:hover {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+    transform: translateY(-2px);
+}
+[data-theme="light"] .glass-btn {
+    background: rgba(0, 0, 0, 0.03);
+    border-color: rgba(0, 0, 0, 0.1);
+}
+
+.font-mono {
+    font-family: 'JetBrains Mono', monospace !important;
+}
+
+/* Grid BG */
+.hud-grid-bg {
+    background-image: 
+        linear-gradient(to right, rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(255,255,255,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    background-position: center center;
+}
+
+[data-theme="light"] .hud-grid-bg {
+    background-image: 
+        linear-gradient(to right, rgba(0,0,0,0.04) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(0,0,0,0.04) 1px, transparent 1px);
 }

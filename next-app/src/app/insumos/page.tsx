@@ -163,7 +163,7 @@ export default function InsumosPage() {
                    const uom = item.uom || 'unidades';
                    const isCritical = item.qty <= (item.min_stock || 100);
                    return (
-                   <tr key={i} className="border-b border-panel-border/20 hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
+                   <tr key={i} className="border-b border-panel-border/20 hover:bg-black/5 dark:hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
                      <td className="py-4 px-4 font-sans font-bold text-foreground">
                         {item.name || `Químico ${item.id.substring?.(0,5)}`}
                      </td>
@@ -208,7 +208,7 @@ export default function InsumosPage() {
                  <Flask size={24} className="text-emerald-500"/> 
                  {editingId ? "Editar Reactivo Químico" : "Nuevo Reactivo Químico"}
               </h2>
-              <button onClick={() => setIsModalOpen(false)} className="text-brand-slate-600 hover:text-white p-1 rounded hover:bg-panel-border transition-colors"><X size={24}/></button>
+              <button onClick={() => setIsModalOpen(false)} className="text-brand-slate-600 hover:text-foreground p-1 rounded hover:bg-panel-border transition-colors"><X size={24}/></button>
             </div>
 
             <form onSubmit={handleCreateInsumo} className="flex flex-col gap-4">
@@ -218,7 +218,7 @@ export default function InsumosPage() {
                    type="text" required
                    value={newName} onChange={e => setNewName(e.target.value)}
                    placeholder="Ej: Advanced Nutrients Grow"
-                   className="w-full bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 transition-colors"
+                   className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 transition-colors"
                 />
               </div>
 
@@ -227,7 +227,7 @@ export default function InsumosPage() {
                     <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Categoría (Tipo)</label>
                     <select 
                        value={newType} onChange={e => setNewType(e.target.value)}
-                       className="w-full bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 font-mono"
+                       className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 font-mono"
                     >
                        <option value="fertilizante">Fertilizante (Líquido/Polvo)</option>
                        <option value="pesticida">Pesticida / Fungicida</option>
@@ -239,7 +239,7 @@ export default function InsumosPage() {
                     <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Unidad de Medida (UoM)</label>
                     <select 
                        value={newUom} onChange={e => setNewUom(e.target.value)}
-                       className="w-full bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 font-mono"
+                       className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 font-mono"
                     >
                        <option value="ml">Mililitros (ml)</option>
                        <option value="L">Litros (L)</option>
@@ -257,7 +257,7 @@ export default function InsumosPage() {
                        type="number" step="0.01" required
                        value={newQty} onChange={e => setNewQty(e.target.value)}
                        placeholder="1000"
-                       className="w-full bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 text-right font-mono"
+                       className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 text-right font-mono"
                     />
                   </div>
                   <div>
@@ -266,7 +266,7 @@ export default function InsumosPage() {
                        type="number" step="0.01" required
                        value={newCost} onChange={e => setNewCost(e.target.value)}
                        placeholder="$ 5500.00"
-                       className="w-full bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 text-right font-mono"
+                       className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 text-right font-mono"
                     />
                   </div>
               </div>
@@ -278,7 +278,7 @@ export default function InsumosPage() {
                        type="number" step="1" required
                        value={newMinStock} onChange={e => setNewMinStock(e.target.value)}
                        placeholder="1000"
-                       className="w-full bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-yellow-500 text-right font-mono text-yellow-500"
+                       className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-yellow-500 text-right font-mono text-yellow-500"
                     />
                   </div>
               </div>
@@ -287,7 +287,7 @@ export default function InsumosPage() {
                  <button 
                    type="button" 
                    onClick={() => setIsModalOpen(false)}
-                   className="px-4 py-2 rounded-lg text-sm font-bold text-brand-slate-600 hover:bg-black/20"
+                   className="px-4 py-2 rounded-lg text-sm font-bold text-brand-slate-600 hover:bg-black/[0.03] dark:bg-black/20"
                  >Cancelar</button>
                  <button 
                    type="submit" 

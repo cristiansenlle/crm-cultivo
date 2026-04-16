@@ -1,0 +1,40 @@
+require('dotenv').config();
+const fs = require('fs');
+
+const url = "https://opnjrzixsrizdnphbjnq.supabase.co";
+const key = "HIDDEN_SECRET_BY_AI";
+
+const headers = {
+    'apikey': key,
+    'Authorization': `Bearer ${key}`,
+    'Content-Type': 'application/json',
+    'Prefer': 'return=representation'
+};
+
+async function patchEvents() {
+    console.log("Patching LOTE-21531CE0 -> Planta madre NP/2/2025");
+    const r1 = await fetch(`${url}/rest/v1/core_agronomic_events?id=eq.3e4192b8-0d11-4ac7-b6b9-4d870e5571b8`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ batch_id: "Planta madre NP/2/2025" })
+    });
+    console.log(await r1.json());
+
+    console.log("Patching LOTE-21531AE9 -> Planta Madre RHC/1/2026");
+    const r2 = await fetch(`${url}/rest/v1/core_agronomic_events?id=eq.a39e9b3b-a9b8-415d-a3fe-53383e3cbe61`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ batch_id: "Planta Madre RHC/1/2026" })
+    });
+    console.log(await r2.json());
+
+    console.log("Patching LOTE-21531CDE -> Planta Madre NP/1/2025");
+    const r3 = await fetch(`${url}/rest/v1/core_agronomic_events?id=eq.fa25a4d0-4038-4088-9dd1-0288c36bde1e`, {
+        method: 'PATCH',
+        headers,
+        body: JSON.stringify({ batch_id: "Planta Madre NP/1/2025" })
+    });
+    console.log(await r3.json());
+}
+
+patchEvents().catch(console.error);

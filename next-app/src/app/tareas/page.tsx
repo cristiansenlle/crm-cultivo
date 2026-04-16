@@ -73,16 +73,16 @@ export default function TareasPage() {
                   <form onSubmit={handlePostTask} className="flex flex-col gap-4">
                      <div>
                          <label className="text-xs font-mono text-brand-slate-600 mb-1 block uppercase">Descripción</label>
-                         <input type="text" value={title} onChange={e=>setTitle(e.target.value)} required placeholder="Ej: Poda Apical..." className="w-full bg-black/20 border border-panel-border rounded-lg p-2 text-sm text-foreground focus:outline-none focus:border-emerald-500" />
+                         <input type="text" value={title} onChange={e=>setTitle(e.target.value)} required placeholder="Ej: Poda Apical..." className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2 text-sm text-foreground focus:outline-none focus:border-emerald-500" />
                      </div>
                      <div className="grid grid-cols-2 gap-4">
                          <div>
                              <label className="text-xs font-mono text-brand-slate-600 mb-1 block uppercase">Fecha</label>
-                             <input type="date" value={date} onChange={e=>setDate(e.target.value)} required className="w-full bg-black/20 border border-panel-border rounded-lg p-2 text-sm text-foreground focus:outline-none focus:border-emerald-500" />
+                             <input type="date" value={date} onChange={e=>setDate(e.target.value)} required className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2 text-sm text-foreground focus:outline-none focus:border-emerald-500" />
                          </div>
                          <div>
                              <label className="text-xs font-mono text-brand-slate-600 mb-1 block uppercase">Hora</label>
-                             <input type="time" value={time} onChange={e=>setTime(e.target.value)} required className="w-full bg-black/20 border border-panel-border rounded-lg p-2 text-sm text-foreground focus:outline-none focus:border-emerald-500" />
+                             <input type="time" value={time} onChange={e=>setTime(e.target.value)} required className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2 text-sm text-foreground focus:outline-none focus:border-emerald-500" />
                          </div>
                      </div>
                      <button type="submit" className="mt-2 w-full bg-emerald-600 hover:bg-emerald-500 text-white p-2 rounded-lg font-bold text-sm transition">
@@ -99,7 +99,7 @@ export default function TareasPage() {
                      ) : tasks.length === 0 ? (
                          <div className="text-sm font-mono text-brand-slate-600">No hay tareas pendientes en la cola.</div>
                      ) : tasks.map((task, i) => (
-                         <div key={i} className="flex flex-col bg-black/20 dark:bg-white/5 p-3 rounded-lg border border-panel-border/30">
+                         <div key={i} className="flex flex-col bg-black/[0.03] dark:bg-black/20 dark:bg-white/5 p-3 rounded-lg border border-panel-border/30">
                              <span className="font-bold text-sm text-foreground">{task.title || task.description || `Evento ${task.id?.substring(0,5)}`}</span>
                              <div className="flex justify-between items-end mt-2">
                                 <span className="text-xs font-mono text-brand-slate-600 flex items-center gap-1"><ClockCounterClockwise size={12} /> {new Date(task.created_at).toLocaleDateString()}</span>

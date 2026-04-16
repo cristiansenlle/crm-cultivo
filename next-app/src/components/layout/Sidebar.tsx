@@ -49,7 +49,7 @@ export function Sidebar() {
                 "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 font-semibold text-sm",
                 isActive 
                   ? "bg-black/10 dark:bg-white/10 text-foreground border-l-4 border-status-green" 
-                  : "text-brand-slate-600 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground"
+                  : "text-brand-slate-600 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground"
               )}
             >
               <div className={isActive ? "text-status-green" : "opacity-80"}>

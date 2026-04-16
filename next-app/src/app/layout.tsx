@@ -27,8 +27,19 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es" className={`${manrope.variable} ${jetbrainsMono.variable} antialiased dark`} suppressHydrationWarning>
-      <body className="min-h-screen flex font-sans hud-grid-bg bg-background text-foreground">
+    <html lang="es" className={`${manrope.variable} ${jetbrainsMono.variable} antialiased`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: `
+          try {
+            if (localStorage.theme === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+              document.documentElement.classList.add('dark');
+            } else {
+              document.documentElement.classList.remove('dark');
+            }
+          } catch (_) {}
+        `}} />
+      </head>
+      <body className="min-h-screen flex font-sans hud-grid-bg bg-background text-foreground transition-colors duration-300">
         <RoomProvider>
           <div className="h-screen sticky top-0 flex-shrink-0 relative z-20">
              <Sidebar />

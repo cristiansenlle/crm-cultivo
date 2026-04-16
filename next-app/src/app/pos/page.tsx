@@ -153,7 +153,7 @@ export default function POSPage() {
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                                 {inventory.length === 0 ? <p className="col-span-3 text-center opacity-50">Sin stock apto para venta.</p> : 
                                   inventory.map((item, idx) => (
-                                    <div key={idx} onClick={() => handleAddToCart(item)} className="p-4 rounded-xl border border-panel-border bg-black/20 hover:border-emerald-500/50 cursor-pointer hover:bg-black/30 transition-all group">
+                                    <div key={idx} onClick={() => handleAddToCart(item)} className="p-4 rounded-xl border border-panel-border bg-black/[0.03] dark:bg-black/20 hover:border-emerald-500/50 cursor-pointer hover:bg-black/[0.05] dark:bg-black/30 transition-all group">
                                         <div className="text-[10px] uppercase font-bold text-emerald-400 mb-1">{item.type === 'cosecha_local' ? 'PROPIA' : 'B2B'}</div>
                                         <h4 className="font-bold text-foreground text-md">{item.name}</h4>
                                         <p className="text-xs font-mono text-brand-slate-600 truncate opacity-60 mt-1 mb-3">ID: {item.id}</p>
@@ -211,7 +211,7 @@ export default function POSPage() {
                             <div>
                                 <label className="text-[10px] uppercase font-mono text-brand-slate-600 block mb-1">Nivel de Cliente</label>
                                 <select 
-                                    className="w-full bg-black/20 border border-panel-border rounded p-2 text-sm outline-none focus:border-status-green"
+                                    className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-2 text-sm outline-none focus:border-status-green"
                                     value={clientId} onChange={e => setClientId(e.target.value)}
                                 >
                                     <option value="walk_in">Cliente Casual (Retail)</option>
@@ -225,7 +225,7 @@ export default function POSPage() {
                                     <label className="text-[10px] uppercase font-mono text-brand-slate-600 block mb-1">Nombre Comprador</label>
                                     <input 
                                         type="text" placeholder="Ej: Juan Perez" required
-                                        className="w-full bg-black/20 border border-panel-border rounded p-2 text-sm font-mono outline-none focus:border-status-green"
+                                        className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-2 text-sm font-mono outline-none focus:border-status-green"
                                         value={clientName} onChange={e => setClientName(e.target.value)}
                                     />
                                 </div>
@@ -240,7 +240,7 @@ export default function POSPage() {
                             ) : (
                                 <div className="flex flex-col gap-2">
                                     {cart.map((c, i) => (
-                                        <div key={i} className="flex flex-col p-3 rounded-lg bg-black/20 border border-panel-border group">
+                                        <div key={i} className="flex flex-col p-3 rounded-lg bg-black/[0.03] dark:bg-black/20 border border-panel-border group">
                                             <div className="flex justify-between items-start">
                                                 <span className="font-bold text-sm text-foreground truncate w-[160px]" title={c.name}>{c.name}</span>
                                                 <button onClick={() => removeFromCart(c.id)} className="text-brand-slate-600 hover:text-red-500 transition-colors"><Trash size={16} /></button>
@@ -267,7 +267,7 @@ export default function POSPage() {
                                     <span>-${discountAmt.toLocaleString('es-AR')}</span>
                                 </div>
                             )}
-                            <div className="flex justify-between font-bold text-lg text-white mt-2 pt-2 border-t border-panel-border/50">
+                            <div className="flex justify-between font-bold text-lg text-foreground mt-2 pt-2 border-t border-panel-border/50">
                                 <span>TOTAL:</span>
                                 <span>${grandTotal.toLocaleString('es-AR')}</span>
                             </div>
@@ -276,7 +276,7 @@ export default function POSPage() {
                         <button 
                             onClick={processSale} 
                             disabled={isProcessing || cart.length === 0}
-                            className="w-full mt-4 flex justify-center items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-4 rounded-lg transition-colors shadow-lg shadow-emerald-900/20"
+                            className="w-full mt-4 flex justify-center items-center gap-2 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed text-foreground font-bold py-3 px-4 rounded-lg transition-colors shadow-lg shadow-emerald-900/20"
                         >
                             {isProcessing ? "Procesando..." : <><CheckCircle weight="fill" size={20}/> Efectuar Checkout</>}
                         </button>

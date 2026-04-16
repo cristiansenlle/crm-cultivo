@@ -1,0 +1,1 @@
+SELECT * FROM credentials_entity;

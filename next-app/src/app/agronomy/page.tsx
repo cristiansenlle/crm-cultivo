@@ -146,7 +146,7 @@ export default function AgronomyTimelinePage() {
         if (t.includes('pod') || t.includes('pruning')) return { color: "text-emerald-500", bg: "bg-emerald-500/10", border: 'border-emerald-500/30' };
         if (t.includes('cosecha') || t.includes('harvest')) return { color: "text-orange-500", bg: "bg-orange-500/10", border: 'border-orange-500/30' };
         if (t.includes('luz') || t.includes('light')) return { color: "text-status-yellow", bg: "bg-status-yellow/10", border: 'border-status-yellow/30' };
-        return { color: "text-brand-slate-400", bg: "bg-brand-slate-600/10", border: 'border-brand-slate-600/30' };
+        return { color: "text-brand-slate-600 dark:text-slate-400", bg: "bg-brand-slate-600/10", border: 'border-brand-slate-600/30' };
     };
 
     return (
@@ -169,23 +169,23 @@ export default function AgronomyTimelinePage() {
             <GlassCard className="p-4 w-full relative z-30">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
                     <div>
-                        <label className="text-[10px] font-mono text-brand-slate-400 uppercase tracking-widest block mb-1">Fecha Inicio</label>
-                        <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} className="w-full bg-black/30 border border-panel-border rounded p-2 text-sm text-foreground focus:border-indigo-500 outline-none" />
+                        <label className="text-[10px] font-mono text-brand-slate-600 dark:text-slate-400 uppercase tracking-widest block mb-1">Fecha Inicio</label>
+                        <input type="date" value={startDate} onChange={e=>setStartDate(e.target.value)} className="w-full bg-black/[0.05] dark:bg-black/30 border border-panel-border rounded p-2 text-sm text-foreground focus:border-indigo-500 outline-none" />
                     </div>
                     <div>
-                        <label className="text-[10px] font-mono text-brand-slate-400 uppercase tracking-widest block mb-1">Fecha Fin</label>
-                        <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} className="w-full bg-black/30 border border-panel-border rounded p-2 text-sm text-foreground focus:border-indigo-500 outline-none" />
+                        <label className="text-[10px] font-mono text-brand-slate-600 dark:text-slate-400 uppercase tracking-widest block mb-1">Fecha Fin</label>
+                        <input type="date" value={endDate} onChange={e=>setEndDate(e.target.value)} className="w-full bg-black/[0.05] dark:bg-black/30 border border-panel-border rounded p-2 text-sm text-foreground focus:border-indigo-500 outline-none" />
                     </div>
                     <div>
-                        <label className="text-[10px] font-mono text-brand-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1"><MapPinLine/> Sala de Operación</label>
-                        <select value={selectedRoom} onChange={e => { setSelectedRoom(e.target.value); setSelectedSensor("all"); }} className="w-full bg-black/30 border border-panel-border rounded p-2 text-sm text-foreground focus:border-indigo-500 outline-none">
+                        <label className="text-[10px] font-mono text-brand-slate-600 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1"><MapPinLine/> Sala de Operación</label>
+                        <select value={selectedRoom} onChange={e => { setSelectedRoom(e.target.value); setSelectedSensor("all"); }} className="w-full bg-black/[0.05] dark:bg-black/30 border border-panel-border rounded p-2 text-sm text-foreground focus:border-indigo-500 outline-none">
                             <option value="all">TODAS LAS SALAS GLOBALES</option>
                             {rooms.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
                         </select>
                     </div>
                     <div>
-                        <label className="text-[10px] font-mono text-brand-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1"><Thermometer/> Aislamiento de Sensor</label>
-                        <select value={selectedSensor} onChange={e=>setSelectedSensor(e.target.value)} disabled={selectedRoom === 'all'} className="w-full bg-black/30 border border-panel-border rounded p-2 text-sm text-foreground focus:border-indigo-500 outline-none disabled:opacity-50">
+                        <label className="text-[10px] font-mono text-brand-slate-600 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1"><Thermometer/> Aislamiento de Sensor</label>
+                        <select value={selectedSensor} onChange={e=>setSelectedSensor(e.target.value)} disabled={selectedRoom === 'all'} className="w-full bg-black/[0.05] dark:bg-black/30 border border-panel-border rounded p-2 text-sm text-foreground focus:border-indigo-500 outline-none disabled:opacity-50">
                             {selectedRoom === 'all' ? (
                                 <option value="all">Bloqueado (Varias Salas)</option>
                             ) : (
@@ -231,19 +231,19 @@ export default function AgronomyTimelinePage() {
 
             {/* Timeline Filter Textual */}
             <div className="flex bg-panel-base border border-panel-border rounded-xl p-2 gap-2 shadow-lg backdrop-blur-md sticky top-4 z-40 overflow-x-auto mt-4">
-                <button onClick={() => setFilterCategory("all")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'all' ? 'bg-indigo-600 text-white' : 'hover:bg-black/20 text-brand-slate-400'}`}>
+                <button onClick={() => setFilterCategory("all")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'all' ? 'bg-indigo-600 text-white' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
                     <Funnel size={16} /> Ver Todos
                 </button>
-                <button onClick={() => setFilterCategory("Fase")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'Fase' ? 'bg-yellow-600 text-white' : 'hover:bg-black/20 text-brand-slate-400'}`}>
+                <button onClick={() => setFilterCategory("Fase")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'Fase' ? 'bg-yellow-600 text-foreground' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
                     Fotoperiodos & Fases
                 </button>
-                <button onClick={() => setFilterCategory("riego")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'riego' ? 'bg-blue-600 text-white' : 'hover:bg-black/20 text-brand-slate-400'}`}>
+                <button onClick={() => setFilterCategory("riego")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'riego' ? 'bg-blue-600 text-white' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
                     Riegos
                 </button>
-                <button onClick={() => setFilterCategory("nutricion")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'nutricion' ? 'bg-purple-600 text-white' : 'hover:bg-black/20 text-brand-slate-400'}`}>
+                <button onClick={() => setFilterCategory("nutricion")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'nutricion' ? 'bg-purple-600 text-white' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
                     Nutrición
                 </button>
-                <button onClick={() => setFilterCategory("poda")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'poda' ? 'bg-emerald-600 text-white' : 'hover:bg-black/20 text-brand-slate-400'}`}>
+                <button onClick={() => setFilterCategory("poda")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'poda' ? 'bg-emerald-600 text-foreground' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
                     Poda
                 </button>
             </div>
@@ -270,13 +270,13 @@ export default function AgronomyTimelinePage() {
                                          style={{ backgroundColor: 'var(--bg-dark)' }}
                                     ></div>
                                     
-                                    <div className={`p-4 md:p-5 rounded-xl border border-panel-border bg-black/10 hover:bg-black/30 transition-colors`}>
+                                    <div className={`p-4 md:p-5 rounded-xl border border-panel-border bg-black/10 hover:bg-black/[0.05] dark:bg-black/30 transition-colors`}>
                                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                                             <div className="flex items-center gap-2 flex-wrap">
                                                 <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider \${style.bg} \${style.color} border \${style.border}`}>
                                                     {evt.event_type}
                                                 </span>
-                                                <span className="text-[11px] font-mono text-brand-slate-400 flex items-center gap-1 bg-black/20 px-2 py-1 rounded border border-panel-border/30">
+                                                <span className="text-[11px] font-mono text-brand-slate-600 dark:text-slate-400 flex items-center gap-1 bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded border border-panel-border/30">
                                                     <Target size={12} /> LOTE: {evt.batch_id || '-'}
                                                 </span>
                                             </div>
@@ -286,7 +286,7 @@ export default function AgronomyTimelinePage() {
                                             </div>
                                         </div>
                                         
-                                        <p className="text-foreground leading-relaxed text-sm opacity-90 p-3 bg-black/20 border border-panel-border/50 rounded-lg">
+                                        <p className="text-foreground leading-relaxed text-sm opacity-90 p-3 bg-black/[0.03] dark:bg-black/20 border border-panel-border/50 rounded-lg">
                                             {evt.description}
                                         </p>
                                     </div>

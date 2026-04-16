@@ -81,6 +81,25 @@ export function Topbar() {
 
         <div className="h-8 w-px bg-panel-border mx-1 lg:mx-2"></div>
 
+        <button 
+          onClick={() => {
+              if (document.documentElement.classList.contains('dark')) {
+                 document.documentElement.classList.remove('dark');
+                 localStorage.theme = 'light';
+              } else {
+                 document.documentElement.classList.add('dark');
+                 localStorage.theme = 'dark';
+              }
+          }}
+          className="flex items-center gap-2 px-3 py-2 rounded-xl border border-panel-border bg-panel-base hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
+          title="Cambiar Iluminación"
+        >
+          <Sun size={18} className="dark:hidden text-amber-500 font-bold" />
+          <Moon size={18} className="hidden dark:block text-indigo-400 font-bold" />
+        </button>
+
+        <div className="h-8 w-px bg-panel-border mx-1 lg:mx-2"></div>
+
         <button className="flex items-center gap-2 px-3 py-2 rounded-xl border border-status-red/30 bg-status-red/10 text-status-red hover:bg-status-red/20 transition-colors font-semibold text-sm">
           <SignOut size={18} />
           <span className="hidden lg:inline">Salir</span>
@@ -96,18 +115,18 @@ export function Topbar() {
     {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
             <div className="bg-panel-base border border-panel-border rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
-                <div className="flex justify-between items-center p-5 border-b border-panel-border bg-black/20">
+                <div className="flex justify-between items-center p-5 border-b border-panel-border bg-black/[0.03] dark:bg-black/20">
                     <h3 className="text-xl font-bold font-sans flex items-center gap-2"><HouseLine size={24} className="text-emerald-500" /> Registrar Nueva Sala</h3>
-                    <button onClick={() => setIsModalOpen(false)} className="text-brand-slate-600 hover:text-white"><X size={24} /></button>
+                    <button onClick={() => setIsModalOpen(false)} className="text-brand-slate-600 hover:text-foreground"><X size={24} /></button>
                 </div>
                 <form onSubmit={handleAddRoom} className="p-6 flex flex-col gap-5">
                     <div>
                         <label className="text-xs font-mono text-brand-slate-600 block mb-2 uppercase">Identificador de Sala</label>
-                        <input required type="text" value={newRoomName} onChange={e => setNewRoomName(e.target.value)} placeholder="Ej: Sala Vegetativo 1" className="w-full bg-black/30 border border-panel-border rounded-lg p-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-mono" />
+                        <input required type="text" value={newRoomName} onChange={e => setNewRoomName(e.target.value)} placeholder="Ej: Sala Vegetativo 1" className="w-full bg-black/[0.05] dark:bg-black/30 border border-panel-border rounded-lg p-3 text-sm focus:border-emerald-500 focus:outline-none focus:ring-1 focus:ring-emerald-500 transition-all font-mono" />
                     </div>
                     <div>
                         <label className="text-xs font-mono text-brand-slate-600 block mb-2 uppercase">Fase Agronómica Actual</label>
-                        <select required value={newRoomPhase} onChange={e => setNewRoomPhase(e.target.value)} className="w-full bg-black/30 border border-panel-border rounded-lg p-3 text-sm focus:border-emerald-500 focus:outline-none transition-all font-mono appearance-none">
+                        <select required value={newRoomPhase} onChange={e => setNewRoomPhase(e.target.value)} className="w-full bg-black/[0.05] dark:bg-black/30 border border-panel-border rounded-lg p-3 text-sm focus:border-emerald-500 focus:outline-none transition-all font-mono appearance-none">
                             <option value="Vegetativo">Vegetativo</option>
                             <option value="Floración">Floración</option>
                             <option value="Secado">Secado</option>

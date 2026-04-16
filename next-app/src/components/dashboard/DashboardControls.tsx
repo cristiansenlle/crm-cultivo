@@ -93,7 +93,7 @@ export function DashboardControls() {
                <div>
                   <label className="text-xs font-mono text-brand-slate-600 mb-1 block uppercase">Sensor Destino</label>
                   <select 
-                     className="w-full bg-black/20 border border-panel-border rounded-lg p-2 text-sm text-foreground focus:outline-none focus:border-emerald-500 font-mono"
+                     className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2 text-sm text-foreground focus:outline-none focus:border-emerald-500 font-mono"
                      value={activeSensor?.id || ""}
                      onChange={(e) => {
                          const s = sensors.find(sec => sec.id === e.target.value);
@@ -107,8 +107,8 @@ export function DashboardControls() {
                </div>
 
                <div className="grid grid-cols-2 gap-2">
-                 <div className="flex bg-black/20 border border-panel-border rounded-lg overflow-hidden focus-within:border-emerald-500 transition-colors">
-                   <span className="p-2 bg-black/40 flex items-center justify-center text-status-yellow w-12"><ThermometerSimple size={18} /></span>
+                 <div className="flex bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg overflow-hidden focus-within:border-emerald-500 transition-colors">
+                   <span className="p-2 bg-black/[0.08] dark:bg-black/40 flex items-center justify-center text-status-yellow w-12"><ThermometerSimple size={18} /></span>
                    <input 
                      type="number" step="0.1" 
                      placeholder="24.5 °C" 
@@ -117,8 +117,8 @@ export function DashboardControls() {
                      value={temperature} onChange={e => setTemperature(e.target.value)}
                    />
                  </div>
-                 <div className="flex bg-black/20 border border-panel-border rounded-lg overflow-hidden focus-within:border-emerald-500 transition-colors">
-                   <span className="p-2 bg-black/40 flex items-center justify-center text-status-green w-12"><Drop size={18} /></span>
+                 <div className="flex bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg overflow-hidden focus-within:border-emerald-500 transition-colors">
+                   <span className="p-2 bg-black/[0.08] dark:bg-black/40 flex items-center justify-center text-status-green w-12"><Drop size={18} /></span>
                    <input 
                      type="number" step="0.1" 
                      placeholder="55.0 %" 
@@ -150,8 +150,8 @@ export function DashboardControls() {
          ) : (
             <div className="flex flex-col gap-3 h-[200px] overflow-y-auto pr-1">
                 <form onSubmit={handleAddSensor} className="flex gap-2">
-                    <input type="text" value={newSensorName} onChange={e=>setNewSensorName(e.target.value)} placeholder="Añadir Terminal ESP32..." required className="bg-black/20 border border-panel-border rounded-lg p-2 flex-1 text-sm text-foreground focus:outline-none focus:border-blue-500 font-mono" />
-                    <button type="submit" className="bg-blue-600 hover:bg-blue-500 p-2 rounded-lg text-white"><Plus size={16} /></button>
+                    <input type="text" value={newSensorName} onChange={e=>setNewSensorName(e.target.value)} placeholder="Añadir Terminal ESP32..." required className="bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2 flex-1 text-sm text-foreground focus:outline-none focus:border-blue-500 font-mono" />
+                    <button type="submit" className="bg-blue-600 hover:bg-blue-500 p-2 rounded-lg text-foreground"><Plus size={16} /></button>
                 </form>
                 <div className="flex flex-col gap-2 mt-2">
                     {sensors.length === 0 ? <p className="text-sm font-mono text-brand-slate-600">No hay hardware mapeado a esta sala.</p> : null}

@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CANNABIS-CORE 360 OS - Bodega e Inventario</title>
+    <link rel="stylesheet" href="style.css?v=1776292948794">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <!-- Phosphor Icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Supabase SDK & Config -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase-client.js"></script>
+    <!-- Theme Toggle -->
+    <script src="theme.js"></script>
+</head>
+
+<body class="hud-grid-bg">
+    <div class="app-container">
+        <!-- Barra Lateral -->
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="ph-fill ph-plant"></i>
+                <span>CORE 360</span>
+            </div>
+            <nav class="nav-menu">
+                <a href="index.html" class="nav-item"><i class="ph ph-squares-four"></i> Panel Principal</a>
+                <a href="cultivo.html" class="nav-item"><i class="ph ph-thermometer"></i> Salas de Cultivo</a>
+                <a href="tareas.html" class="nav-item"><i class="ph ph-check-square"></i> Gestor de Tareas</a>
+                <a href="insumos.html" class="nav-item active"><i class="ph ph-warehouse"></i> Bodega e Insumos</a>
+                <a href="pos.html" class="nav-item"><i class="ph ph-shopping-cart"></i> Punto de Venta (POS)</a>
+                <a href="analytics.html" class="nav-item"><i class="ph ph-chart-line-up"></i> Finanzas & ROI</a>
+                <a href="agronomy.html" class="nav-item"><i class="ph ph-projector-screen-chart"></i> Timeline Agronómico</a>
+                <a href="protocolos.html" class="nav-item"><i class="ph ph-book-open"></i> Protocolos & Recetas</a>
+            </nav>
+            
+        </aside>
+
+        <!-- Contenido Principal -->
+        <main class="main-content">
+            <header class="topbar">
+                <h1>Bodega e Inventario Global</h1>
+                
+                <div class="topbar-controls" style="display: flex; gap: 15px; align-items: center; justify-content: flex-end; flex: 1;">
+                    
+                    
+                
+                    <div class="header-action-buttons" style="display: flex; align-items: center; gap: 12px; margin-left: auto;">
+                        <button id="themeToggleBtn" class="theme-toggle" style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; padding: 8px 15px; color: var(--text-primary); display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s ease; white-space: nowrap; height: 40px;">
+                            <i class="ph ph-sun" style="font-size: 1.2rem;"></i>
+                            <span style="font-size: 0.85rem; font-weight: 600;">Tema</span>
+                        </button>
+                        
+                        <button class="btn-icon" onclick="logoutUser()" title="Cerrar Sesión" style="background: rgba(255, 61, 0, 0.1); border: 1px solid rgba(255, 61, 0, 0.2); border-radius: 8px; padding: 8px 15px; color: var(--color-red); display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s ease; white-space: nowrap; height: 40px;">
+                            <i class="ph ph-sign-out" style="font-size: 1.2rem;"></i>
+                            <span style="font-size: 0.85rem; font-weight: 600;">Salir</span>
+                        </button>
+                    </div>
+
+                    <div class="user-profile">
+                    <img src="https://ui-avatars.com/api/?name=Admin+User&background=333&color=fff" alt="Admin">
+                </div>
+                </div>
+            </header>
+
+            <div class="dashboard-grid" style="grid-template-columns: auto 1fr; align-items: start;">
+
+                
+            <!-- Boton de Activacion Formulario -->
+            <div id="toggle-btn-insumo" class="glass-panel" style="padding: 15px; margin-bottom: 20px; grid-column: 1 / -1; cursor: pointer; text-align: center; border-color: var(--color-green);" onclick="const f = document.getElementById('ingreso-container'); f.style.display = f.style.display==='none'?'flex':'none';">
+                <i class="ph-fill ph-plus-circle" style="font-size: 2rem; color: var(--color-green); margin-bottom: 5px; display:block;"></i>
+                <h4 style="color: var(--text-primary); text-transform: uppercase;">Registrar Ingreso B2B / Compra Insumo</h4>
+            </div>
+            <!-- Contenedor original oculto inicial -->
+            <div id="ingreso-container" style="display:none; grid-column: span 1;"><!-- Ingreso de Mercadería -->
+                <div class="widget glass-panel">
+                    <div class="widget-header">
+                        <h3><i class="ph ph-package"></i> Ingreso de Mercadería</h3>
+                    </div>
+                    <form id="ingresoInsumoForm" class="control-form" onsubmit="handleIngreso(event)">
+                        <div class="form-group">
+                            <label>Tipo de Entrada</label>
+                            <select id="insumoType" required onchange="toggleInsumoFields()">
+                                <optgroup label="🌿 Nutrición">
+                                    <option value="fertilizante">Fertilizante (NPK / Líquido)</option>
+                                    <option value="estimulador">Estimulador / Hormona / Booster</option>
+                                    <option value="correctivo_ph">Corrector de pH (Up / Down)</option>
+                                </optgroup>
+                                <optgroup label="🌱 Sustrato & Medio">
+                                    <option value="sustrato">Sustrato (Tierra / Coco / Perlita)</option>
+                                    <option value="maceta">Macetas / Contenedores</option>
+                                </optgroup>
+                                <optgroup label="🛡️ Protección">
+                                    <option value="pesticida_biologico">Pesticida Biológico (Neem, BT...)</option>
+                                    <option value="fungicida">Fungicida / Anti-moho</option>
+                                    <option value="acaricida">Acaricida (Anti-ácaros)</option>
+                                </optgroup>
+                                <optgroup label="💡 Equipamiento">
+                                    <option value="semilla">Semillas / Esquejes / Clones</option>
+                                    <option value="embalaje">Embalaje / Packaging</option>
+                                    <option value="equipamiento">Equipamiento / Accesorio</option>
+                                </optgroup>
+                                <optgroup label="🍃 Cosecha">
+                                    <option value="cosecha_b2b">Compra Cosecha Seca (B2B / Terceros)</option>
+                                    <option value="cosecha_local">Cosecha Propia (Producción Interna)</option>
+                                </optgroup>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Nombre / Identificador</label>
+                            <input type="text" id="insumoName" placeholder="Ej: FloraBloom o Lote B2B-01" required>
+                        </div>
+                        <div class="form-group">
+                            <label id="lblQty">Cantidad (mL o Gramos)</label>
+                            <input type="number" id="insumoQty" placeholder="Ej: 5000" min="1" step="0.1" required>
+                        </div>
+                        <div class="form-group" id="groupPrice">
+                            <label>Costo Total (USD)</label>
+                            <input type="number" id="insumoPrice" placeholder="Ej: 15.00" min="0" step="0.1" required>
+                        </div>
+                        <button type="submit" class="btn-primary" style="width: 100%; margin-top: 1rem;"><i
+                                class="ph ph-plus"></i> Registrar Entrada</button>
+                    </form>
+                </div>
+
+                <!-- Visor de Inventario -->
+                <div class="widget glass-panel">
+                    <div class="widget-header">
+                        <h3><i class="ph ph-stack"></i> Estado del Inventario</h3>
+                        <div class="tabs-header" style="display: flex; gap: 1rem;">
+                            <button class="btn-secondary active" id="tab-quimicos"
+                                onclick="switchInventoryTab('quimicos')">Insumos Químicos</button>
+                            <button class="btn-secondary" id="tab-cosechas"
+                                onclick="switchInventoryTab('cosechas')">Cosechas/B2B (Vendible)</button>
+                        </div>
+                    </div>
+
+                    <!-- Panel Químicos -->
+                    <div id="panel-quimicos" class="inventory-panel render-section">
+                        <table class="data-table"
+                            style="width: 100%; text-align: left; border-collapse: collapse; margin-top: 1rem;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--border);">
+                                    <th>Insumo</th>
+                                    <th>Tipo</th>
+                                    <th>Stock Vigente</th>
+                                    <th>Costo / Inversión</th>
+                                    <th>Estado</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="quimicosTableBody">
+                                <!-- Inyectado por JS -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Panel Cosechas -->
+                    <div id="panel-cosechas" class="inventory-panel render-section" style="display: none;">
+                        <table class="data-table"
+                            style="width: 100%; text-align: left; border-collapse: collapse; margin-top: 1rem;">
+                            <thead>
+                                <tr style="border-bottom: 1px solid var(--border);">
+                                    <th>Lote / Producto</th>
+                                    <th>Origen</th>
+                                    <th>Gramos Disponibles</th>
+                                    <th>Costo / ROI</th>
+                                    <th>Status POS</th>
+                                </tr>
+                            </thead>
+                            <tbody id="cosechasTableBody">
+                                <!-- Inyectado por JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <script src="insumos.js"></script>
+</body>
+
+</html>

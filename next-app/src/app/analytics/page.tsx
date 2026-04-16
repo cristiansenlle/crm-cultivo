@@ -103,7 +103,7 @@ export default function AnalyticsPage() {
                         <GlassCard className="p-6 border-t border-t-white/10 flex flex-col gap-2 relative overflow-hidden bg-emerald-900/10 border-l-2 border-emerald-500">
                             <div className="absolute top-0 right-0 p-4 opacity-10"><ArrowUpRight size={64}/></div>
                             <span className="text-xs uppercase font-bold text-emerald-500">Net Profit (Ganancia Neta)</span>
-                            <span className="text-3xl font-black text-white">${netProfit.toLocaleString('es-AR')}</span>
+                            <span className="text-3xl font-black text-foreground">${netProfit.toLocaleString('es-AR')}</span>
                             <span className="text-xs font-mono text-emerald-400">Margen Comercial: {margin.toFixed(1)}%</span>
                         </GlassCard>
 
@@ -139,7 +139,7 @@ export default function AnalyticsPage() {
                                                     <td className="py-3 px-2 truncate max-w-[120px]">{s.item_id}</td>
                                                     <td className="py-3 px-2 text-right font-bold text-blue-400">{s.qty_sold}g</td>
                                                     <td className="py-3 px-2 text-right text-status-green">${s.revenue}</td>
-                                                    <td className="py-3 px-2 text-right font-bold text-white bg-black/20">${profit}</td>
+                                                    <td className="py-3 px-2 text-right font-bold text-foreground bg-black/[0.03] dark:bg-black/20">${profit}</td>
                                                 </tr>
                                             );
                                         })}

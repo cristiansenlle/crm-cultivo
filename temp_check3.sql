@@ -1,0 +1,1 @@
+SELECT data FROM execution_entity ORDER BY id DESC LIMIT 1;

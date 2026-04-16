@@ -190,7 +190,7 @@ export function CultivoView() {
                   className={`cursor-pointer hover:-translate-y-1 transition-transform duration-300 relative \${selectedRoom?.id === room.id ? 'border-emerald-500' : ''}`}
                   onClick={() => setSelectedRoom(room)}
                 >
-                  <button onClick={(e)=>removeRoom(room.id, e)} className="absolute top-2 right-2 text-xs text-brand-slate-600 hover:text-red-500 bg-black/20 px-2 py-1 rounded">X</button>
+                  <button onClick={(e)=>removeRoom(room.id, e)} className="absolute top-2 right-2 text-xs text-brand-slate-600 hover:text-red-500 bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded">X</button>
                   <div className="flex justify-between items-start mt-2">
                     <h3 className="text-lg font-bold flex items-center gap-2">
                       <Tree size={20} className={room.phase === 'Floración' ? 'text-purple-400' : 'text-emerald-500'} />
@@ -246,7 +246,7 @@ export function CultivoView() {
                      const stageColor = stageStr.includes('floración') ? 'text-purple-400' : stageStr.includes('cosecha') ? 'text-orange-400' : 'text-foreground';
                      
                      return (
-                     <tr key={b.id} className={`border-b border-panel-border/20 transition-colors group \${isSecado ? 'opacity-40 hover:opacity-100' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}>
+                     <tr key={b.id} className={`border-b border-panel-border/20 transition-colors group \${isSecado ? 'opacity-40 hover:opacity-100' : 'hover:bg-black/5 dark:hover:bg-black/5 dark:hover:bg-white/5'}`}>
                        <td className={`py-4 px-4 border-l-2 \${isSecado ? 'border-orange-500' : 'border-emerald-500'}`}>
                          <div className={`font-bold text-base mb-1 \${isSecado ? 'line-through text-brand-slate-600' : 'text-foreground'}`}>{b.strain || b.id.substring(0,8)}</div>
                          <div className="text-xs font-mono text-brand-slate-600 flex items-center gap-1"><Info size={12}/> {b.id.substring(0,6)} <span className="uppercase text-emerald-500/80 ml-1">{b.origen || 'Clon'}</span></div>
@@ -261,7 +261,7 @@ export function CultivoView() {
                            <div className="text-xs font-mono text-brand-slate-600">Día {days} Activo</div>
                        </td>
                        <td className="py-4 px-4 text-center">
-                           <div className="text-[11px] font-mono bg-black/20 px-2 py-1 rounded text-white flex gap-1 justify-center">
+                           <div className="text-[11px] font-mono bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded text-foreground flex gap-1 justify-center">
                              <span className="text-yellow-400">{b.light_hours || '-'}L</span> / <span className="text-blue-400">{b.dark_hours || '-'}O</span>
                            </div>
                        </td>
@@ -296,18 +296,18 @@ export function CultivoView() {
       {fotoModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md p-4">
             <GlassCard className="max-w-md w-full p-6 shadow-2xl relative">
-                <button onClick={() => setFotoModal(prev => ({...prev, isOpen: false}))} className="absolute top-4 right-4 text-brand-slate-600 hover:text-white transition-colors"><AppWindow size={24}/></button>
+                <button onClick={() => setFotoModal(prev => ({...prev, isOpen: false}))} className="absolute top-4 right-4 text-brand-slate-600 hover:text-foreground transition-colors"><AppWindow size={24}/></button>
                 <h2 className="text-lg font-bold mb-2 flex items-center gap-2"><AppWindow className="text-yellow-500"/> Definir Fotoperiodo</h2>
-                <p className="text-brand-slate-400 text-sm mb-6">Vas a migrar a fase <b>{fotoModal.nextStage.toUpperCase()}</b>. Configura biológicamente el ciclo de iluminación para bitácora.</p>
+                <p className="text-brand-slate-600 dark:text-slate-400 text-sm mb-6">Vas a migrar a fase <b>{fotoModal.nextStage.toUpperCase()}</b>. Configura biológicamente el ciclo de iluminación para bitácora.</p>
                 <form onSubmit={handleFotoSubmit} className="flex flex-col gap-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
                             <label className="text-xs font-mono text-yellow-500 uppercase mb-1 block">Horas de Luz ☀️</label>
-                            <input type="number" step="0.5" required value={fotoLuz} onChange={e=>setFotoLuz(e.target.value)} className="w-full bg-black/20 border border-panel-border rounded p-3 font-mono text-lg focus:border-yellow-500 outline-none text-white"/>
+                            <input type="number" step="0.5" required value={fotoLuz} onChange={e=>setFotoLuz(e.target.value)} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 font-mono text-lg focus:border-yellow-500 outline-none text-foreground"/>
                         </div>
                         <div>
                             <label className="text-xs font-mono text-blue-500 uppercase mb-1 block">Horas Oscuridad 🌙</label>
-                            <input type="number" step="0.5" required value={fotoOsc} onChange={e=>setFotoOsc(e.target.value)} className="w-full bg-black/20 border border-panel-border rounded p-3 font-mono text-lg focus:border-blue-500 outline-none text-white"/>
+                            <input type="number" step="0.5" required value={fotoOsc} onChange={e=>setFotoOsc(e.target.value)} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 font-mono text-lg focus:border-blue-500 outline-none text-foreground"/>
                         </div>
                     </div>
                     <button type="submit" className="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg shadow-lg flex items-center justify-center gap-2"><FloppyDisk size={20}/> Procesar Cambio de Estado</button>
@@ -320,19 +320,19 @@ export function CultivoView() {
       {harvestModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
             <GlassCard className="max-w-md w-full p-6 shadow-2xl relative border-t-4 border-t-orange-500">
-                <button onClick={() => setHarvestModal(prev => ({...prev, isOpen: false}))} className="absolute top-4 right-4 text-brand-slate-600 hover:text-white transition-colors"><AppWindow size={24}/></button>
+                <button onClick={() => setHarvestModal(prev => ({...prev, isOpen: false}))} className="absolute top-4 right-4 text-brand-slate-600 hover:text-foreground transition-colors"><AppWindow size={24}/></button>
                 <h2 className="text-xl font-bold mb-2 flex items-center gap-2 text-orange-500">Cierre de Ciclo productivo</h2>
-                <p className="text-brand-slate-400 text-sm mb-4">La red biométrica enviará el volumen Cosechado-Seco al POS como Producto Terminado. Ingrese el resultado.</p>
+                <p className="text-brand-slate-600 dark:text-slate-400 text-sm mb-4">La red biométrica enviará el volumen Cosechado-Seco al POS como Producto Terminado. Ingrese el resultado.</p>
                 
                 <div className="bg-orange-500/10 border border-orange-500/20 p-3 rounded-lg mb-6">
                    <span className="text-xs font-mono text-orange-400 block mb-1">Costo Acumulado OpEx para traspaso:</span>
-                   <span className="text-lg font-bold text-white">${batchCosts[harvestModal.batch.id] || 0} ARG</span>
+                   <span className="text-lg font-bold text-foreground">${batchCosts[harvestModal.batch.id] || 0} ARG</span>
                 </div>
 
                 <form onSubmit={handleHarvestSubmit} className="flex flex-col gap-4">
                     <div>
                         <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Peso Final Neto (Dry - gramos)</label>
-                        <input type="number" step="0.01" required placeholder="Ej: 450.5" value={harvestGrams} onChange={e=>setHarvestGrams(e.target.value)} className="w-full bg-black/20 border border-panel-border rounded p-4 text-2xl font-black text-right focus:border-orange-500 outline-none text-white"/>
+                        <input type="number" step="0.01" required placeholder="Ej: 450.5" value={harvestGrams} onChange={e=>setHarvestGrams(e.target.value)} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-4 text-2xl font-black text-right focus:border-orange-500 outline-none text-foreground"/>
                     </div>
                     <button type="submit" className="mt-2 w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-lg shadow-lg">INYECTAR A INVENTARIO POS</button>
                 </form>
