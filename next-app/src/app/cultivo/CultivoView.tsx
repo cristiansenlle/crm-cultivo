@@ -5,6 +5,7 @@ import { GlassCard } from "../../components/ui/GlassCard";
 import { Info, MapPinLine, Tree, Plus, Plant, Coins, AppWindow, FloppyDisk } from "@phosphor-icons/react";
 import { supabase } from "../../lib/supabase";
 import { BitacoraModal } from "./BitacoraModal";
+import { PhotoperiodChartModal } from "../../components/PhotoperiodChartModal";
 
 export function CultivoView() {
   const [rooms, setRooms] = useState<any[]>([]);
@@ -22,6 +23,8 @@ export function CultivoView() {
 
   const [harvestModal, setHarvestModal] = useState<{isOpen: boolean, batch: any, nextStage: string}>({isOpen: false, batch: null, nextStage: ""});
   const [harvestGrams, setHarvestGrams] = useState("");
+
+  const [chartModal, setChartModal] = useState<{isOpen: boolean, batch: any}>({isOpen: false, batch: null});
 
   const fetchRooms = async () => {
     setLoading(true);
@@ -79,9 +82,9 @@ export function CultivoView() {
       
       // Interceptar Transiciones Criticas
       if (nextStage === 'floración' || nextStage === 'vegetativo') {
-          // Requiere Fotoperiodo
+          // Requiere Fotoperiodo Inicial, el modal llama luego a commitStage
           setFotoLuz(nextStage === 'floración' ? "12" : "18");
-          setFotoOsc(nextStage === 'floración' ? "12" : "6");
+          setFotoOsc(nextStage === 'floración' ? "12" : "12"); // User requested no limit to 24h
           setFotoModal({ isOpen: true, batch, nextStage });
           return;
       }
@@ -109,19 +112,56 @@ export function CultivoView() {
       updates.stage = nextStage;
       const { error } = await supabase.from('core_batches').update(updates).eq('id', batchId);
       if(!error) {
-          fetchBatches(); // Refrescar lista local
+          // CHECK AUTO-TRANSICIÓN DE ROOM
+          if (selectedRoom && nextStage === 'floración') {
+              const {data: siblings} = await supabase.from('core_batches').select('stage').eq('location', selectedRoom.id);
+              if (siblings && siblings.length > 0) {
+                  const allFloro = siblings.every(s => (s.stage || '').toLowerCase() === 'floración' || (s.stage || '').toLowerCase().includes('cosecha'));
+                  if (allFloro && selectedRoom.phase !== 'Floración') {
+                       await supabase.from('core_rooms').update({phase: 'Floración'}).eq('id', selectedRoom.id);
+                       setSelectedRoom({...selectedRoom, phase: 'Floración'});
+                       fetchRooms();
+                  }
+              }
+          }
+          fetchBatches(); 
       } else {
           alert("Error crítico actualizando etapa: " + error.message);
       }
   };
 
+  const savePhotoperiodLog = async (batch: any, lH: number, dH: number) => {
+      // Close previous logs
+      await supabase.from('core_photoperiod_history').update({ end_date: new Date().toISOString() }).eq('batch_id', batch.id).is('end_date', null);
+      // Insert new log
+      await supabase.from('core_photoperiod_history').insert([{
+         batch_id: batch.id,
+         light_hours: lH,
+         dark_hours: dH,
+         start_date: new Date().toISOString()
+      }]);
+  };
+
   const handleFotoSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       setFotoModal(prev => ({...prev, isOpen: false}));
-      await commitStage(fotoModal.batch.id, fotoModal.nextStage, {
-          light_hours: parseFloat(fotoLuz),
-          dark_hours: parseFloat(fotoOsc)
-      });
+      
+      const lH = parseFloat(fotoLuz);
+      const dH = parseFloat(fotoOsc);
+
+      // Si es un update fotoperíodo local sin cambio de state (nextStage empty o igual)
+      if (!fotoModal.nextStage || fotoModal.nextStage === fotoModal.batch.stage) {
+          await supabase.from('core_batches').update({ light_hours: lH, dark_hours: dH }).eq('id', fotoModal.batch.id);
+          await savePhotoperiodLog(fotoModal.batch, lH, dH);
+          fetchBatches();
+      } else {
+          // Si conlleva un cambio de State (ej de Veg a Flora)
+          await savePhotoperiodLog(fotoModal.batch, lH, dH);
+          await commitStage(fotoModal.batch.id, fotoModal.nextStage, {
+              light_hours: lH,
+              dark_hours: dH
+          });
+      }
   };
 
   const handleHarvestSubmit = async (e: React.FormEvent) => {
@@ -264,6 +304,10 @@ export function CultivoView() {
                            <div className="text-[11px] font-mono bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded text-foreground flex gap-1 justify-center">
                              <span className="text-yellow-400">{b.light_hours || '-'}L</span> / <span className="text-blue-400">{b.dark_hours || '-'}O</span>
                            </div>
+                           <div className="flex items-center justify-center gap-1 mt-2">
+                             <button onClick={() => { setFotoLuz(b.light_hours); setFotoOsc(b.dark_hours); setFotoModal({isOpen:true, batch:b, nextStage: b.stage}); }} className="p-1 px-2 border border-panel-border text-[10px] uppercase font-bold text-brand-slate-600 hover:text-emerald-500 rounded">Editar</button>
+                             <button onClick={() => setChartModal({isOpen: true, batch: b})} className="p-1 px-2 border border-panel-border text-[10px] uppercase font-bold text-brand-slate-600 hover:text-purple-500 rounded">Chart</button>
+                           </div>
                        </td>
                        <td className="py-4 px-4 text-right">
                            <div className={`inline-flex items-center gap-1 font-mono font-bold text-base \${cost > 0 ? 'text-status-yellow' : 'text-brand-slate-600'}`}>
@@ -298,7 +342,7 @@ export function CultivoView() {
             <GlassCard className="max-w-md w-full p-6 shadow-2xl relative">
                 <button onClick={() => setFotoModal(prev => ({...prev, isOpen: false}))} className="absolute top-4 right-4 text-brand-slate-600 hover:text-foreground transition-colors"><AppWindow size={24}/></button>
                 <h2 className="text-lg font-bold mb-2 flex items-center gap-2"><AppWindow className="text-yellow-500"/> Definir Fotoperiodo</h2>
-                <p className="text-brand-slate-600 dark:text-slate-400 text-sm mb-6">Vas a migrar a fase <b>{fotoModal.nextStage.toUpperCase()}</b>. Configura biológicamente el ciclo de iluminación para bitácora.</p>
+                <p className="text-brand-slate-600 dark:text-slate-400 text-sm mb-6">Ajusta los ciclos lumínicos del lote. No tienen límite de suma igual a 24hs.</p>
                 <form onSubmit={handleFotoSubmit} className="flex flex-col gap-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
@@ -338,6 +382,11 @@ export function CultivoView() {
                 </form>
             </GlassCard>
         </div>
+      )}
+
+      {/* Modal Chart de Fotoperiodo Histórico */}
+      {chartModal.isOpen && (
+        <PhotoperiodChartModal batch={chartModal.batch} onClose={() => setChartModal({isOpen: false, batch: null})} />
       )}
     </>
   );
