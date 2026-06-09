@@ -1,6 +1,6 @@
-"use client";
+﻿"use client";
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { 
@@ -12,12 +12,23 @@ import {
   ChartLineUp, 
   ProjectorScreenChart, 
   BookOpen, 
-  Plant
+  Plant,
+  X,
+  Lightning
 } from "@phosphor-icons/react";
 import { cn } from "../ui/GlassCard"; // quick reuse of cn
 
 export function Sidebar() {
   const pathname = usePathname() || "/";
+  const [isOpen, setIsOpen] = useState(false);
+
+  useEffect(() => {
+    const handleToggle = () => setIsOpen(p => !p);
+    window.addEventListener("toggle-mobile-sidebar", handleToggle);
+    return () => window.removeEventListener("toggle-mobile-sidebar", handleToggle);
+  }, []);
+
+  useEffect(() => { setIsOpen(false); }, [pathname]);
 
   const menu = [
     { name: "Panel Principal", path: "/", icon: <SquaresFour size={22} /> },
@@ -26,12 +37,26 @@ export function Sidebar() {
     { name: "Bodega e Insumos", path: "/insumos", icon: <Warehouse size={22} /> },
     { name: "Punto de Venta", path: "/pos", icon: <ShoppingCart size={22} /> },
     { name: "Finanzas & ROI", path: "/analytics", icon: <ChartLineUp size={22} /> },
-    { name: "Timeline Agronómico", path: "/agronomy", icon: <ProjectorScreenChart size={22} /> },
-    { name: "Protocolos", path: "/protocolos", icon: <BookOpen size={22} /> }
+    { name: "Timeline AgronÃ³mico", path: "/agronomy", icon: <ProjectorScreenChart size={22} /> },
+    { name: "Protocolos", path: "/protocolos", icon: <BookOpen size={22} /> },
+    { name: "Centro IoT (Equipos)", path: "/iot/devices", icon: <Lightning size={22} /> }
   ];
 
   return (
-    <aside className="w-64 bg-panel-base backdrop-blur-xl border-r border-panel-border overflow-y-auto flex flex-col pt-8 pb-10 px-4 h-full shrink-0">
+    <>
+      {/* Mobile Overlay */}
+      {isOpen && (
+        <div 
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 md:hidden transition-opacity"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+      
+      <aside className={cn(
+        "bg-panel-base backdrop-blur-xl border-r border-panel-border overflow-y-auto flex flex-col pt-8 pb-10 px-4 h-full shrink-0 w-64",
+        "fixed inset-y-0 left-0 z-50 transform transition-transform duration-300 md:relative md:translate-x-0",
+        isOpen ? "translate-x-0" : "-translate-x-full"
+      )}>
       
       <div className="flex items-center gap-3 px-2 mb-10 text-status-green drop-shadow-[0_0_10px_rgba(16,185,129,0.5)]">
         <Plant weight="fill" size={32} />
@@ -68,5 +93,7 @@ export function Sidebar() {
           </div>
       </div>
     </aside>
+    </>
   );
 }
+
