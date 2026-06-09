@@ -63,29 +63,63 @@ export default function AgronomyTimelinePage() {
             const { data: tel } = await telQ;
             
             if (tel) {
-                // Generar consolidado unificado para gráficas
-                const consolidated: any[] = tel.map((t:any) => {
+                // Agrupar registros por etiqueta de tiempo para promediar lecturas coincidentes
+                const groupedMap = new Map();
+
+                tel.forEach((t:any) => {
                     const d = new Date(t.created_at);
-                    return {
-                        timeLabel: d.toLocaleDateString([],{day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}),
-                        timestamp: d.getTime(),
-                        Temp: parseFloat(t.temperature_c) || null,
-                        Hum: parseFloat(t.humidity_percent) || null,
-                        VPD: parseFloat(t.vpd_kpa) || null,
-                        evento: null, eventDesc: '', eventType: ''
+                    // Redondear minutos a intervalos de 10 min para mayor suavidad en el promedio si se envían datos asincronizados
+                    const min = d.getMinutes();
+                    d.setMinutes(Math.floor(min / 10) * 10, 0, 0);
+                    
+                    const tLabel = d.toLocaleDateString([],{day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'});
+                    
+                    if(!groupedMap.has(tLabel)) {
+                         groupedMap.set(tLabel, {
+                             timeLabel: tLabel,
+                             timestamp: d.getTime(),
+                             tempSum: 0, tempCount: 0,
+                             humSum: 0, humCount: 0,
+                             vpdSum: 0, vpdCount: 0,
+                             evento: null, eventDesc: '', eventType: ''
+                         });
                     }
+
+                    const record = groupedMap.get(tLabel);
+                    const temp = parseFloat(t.temperature_c);
+                    if(!isNaN(temp)) { record.tempSum += temp; record.tempCount++; }
+                    const hum = parseFloat(t.humidity_percent);
+                    if(!isNaN(hum)) { record.humSum += hum; record.humCount++; }
+                    const vpd = parseFloat(t.vpd_kpa);
+                    if(!isNaN(vpd)) { record.vpdSum += vpd; record.vpdCount++; }
                 });
+
+                // Generar consolidado unificado promediado
+                const consolidated: any[] = Array.from(groupedMap.values()).map(r => ({
+                    timeLabel: r.timeLabel,
+                    timestamp: r.timestamp,
+                    Temp: r.tempCount > 0 ? Number((r.tempSum / r.tempCount).toFixed(2)) : null,
+                    Hum: r.humCount > 0 ? Number((r.humSum / r.humCount).toFixed(2)) : null,
+                    VPD: r.vpdCount > 0 ? Number((r.vpdSum / r.vpdCount).toFixed(2)) : null,
+                    evento: null, eventDesc: '', eventType: ''
+                }));
 
                 if (evs) {
                     evs.forEach((e:any) => {
                         const ed = new Date(e.date_occurred);
-                        // Filtro visual basico si el evento corresponde a la sala elegida
-                        // (Fallback logico si la db cruda via bot no indexó la sala perfect, pero si es 'all' va de cajon)
+                        const evType = (e.event_type || '').toLowerCase();
+                        let evtKey = 'evento_otro';
+                        if(evType.includes('riego') || evType.includes('nutri') || evType.includes('agua')) evtKey = 'evento_riego';
+                        else if(evType.includes('poda')) evtKey = 'evento_poda';
+                        else if(evType.includes('manejo')) evtKey = 'evento_manejo';
+                        else if(evType.includes('alerta') || evType.includes('plaga') || evType.includes('ipm')) evtKey = 'evento_alerta';
+                        else if(evType.includes('fase') || evType.includes('foto')) evtKey = 'evento_fase';
+
                         consolidated.push({
                             timeLabel: ed.toLocaleDateString([],{day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}),
                             timestamp: ed.getTime(),
                             Temp: null, Hum: null, VPD: null,
-                            evento: e.event_type === 'Plaga' ? 10 : (e.event_type === 'Fase' ? 12 : 8),
+                            [evtKey]: 1, // Se ubicará en la parte inferior gracias a un eje Y independiente
                             eventDesc: e.description,
                             eventType: e.event_type
                         });
@@ -102,6 +136,30 @@ export default function AgronomyTimelinePage() {
     // Auto-load on filter change
     useEffect(() => {
         loadData();
+        // eslint-disable-next-line
+    }, [startDate, endDate, selectedRoom, selectedSensor]);
+
+    // Realtime subscription for telemetry
+    useEffect(() => {
+        const channel = supabase
+            .channel('telemetry_changes')
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'daily_telemetry'
+                },
+                (payload: any) => {
+                    console.log('Realtime telemetry inserted:', payload);
+                    loadData();
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
         // eslint-disable-next-line
     }, [startDate, endDate, selectedRoom, selectedSensor]);
 
@@ -122,8 +180,8 @@ export default function AgronomyTimelinePage() {
           <div className="bg-panel-base/90 backdrop-blur-md border border-panel-border p-3 rounded-lg shadow-xl font-mono text-xs z-50 relative">
             <p className="font-bold text-foreground mb-2">{label}</p>
             {payload.map((entry: any, index: number) => {
-              if(entry.dataKey === 'evento') {
-                  return <div key={index} className="text-yellow-400 mt-2 font-bold max-w-[200px] whitespace-normal">[{entry.payload.eventType}] {entry.payload.eventDesc}</div>
+              if(entry.dataKey && entry.dataKey.startsWith('evento_')) {
+                  return <div key={index} className="mt-2 font-bold max-w-[200px] whitespace-normal" style={{color: entry.color}}>[{entry.payload.eventType}] {entry.payload.eventDesc}</div>
               }
               if(entry.value !== null) {
                 return (
@@ -190,7 +248,7 @@ export default function AgronomyTimelinePage() {
                                 <option value="all">Bloqueado (Varias Salas)</option>
                             ) : (
                                 <>
-                                  <option value="all">Promedio Ficticio (Todos)</option>
+                                  <option value="all">Promedio Real (Todos)</option>
                                   {getAvailableSensors().map(s => <option key={s.id} value={s.id}>Sensor: {s.name}</option>)}
                                 </>
                             )}
@@ -215,6 +273,7 @@ export default function AgronomyTimelinePage() {
                                
                                <YAxis yAxisId="yClima" orientation="left" tick={{fontSize: 10, fill: '#888'}} domain={['dataMin - 2', 'dataMax + 2']} allowDataOverflow />
                                <YAxis yAxisId="yHum" orientation="right" tick={{fontSize: 10, fill: '#888'}} hide />
+                               <YAxis yAxisId="yEvent" type="number" domain={[0, 15]} hide />
                                
                                <Tooltip content={<CustomTooltip />} />
                                <Legend wrapperStyle={{ fontSize: '12px' }} />
@@ -222,7 +281,12 @@ export default function AgronomyTimelinePage() {
                                <Line yAxisId="yClima" type="monotone" dataKey="Temp" stroke="#facc15" strokeWidth={2} dot={false} name="Temperatura °C" connectNulls />
                                <Line yAxisId="yHum" type="monotone" dataKey="Hum" stroke="#38bdf8" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Humedad %" connectNulls />
                                
-                               <Scatter yAxisId="yClima" dataKey="evento" fill="#22c55e" shape="circle" name="Marcador Evento (Riego, Plaga, etc)" />
+                               <Scatter yAxisId="yEvent" dataKey="evento_riego" fill="#3b82f6" shape="circle" name="💧 Riego / Nutrición" />
+                               <Scatter yAxisId="yEvent" dataKey="evento_poda" fill="#22c55e" shape="circle" name="✂️ Poda" />
+                               <Scatter yAxisId="yEvent" dataKey="evento_manejo" fill="#a855f7" shape="square" name="🪴 Manejo Estructural" />
+                               <Scatter yAxisId="yEvent" dataKey="evento_alerta" fill="#ef4444" shape="triangle" name="⚠️ Alerta / IPM" />
+                               <Scatter yAxisId="yEvent" dataKey="evento_fase" fill="#facc15" shape="star" name="⏱️ Cambio de Fase" />
+                               <Scatter yAxisId="yEvent" dataKey="evento_otro" fill="#94a3b8" shape="circle" name="📝 Otro Evento" />
                            </ComposedChart>
                        </ResponsiveContainer>
                     )}
