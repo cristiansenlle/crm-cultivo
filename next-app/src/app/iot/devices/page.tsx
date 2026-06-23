@@ -1,11 +1,14 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
+import BroadlinkPanel from './BroadlinkPanel';
+import SoilConfigPanel from './SoilConfigPanel';
 
 const MOCK_DEVICES = [
   { id: '1', name: 'Shelly Relé 1', type: 'shelly_1plus', ip: '192.168.0.53', deviceId: 'shellyplus1-8813bf9fc354', status: 'offline', last_seen: 'Nunca' },
   { id: '2', name: 'Shelly Relé 2', type: 'shelly_1plus', ip: '192.168.0.142', deviceId: 'shellyplus1-8813bf9f8878', status: 'offline', last_seen: 'Nunca' },
+  { id: '3', name: 'Shelly H&T Gen3', type: 'shellyhtg3', ip: '192.168.0.190', deviceId: 'shellyhtg3-d0cf13c2f578', status: 'offline', last_seen: 'Nunca' },
 ];
 
 export default function DevicesPage() {
@@ -14,6 +17,13 @@ export default function DevicesPage() {
   useEffect(() => {
     // Para cada dispositivo, preguntamos su nombre real a la API (via MQTT)
     devices.forEach((dev) => {
+      if (dev.type === 'shellyhtg3') {
+        // Los sensores a batería (o USB-C) a veces no responden a RPC GetStatus o están durmiendo.
+        // Asumimos que están transmitiendo si están en la lista.
+        setDevices(prev => prev.map(d => d.id === dev.id ? { ...d, status: 'online', last_seen: 'Transmitiendo' } : d));
+        return;
+      }
+
       fetch('/api/iot/shelly', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -37,7 +47,7 @@ export default function DevicesPage() {
 
   return (
     <div className="p-8 max-w-6xl mx-auto">
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 sm:gap-0 mb-8">
         <div>
           <h1 className="text-3xl font-bold text-foreground mb-2">Dispositivos IoT</h1>
           <p className="text-gray-400">Gestión y configuración de hardware local y remoto.</p>
@@ -47,8 +57,8 @@ export default function DevicesPage() {
         </button>
       </div>
 
-      <div className="bg-neutral-900 rounded-xl border border-neutral-800 overflow-hidden shadow-lg">
-        <table className="w-full text-left text-foreground">
+      <div className="bg-neutral-900 rounded-xl border border-neutral-800 overflow-x-auto shadow-lg">
+        <table className="w-full text-left text-foreground min-w-[600px]">
           <thead className="bg-neutral-950 border-b border-neutral-800">
             <tr>
               <th className="px-6 py-4 font-semibold text-gray-400">Dispositivo</th>
@@ -81,9 +91,14 @@ export default function DevicesPage() {
           </tbody>
         </table>
       </div>
+
+      <BroadlinkPanel />
+      <SoilConfigPanel />
     </div>
   );
 }
+
+
 
 
 

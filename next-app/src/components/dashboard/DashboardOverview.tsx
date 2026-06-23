@@ -9,12 +9,76 @@ import { supabase } from "../../lib/supabase";
 function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string }) {
   const [latestMetric, setLatestMetric] = useState<{temp: number, hum: number, vpd: number} | null>(null);
 
-  const calcVpd = (tempC: number, humPct: number) => {
-    const svpPa = 610.78 * Math.exp((17.27 * tempC) / (tempC + 237.3));
-    const svpKpa = svpPa / 1000;
-    const avpKpa = svpKpa * (humPct / 100);
-    return Number((svpKpa - avpKpa).toFixed(2));
+  const calcLeafVpd = (tempC: number, humPct: number) => {
+    // Usamos offset de -1.5 para luces LED
+    const leafTemp = tempC - 1.5;
+    const svpLeafPa = 610.78 * Math.exp((17.27 * leafTemp) / (leafTemp + 237.3));
+    const svpLeafKpa = svpLeafPa / 1000;
+    
+    const svpAirPa = 610.78 * Math.exp((17.27 * tempC) / (tempC + 237.3));
+    const svpAirKpa = svpAirPa / 1000;
+    
+    const avpKpa = svpAirKpa * (humPct / 100);
+    return Number((svpLeafKpa - avpKpa).toFixed(2));
   };
+
+  const getSuggestions = (temp: number, hum: number, currentVpd: number, isFloro: boolean) => {
+     let minVpd = 0.8;
+     let maxVpd = 1.2;
+     let targetVpd = 1.0;
+     if (isFloro) {
+        minVpd = 1.2;
+        maxVpd = 1.6;
+        targetVpd = 1.4;
+     }
+     
+     if (currentVpd >= minVpd && currentVpd <= maxVpd) {
+        return { temp: "Óptimo", hum: "Óptimo", tempStatus: "optimal" as const, humStatus: "optimal" as const };
+     }
+     
+     // Buscar humedad ideal
+     let targetHum = hum;
+     let bestHumDiff = 999;
+     for (let h = 10; h <= 95; h++) {
+        let v = calcLeafVpd(temp, h);
+        let diff = Math.abs(v - targetVpd);
+        if (diff < bestHumDiff) {
+            bestHumDiff = diff;
+            targetHum = h;
+        }
+     }
+     
+     // Buscar temperatura ideal
+     let targetTemp = temp;
+     let bestTempDiff = 999;
+     for (let t = 15; t <= 35; t += 0.5) {
+        let v = calcLeafVpd(t, hum);
+        let diff = Math.abs(v - targetVpd);
+        if (diff < bestTempDiff) {
+            bestTempDiff = diff;
+            targetTemp = t;
+        }
+     }
+     
+     const humDiff = targetHum - hum;
+     const tempDiff = targetTemp - temp;
+     
+     let humText = humDiff > 0 ? `Subir ${humDiff}%` : humDiff < 0 ? `Bajar ${Math.abs(humDiff)}%` : "Óptimo";
+     let tempText = tempDiff > 0 ? `Subir ${tempDiff.toFixed(1)}°C` : tempDiff < 0 ? `Bajar ${Math.abs(tempDiff).toFixed(1)}°C` : "Óptimo";
+     
+     let humStatus: "optimal" | "warning" | "danger" = "optimal";
+     if (Math.abs(humDiff) > 5) humStatus = "danger";
+     else if (Math.abs(humDiff) > 1) humStatus = "warning";
+     
+     let tempStatus: "optimal" | "warning" | "danger" = "optimal";
+     if (Math.abs(tempDiff) > 2.0) tempStatus = "danger";
+     else if (Math.abs(tempDiff) > 0.5) tempStatus = "warning";
+
+     if (Math.abs(humDiff) <= 1) humText = "Óptimo";
+     if (Math.abs(tempDiff) <= 0.5) tempText = "Óptimo";
+     
+     return { temp: tempText, hum: humText, tempStatus, humStatus };
+  }
 
   useEffect(() => {
     const fetchLatest = async () => {
@@ -32,7 +96,7 @@ function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string
         setLatestMetric({
           temp: t,
           hum: h,
-          vpd: rawVpd > 0 ? rawVpd : calcVpd(t, h)
+          vpd: rawVpd > 0 ? rawVpd : calcLeafVpd(t, h)
         });
       }
     };
@@ -49,7 +113,7 @@ function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string
           table: 'daily_telemetry',
           filter: `sensor_id=eq.${sensor.id}`
         },
-        (payload) => {
+        (payload: any) => {
           if (payload.new) {
              const t = parseFloat(payload.new.temperature_c) || 0;
              const h = parseFloat(payload.new.humidity_percent) || 0;
@@ -58,7 +122,7 @@ function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string
              setLatestMetric({
                 temp: t,
                 hum: h,
-                vpd: rawVpd > 0 ? rawVpd : calcVpd(t, h)
+                vpd: rawVpd > 0 ? rawVpd : calcLeafVpd(t, h)
              });
           }
         }
@@ -70,6 +134,9 @@ function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string
     };
   }, [sensor.id]);
 
+  const isFloro = (roomPhase || '').toLowerCase().includes('flora');
+  const suggestions = latestMetric ? getSuggestions(latestMetric.temp, latestMetric.hum, latestMetric.vpd, isFloro) : null;
+
   return (
     <div className="flex flex-col gap-4 border border-panel-border/30 bg-black/5 dark:bg-white/5 rounded-2xl p-4 shadow-xl">
       <h2 className="text-xl font-bold text-emerald-500 font-sans border-b border-panel-border/50 pb-2 mb-2 flex items-center gap-2">
@@ -78,12 +145,21 @@ function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string
       </h2>
       
       <section className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <TelemetryRadiant type="temperature" value={latestMetric?.temp || 0} status={latestMetric ? "optimal" : "danger"} />
-        <TelemetryRadiant type="humidity" value={latestMetric?.hum || 0} status={latestMetric ? "optimal" : "danger"} />
+        <TelemetryRadiant 
+          type="temperature" 
+          value={latestMetric?.temp || 0} 
+          status={suggestions?.tempStatus || "danger"} 
+          suggestionText={suggestions?.temp}
+        />
+        <TelemetryRadiant 
+          type="humidity" 
+          value={latestMetric?.hum || 0} 
+          status={suggestions?.humStatus || "danger"} 
+          suggestionText={suggestions?.hum}
+        />
         <TelemetryRadiant type="vpd" value={latestMetric?.vpd || 0} status={
             (() => {
                 if(!latestMetric) return "danger";
-                const isFloro = (roomPhase || '').toLowerCase().includes('flora');
                 const v = latestMetric.vpd;
                 
                 if (isFloro) {
@@ -118,15 +194,17 @@ export function DashboardOverview() {
      </div>
   );
 
-  if (sensors.length === 0) return (
+  const ambientSensors = sensors.filter(s => s.type !== 'soil');
+
+  if (ambientSensors.length === 0) return (
      <div className="w-full flex items-center justify-center p-12 text-status-yellow font-mono text-sm border-2 border-dashed border-status-yellow/30 rounded-xl bg-status-yellow/5">
-        &gt; OFFLINE: ESTA SALA NO POSEE SENSORES ACTIVOS. AÑADA HARDWARE ABAJO.
+        &gt; OFFLINE: ESTA SALA NO POSEE SENSORES AMBIENTALES ACTIVOS.
      </div>
   );
 
   return (
     <div className="flex flex-col gap-8 w-full">
-       {sensors.map(s => <SensorDashboard key={s.id} sensor={s} roomPhase={selectedRoom.phase} />)}
+       {ambientSensors.map(s => <SensorDashboard key={s.id} sensor={s} roomPhase={selectedRoom.phase} />)}
     </div>
   );
 }

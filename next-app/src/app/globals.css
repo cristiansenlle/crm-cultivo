@@ -69,3 +69,9 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-brand-emerald-600);
 }
+
+/* Magic Glow Buttons */
+.btn-glow-emerald:hover:not(:disabled) { box-shadow: 0 0 15px rgba(16, 185, 129, 0.8) !important; color: #10B981 !important; border-color: #10B981 !important; background-color: rgba(16, 185, 129, 0.1) !important; }
+.btn-glow-purple:hover:not(:disabled) { box-shadow: 0 0 15px rgba(168, 85, 247, 0.8) !important; color: #A855F7 !important; border-color: #A855F7 !important; background-color: rgba(168, 85, 247, 0.1) !important; }
+.btn-glow-yellow:hover:not(:disabled) { box-shadow: 0 0 15px rgba(234, 179, 8, 0.8) !important; color: #EAB308 !important; border-color: #EAB308 !important; background-color: rgba(234, 179, 8, 0.1) !important; }
+.btn-glow-red:hover:not(:disabled) { box-shadow: 0 0 15px rgba(239, 68, 68, 0.8) !important; color: #EF4444 !important; border-color: #EF4444 !important; background-color: rgba(239, 68, 68, 0.1) !important; }

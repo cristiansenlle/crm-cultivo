@@ -1,11 +1,12 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 const MOCK_DEVICES = [
   { id: '1', name: 'Shelly Relé 1', type: 'switch', deviceId: 'shellyplus1-8813bf9fc354' },
-  { id: '2', name: 'Shelly Relé 2', type: 'switch', deviceId: 'shellyplus1-8813bf9f8878' }
+  { id: '2', name: 'Shelly Relé 2', type: 'switch', deviceId: 'shellyplus1-8813bf9f8878' },
+  { id: '3', name: 'Shelly H&T Gen3', type: 'shellyhtg3', ip: '192.168.0.190', deviceId: 'shellyhtg3-d0cf13c2f578' },
 ];
 
 export default function MigrationPage() {
@@ -150,6 +151,8 @@ export default function MigrationPage() {
     </div>
   );
 }
+
+
 
 
 

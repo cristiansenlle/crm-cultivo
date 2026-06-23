@@ -7,10 +7,11 @@ import { GlassCard } from "../ui/GlassCard";
 interface TelemetryRadiantProps {
   type: "temperature" | "humidity" | "vpd";
   value: number;
-  status: "optimal" | "warning" | "danger";
+  status: "optimal" | "warning" | "danger" | "neutral";
+  suggestionText?: string;
 }
 
-export function TelemetryRadiant({ type, value, status }: TelemetryRadiantProps) {
+export function TelemetryRadiant({ type, value, status, suggestionText }: TelemetryRadiantProps) {
   const meta = {
     temperature: { icon: <ThermometerHot size={20} />, label: "Temperatura", unit: "°C" },
     humidity: { icon: <Drop size={20} />, label: "Humedad", unit: "%" },
@@ -20,28 +21,34 @@ export function TelemetryRadiant({ type, value, status }: TelemetryRadiantProps)
   const statusLabel = {
     optimal: "Óptima",
     warning: "Alerta",
-    danger: "Peligro"
+    danger: "Peligro",
+    neutral: ""
   };
 
-  const glowColor = status === "optimal" ? "emerald" : status === "warning" ? "yellow" : "red";
+  const glowColor = status === "optimal" ? "emerald" : status === "warning" ? "yellow" : status === "danger" ? "red" : "none";
+  const displayPill = status !== "neutral" || suggestionText;
+  const pillText = suggestionText || statusLabel[status];
 
   return (
     <GlassCard glowColor={glowColor} className="bg-gradient-to-br from-black/20 to-black/5 dark:from-slate-900/60 dark:to-slate-800/40">
       <div className="flex justify-between items-center w-full">
         <h3 className="flex items-center gap-2 text-sm font-semibold text-brand-slate-600 dark:text-slate-300">
-          <span className={`text-status-${glowColor === "emerald" ? "green" : glowColor}`}>
+          <span className={`text-status-${glowColor === "emerald" ? "green" : glowColor === "none" ? "slate-500" : glowColor}`}>
             {meta[type].icon}
           </span>
           {meta[type].label}
         </h3>
         
-        <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider
-          ${status === "optimal" ? "bg-status-green/10 text-status-green" : 
-            status === "warning" ? "bg-status-yellow/10 text-status-yellow" : 
-            "bg-status-red/10 text-status-red"}
-        `}>
-          {statusLabel[status]}
-        </span>
+        {displayPill && (
+          <span className={`px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider
+            ${status === "optimal" ? "bg-status-green/10 text-status-green" : 
+              status === "warning" ? "bg-status-yellow/10 text-status-yellow" : 
+              status === "danger" ? "bg-status-red/10 text-status-red" :
+              "bg-slate-500/10 text-slate-500"}
+          `}>
+            {pillText}
+          </span>
+        )}
       </div>
 
       <div className="flex-grow flex items-center justify-center my-2">

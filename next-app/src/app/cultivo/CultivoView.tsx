@@ -2,9 +2,10 @@
 
 import React, { useEffect, useState } from "react";
 import { GlassCard } from "../../components/ui/GlassCard";
-import { Info, MapPinLine, Tree, Plus, Plant, Coins, AppWindow, FloppyDisk } from "@phosphor-icons/react";
+import { Info, MapPinLine, Tree, Plus, Plant, Coins, AppWindow, FloppyDisk, PencilSimple, Trash, Stack } from "@phosphor-icons/react";
 import { supabase } from "../../lib/supabase";
 import { BitacoraModal } from "./BitacoraModal";
+import { BitacoraGlobalModal } from "./BitacoraGlobalModal";
 import { PhotoperiodChartModal } from "../../components/PhotoperiodChartModal";
 
 export function CultivoView() {
@@ -15,6 +16,7 @@ export function CultivoView() {
   const [loading, setLoading] = useState(true);
   
   const [activeBitacora, setActiveBitacora] = useState<any | null>(null);
+  const [activeGlobalBitacora, setActiveGlobalBitacora] = useState<boolean>(false);
 
   // Machine State Modals
   const [fotoModal, setFotoModal] = useState<{isOpen: boolean, batch: any, nextStage: string}>({isOpen: false, batch: null, nextStage: ""});
@@ -25,6 +27,16 @@ export function CultivoView() {
   const [harvestGrams, setHarvestGrams] = useState("");
 
   const [chartModal, setChartModal] = useState<{isOpen: boolean, batch: any}>({isOpen: false, batch: null});
+
+  // New Batch State
+  const [addBatchModalOpen, setAddBatchModalOpen] = useState(false);
+  const [newBatch, setNewBatch] = useState({ name: "", strain: "", num_plants: 1, origen: "Semilla" });
+  const [isSubmittingBatch, setIsSubmittingBatch] = useState(false);
+
+  // Edit Batch State
+  const [editBatchModalOpen, setEditBatchModalOpen] = useState(false);
+  const [editBatch, setEditBatch] = useState<{id: string, strain: string, num_plants: number, origen: string, location: string, stage: string}>({ id: "", strain: "", num_plants: 1, origen: "Semilla", location: "", stage: "vegetativo" });
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
 
   const fetchRooms = async () => {
     setLoading(true);
@@ -40,17 +52,74 @@ export function CultivoView() {
     fetchRooms();
   }, []);
 
+  const handleCreateBatch = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!selectedRoom || !newBatch.name || !newBatch.strain || newBatch.num_plants < 1) return;
+      setIsSubmittingBatch(true);
+      
+      const payload = {
+          id: newBatch.name,
+          strain: newBatch.strain,
+          num_plants: newBatch.num_plants,
+          origen: newBatch.origen,
+          location: selectedRoom.id,
+          stage: 'vegetativo',
+          start_date: new Date().toISOString().split('T')[0]
+      };
+
+      const { error } = await supabase.from('core_batches').insert([payload]);
+      if (!error) {
+          setAddBatchModalOpen(false);
+          setNewBatch({ name: "", strain: "", num_plants: 1, origen: "Semilla" });
+          fetchBatches();
+      } else {
+          alert("Error creando lote: " + error.message);
+      }
+      setIsSubmittingBatch(false);
+  };
+
+  const handleUpdateBatch = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!editBatch.id) return;
+      setIsSubmittingEdit(true);
+      
+      const payload = {
+          strain: editBatch.strain,
+          num_plants: editBatch.num_plants,
+          origen: editBatch.origen
+      };
+
+      const { error } = await supabase.from('core_batches').update(payload).eq('id', editBatch.id);
+      if (!error) {
+          setEditBatchModalOpen(false);
+          fetchBatches();
+      } else {
+          alert("Error editando lote: " + error.message);
+      }
+      setIsSubmittingEdit(false);
+  };
+
+  const handleDeleteBatch = async (batchId: string) => {
+      if(!confirm("¿Está absolutamente seguro de eliminar este lote de cultivo? Esta acción podría fallar si el lote ya tiene histórico/operaciones adjuntas.")) return;
+      const { error } = await supabase.from('core_batches').delete().eq('id', batchId);
+      if(error) {
+          alert("No se pudo eliminar el lote debido a restricciones de integridad (el lote ya cuenta con un historial económico o agrónomo):\n" + error.message);
+      } else {
+          fetchBatches();
+      }
+  };
+
   const fetchBatches = async () => {
     if(!selectedRoom) return;
     const { data, error } = await supabase.from('core_batches').select('*').eq('location', selectedRoom.id);
     if (data && !error) {
       setBatches(data);
-      const batchIds = data.map(b => b.id);
+      const batchIds = data.map((b: any) => b.id);
       if (batchIds.length > 0) {
           const { data: eventsData } = await supabase.from('core_agronomic_events').select('batch_id, total_cost').in('batch_id', batchIds);
           if (eventsData) {
               const costsMap: Record<string, number> = {};
-              eventsData.forEach(ev => {
+              eventsData.forEach((ev: any) => {
                   if (ev.total_cost) {
                       costsMap[ev.batch_id] = (costsMap[ev.batch_id] || 0) + ev.total_cost;
                   }
@@ -116,7 +185,7 @@ export function CultivoView() {
           if (selectedRoom && nextStage === 'floración') {
               const {data: siblings} = await supabase.from('core_batches').select('stage').eq('location', selectedRoom.id);
               if (siblings && siblings.length > 0) {
-                  const allFloro = siblings.every(s => (s.stage || '').toLowerCase() === 'floración' || (s.stage || '').toLowerCase().includes('cosecha'));
+                  const allFloro = siblings.every((s: any) => (s.stage || '').toLowerCase() === 'floración' || (s.stage || '').toLowerCase().includes('cosecha'));
                   if (allFloro && selectedRoom.phase !== 'Floración') {
                        await supabase.from('core_rooms').update({phase: 'Floración'}).eq('id', selectedRoom.id);
                        setSelectedRoom({...selectedRoom, phase: 'Floración'});
@@ -214,9 +283,6 @@ export function CultivoView() {
             <MapPinLine size={24} className="text-brand-slate-600 dark:text-slate-400" />
             Infraestructura y Cuartos ({rooms.length})
           </h2>
-          <button className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors font-bold text-sm">
-            <Plus size={16} weight="bold" /> Añadir Sala
-          </button>
         </div>
 
         {loading ? (
@@ -260,6 +326,16 @@ export function CultivoView() {
                     <Info size={16} /> {batches.length} Lotes activos vinculados.
                   </p>
                </div>
+               <div className="flex flex-col sm:flex-row gap-2 items-center">
+                   {batches.length > 0 && (
+                       <button onClick={() => setActiveGlobalBitacora(true)} className="flex w-full sm:w-auto justify-center items-center gap-2 px-4 py-2 bg-blue-600/20 text-blue-500 hover:bg-blue-600 hover:text-white rounded-lg transition-colors font-bold text-sm border border-blue-500/30">
+                          <Stack size={16} weight="bold" /> Aplicación Global
+                       </button>
+                   )}
+                   <button onClick={() => setAddBatchModalOpen(true)} className="flex w-full sm:w-auto justify-center items-center gap-2 px-4 py-2 bg-emerald-600/20 text-emerald-500 hover:bg-emerald-600 hover:text-white rounded-lg transition-colors font-bold text-sm border border-emerald-500/30">
+                      <Plus size={16} weight="bold" /> Añadir Lote Activo
+                   </button>
+               </div>
              </div>
 
              <div className="overflow-x-auto">
@@ -288,8 +364,8 @@ export function CultivoView() {
                      return (
                      <tr key={b.id} className={`border-b border-panel-border/20 transition-colors group \${isSecado ? 'opacity-40 hover:opacity-100' : 'hover:bg-black/5 dark:hover:bg-black/5 dark:hover:bg-white/5'}`}>
                        <td className={`py-4 px-4 border-l-2 \${isSecado ? 'border-orange-500' : 'border-emerald-500'}`}>
-                         <div className={`font-bold text-base mb-1 \${isSecado ? 'line-through text-brand-slate-600' : 'text-foreground'}`}>{b.strain || b.id.substring(0,8)}</div>
-                         <div className="text-xs font-mono text-brand-slate-600 flex items-center gap-1"><Info size={12}/> {b.id.substring(0,6)} <span className="uppercase text-emerald-500/80 ml-1">{b.origen || 'Clon'}</span></div>
+                         <div className={`font-bold text-base mb-1 \${isSecado ? 'line-through text-brand-slate-600' : 'text-foreground'}`}>{b.id}</div>
+                         <div className="text-xs font-mono text-brand-slate-600 flex items-center gap-1"><Info size={12}/> {b.strain || 'S/N'} <span className="uppercase text-emerald-500/80 ml-1">({b.origen || 'Clon'})</span></div>
                        </td>
                        <td className="py-4 px-4">
                            <span className="flex items-center gap-1 font-bold text-foreground bg-panel-border/30 px-2.5 py-1 rounded-lg w-max">
@@ -305,8 +381,8 @@ export function CultivoView() {
                              <span className="text-yellow-400">{b.light_hours || '-'}L</span> / <span className="text-blue-400">{b.dark_hours || '-'}O</span>
                            </div>
                            <div className="flex items-center justify-center gap-1 mt-2">
-                             <button onClick={() => { setFotoLuz(b.light_hours); setFotoOsc(b.dark_hours); setFotoModal({isOpen:true, batch:b, nextStage: b.stage}); }} className="p-1 px-2 border border-panel-border text-[10px] uppercase font-bold text-brand-slate-600 hover:text-emerald-500 rounded">Editar</button>
-                             <button onClick={() => setChartModal({isOpen: true, batch: b})} className="p-1 px-2 border border-panel-border text-[10px] uppercase font-bold text-brand-slate-600 hover:text-purple-500 rounded">Chart</button>
+                             <button onClick={() => { setFotoLuz(b.light_hours); setFotoOsc(b.dark_hours); setFotoModal({isOpen:true, batch:b, nextStage: b.stage}); }} className="btn-glow-emerald p-1 px-2 border border-panel-border text-[10px] uppercase font-bold text-brand-slate-600 rounded transition-all">Editar</button>
+                             <button onClick={() => setChartModal({isOpen: true, batch: b})} className="btn-glow-purple p-1 px-2 border border-panel-border text-[10px] uppercase font-bold text-brand-slate-600 rounded transition-all">Chart</button>
                            </div>
                        </td>
                        <td className="py-4 px-4 text-right">
@@ -315,11 +391,17 @@ export function CultivoView() {
                            </div>
                        </td>
                        <td className="py-4 px-4 text-right align-middle">
-                          <button onClick={() => advanceStageIndicator(b)} className={`px-2 py-2 mr-2 border text-xs font-bold uppercase tracking-wider transition-all rounded-lg \${isSecado ? 'border-brand-slate-600 text-brand-slate-600 cursor-not-allowed' : 'border-panel-border text-brand-slate-600 hover:border-purple-500 hover:text-purple-500'}`} disabled={isSecado}>
-                             &#10148; Ciclar Etapa
+                          <button onClick={() => advanceStageIndicator(b)} className={`btn-glow-purple px-2 py-2 mr-2 border text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg \${isSecado ? 'border-brand-slate-600 text-brand-slate-600 cursor-not-allowed' : 'border-panel-border text-brand-slate-600'}`} disabled={isSecado}>
+                             &#10148; Ciclar
                           </button>
-                          <button onClick={() => setActiveBitacora(b)} className="px-3 py-2 border border-panel-border text-brand-slate-600 hover:border-emerald-500 hover:text-emerald-500 hover:bg-emerald-500/10 rounded-lg text-sm font-bold uppercase tracking-wider transition-all">
+                          <button onClick={() => setActiveBitacora(b)} className="btn-glow-emerald px-2 py-2 mr-2 border border-panel-border text-brand-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
                              Bitácora
+                          </button>
+                          <button onClick={() => { setEditBatch(b as any); setEditBatchModalOpen(true); }} className="btn-glow-yellow px-2 py-2 border mr-2 border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Editar">
+                             <PencilSimple size={14} weight="bold" />
+                          </button>
+                          <button onClick={() => handleDeleteBatch(b.id)} className="btn-glow-red px-2 py-2 border border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Eliminar">
+                             <Trash size={14} weight="bold" />
                           </button>
                        </td>
                      </tr>
@@ -334,6 +416,10 @@ export function CultivoView() {
 
       {activeBitacora && (
         <BitacoraModal batch={activeBitacora} onClose={() => setActiveBitacora(null)} />
+      )}
+
+      {activeGlobalBitacora && selectedRoom && (
+        <BitacoraGlobalModal room={selectedRoom} batches={batches} onClose={() => setActiveGlobalBitacora(false)} onRefreshBatches={fetchBatches} />
       )}
 
       {/* Modal Fotoperiodo */}
@@ -387,6 +473,87 @@ export function CultivoView() {
       {/* Modal Chart de Fotoperiodo Histórico */}
       {chartModal.isOpen && (
         <PhotoperiodChartModal batch={chartModal.batch} onClose={() => setChartModal({isOpen: false, batch: null})} />
+      )}
+      {/* Modal Nuevo Lote */}
+      {addBatchModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+            <GlassCard className="max-w-md w-full p-6 shadow-2xl relative border-t-4 border-t-emerald-500">
+                <button onClick={() => setAddBatchModalOpen(false)} className="absolute top-4 right-4 text-brand-slate-600 hover:text-foreground transition-colors"><AppWindow size={24}/></button>
+                <h2 className="text-xl font-bold mb-2 flex items-center gap-2 text-emerald-500">
+                   <Plant size={24} /> Sembrar Nuevo Lote
+                </h2>
+                <p className="text-brand-slate-600 dark:text-slate-400 text-sm mb-6">El lote ingresará en estado Vegetativo directamente sobre la sala actual ({selectedRoom?.name}).</p>
+                
+                <form onSubmit={handleCreateBatch} className="flex flex-col gap-4">
+                    <div>
+                        <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Identificador / Nombre Personalizado</label>
+                        <input type="text" required placeholder="Ej: Esquejes Amnesia #2" value={newBatch.name} onChange={e=>setNewBatch({...newBatch, name: e.target.value})} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 focus:border-emerald-500 outline-none text-foreground font-bold"/>
+                    </div>
+                    <div>
+                        <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Genética / Cepa</label>
+                        <input type="text" required placeholder="Ej: Amnesia Haze" value={newBatch.strain} onChange={e=>setNewBatch({...newBatch, strain: e.target.value})} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 focus:border-emerald-500 outline-none text-foreground"/>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Población (Indivs)</label>
+                            <input type="number" min="1" required value={newBatch.num_plants} onChange={e=>setNewBatch({...newBatch, num_plants: parseInt(e.target.value) || 1})} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 focus:border-emerald-500 outline-none text-foreground text-center"/>
+                        </div>
+                        <div>
+                            <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Raza / Origen</label>
+                            <select value={newBatch.origen} onChange={e=>setNewBatch({...newBatch, origen: e.target.value})} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 focus:border-emerald-500 outline-none text-foreground appearance-none">
+                                <option value="Semilla" className="bg-panel-base">Semilla</option>
+                                <option value="Clon" className="bg-panel-base">Clon / Esqueje</option>
+                                <option value="Externo" className="bg-panel-base">Externo (B2B)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button disabled={isSubmittingBatch} type="submit" className="mt-4 w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-lg shadow-lg flex justify-center items-center gap-2 transition-all">
+                        {isSubmittingBatch ? 'PROCESANDO...' : 'ALTA DE LOTE'}
+                    </button>
+                </form>
+            </GlassCard>
+        </div>
+      )}
+      
+      {/* Modal Editar Lote */}
+      {editBatchModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+            <GlassCard className="max-w-md w-full p-6 shadow-2xl relative border-t-4 border-t-yellow-500">
+                <button onClick={() => setEditBatchModalOpen(false)} className="absolute top-4 right-4 text-brand-slate-600 hover:text-foreground transition-colors"><AppWindow size={24}/></button>
+                <h2 className="text-xl font-bold mb-2 flex items-center gap-2 text-yellow-500">
+                   <PencilSimple size={24} /> Editar Lote Activo
+                </h2>
+                <p className="text-brand-slate-600 dark:text-slate-400 text-sm mb-6">El Identificador / Llave primaria no puede ser modificado para preservar la integridad visual y contable del lote.</p>
+                
+                <form onSubmit={handleUpdateBatch} className="flex flex-col gap-4">
+                    <div>
+                        <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Identificador (Inalterable)</label>
+                        <input type="text" disabled value={editBatch.id} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border/30 text-brand-light font-medium rounded p-3 italic outline-none cursor-not-allowed opacity-50"/>
+                    </div>
+                    <div>
+                        <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Genética / Cepa</label>
+                        <input type="text" required value={editBatch.strain || ''} onChange={e=>setEditBatch({...editBatch, strain: e.target.value})} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 focus:border-yellow-500 outline-none text-foreground"/>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Población (Indivs)</label>
+                            <input type="number" min="1" required value={editBatch.num_plants} onChange={e=>setEditBatch({...editBatch, num_plants: parseInt(e.target.value) || 1})} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 focus:border-yellow-500 outline-none text-foreground text-center"/>
+                        </div>
+                        <div>
+                            <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Raza / Origen</label>
+                            <select value={editBatch.origen} onChange={e=>setEditBatch({...editBatch, origen: e.target.value})} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 focus:border-yellow-500 outline-none text-foreground appearance-none">
+                                <option value="semilla" className="bg-panel-base">Semilla</option>
+                                <option value="clon" className="bg-panel-base">Clon / Esqueje</option>
+                                <option value="externo" className="bg-panel-base">Externo (B2B)</option>
+                            </select>
+                        </div>
+                    </div>
+                    <button disabled={isSubmittingEdit} type="submit" className="mt-4 w-full bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 rounded-lg shadow-lg flex justify-center items-center gap-2 transition-all">
+                        {isSubmittingEdit ? 'GUARDANDO...' : 'GUARDAR CAMBIOS'}
+                    </button>
+                </form>
+            </GlassCard>
+        </div>
       )}
     </>
   );

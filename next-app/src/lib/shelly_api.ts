@@ -89,6 +89,10 @@ export class ShellyAPI {
     return this.callRpc('Switch.Set', { id, on });
   }
 
+  async getSwitchConfig(id: number = 0) {
+    return this.callRpc('Switch.GetConfig', { id });
+  }
+
   async setSwitchConfig(id: number = 0, config: any) {
     return this.callRpc('Switch.SetConfig', { id, config });
   }

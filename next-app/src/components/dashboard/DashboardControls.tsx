@@ -12,6 +12,8 @@ export function DashboardControls() {
   const [humidity, setHumidity] = useState("");
   const [newSensorName, setNewSensorName] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  const ambientSensors = sensors.filter(s => s.type !== 'soil');
 
   const calcVpd = (tempC: number, humPct: number) => {
     const svpPa = 610.78 * Math.exp((17.27 * tempC) / (tempC + 237.3));
@@ -44,17 +46,24 @@ export function DashboardControls() {
     };
 
     try {
-        const webhookUrl = "http://109.199.99.126.sslip.io:5678/webhook/telemetry";
-        await fetch(webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-        setTemperature("");
-        setHumidity("");
-        alert(`Calibración inyectada a la red vía Sensor ${activeSensor.name}`);
+        const { error } = await supabase.from('daily_telemetry').insert([{
+            sensor_id: activeSensor.id,
+            room_id: selectedRoom.id,
+            temperature_c: t,
+            humidity_percent: h,
+            vpd_kpa: vpd
+        }]);
+
+        if (error) {
+            console.error("Supabase Error:", error);
+            alert("Hubo un error inyectando la telemetría a la base de datos: " + error.message);
+        } else {
+            setTemperature("");
+            setHumidity("");
+            alert(`Calibración inyectada a la red vía Sensor ${activeSensor.name}`);
+        }
     } catch (error) {
-        console.error("Error n8n:", error);
+        console.error("Error al inyectar telemetría:", error);
     }
     setIsSubmitting(false);
   };
@@ -101,8 +110,8 @@ export function DashboardControls() {
                      }}
                      required
                   >
-                     {sensors.length === 0 && <option value="">Sin Sensores Registrados</option>}
-                     {sensors.map(s => <option key={s.id} value={s.id}>{s.name} (Ref: {s.id.substring(0,5)})</option>)}
+                     {ambientSensors.length === 0 && <option value="">Sin Sensores Registrados</option>}
+                     {ambientSensors.map(s => <option key={s.id} value={s.id}>{s.name} (Ref: {s.id.substring(0,5)})</option>)}
                   </select>
                </div>
 
@@ -131,7 +140,7 @@ export function DashboardControls() {
                
                <button 
                  type="submit" 
-                 disabled={isSubmitting || sensors.length === 0}
+                 disabled={isSubmitting || ambientSensors.length === 0}
                  className="flex items-center justify-center gap-2 mt-2 bg-panel-base hover:bg-emerald-600/20 text-emerald-500 border border-panel-border hover:border-emerald-500/50 p-2 rounded-lg transition-colors font-bold text-sm tracking-wide disabled:opacity-50"
                >
                  {isSubmitting ? 'Inyectando...' : <><FloppyDisk size={18} /> INYECTAR TELEMETRÍA</>}
@@ -150,12 +159,12 @@ export function DashboardControls() {
          ) : (
             <div className="flex flex-col gap-3 h-[200px] overflow-y-auto pr-1">
                 <form onSubmit={handleAddSensor} className="flex gap-2">
-                    <input type="text" value={newSensorName} onChange={e=>setNewSensorName(e.target.value)} placeholder="Añadir Terminal ESP32..." required className="bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2 flex-1 text-sm text-foreground focus:outline-none focus:border-blue-500 font-mono" />
+                    <input type="text" value={newSensorName} onChange={e=>setNewSensorName(e.target.value)} placeholder="Nombre (Ej: Sala 1 (shellyhtg3-XXXX))" required className="bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2 flex-1 text-sm text-foreground focus:outline-none focus:border-blue-500 font-mono" />
                     <button type="submit" className="bg-blue-600 hover:bg-blue-500 p-2 rounded-lg text-foreground"><Plus size={16} /></button>
                 </form>
                 <div className="flex flex-col gap-2 mt-2">
-                    {sensors.length === 0 ? <p className="text-sm font-mono text-brand-slate-600">No hay hardware mapeado a esta sala.</p> : null}
-                    {sensors.map(s => (
+                    {ambientSensors.length === 0 ? <p className="text-sm font-mono text-brand-slate-600">No hay hardware mapeado a esta sala.</p> : null}
+                    {ambientSensors.map(s => (
                         <div key={s.id} className="flex justify-between items-center bg-black/10 border border-panel-border p-2 rounded-lg hover:border-blue-500/30 transition-colors">
                             <div className="flex items-center gap-2 font-mono text-sm"><Cpu size={16} className="text-blue-400"/> {s.name}</div>
                             <button onClick={()=>handleDeleteSensor(s.id)} className="text-status-red/70 hover:text-status-red p-1"><Trash size={16} /></button>

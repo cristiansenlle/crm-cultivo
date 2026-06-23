@@ -9,9 +9,11 @@ import { ResponsiveContainer, ComposedChart, Line, Scatter, XAxis, YAxis, Toolti
 export default function AgronomyTimelinePage() {
     // Master Lists
     const [rooms, setRooms] = useState<any[]>([]);
-    const [sensors, setSensors] = useState<any[]>([]);
+    const [ambientSensors, setAmbientSensors] = useState<any[]>([]);
+    const [soilSensors, setSoilSensors] = useState<any[]>([]);
     
     // UI Filter States
+    const [chartType, setChartType] = useState<"ambient" | "soil">("ambient");
     const [startDate, setStartDate] = useState(() => {
        const d = new Date(); d.setDate(d.getDate() - 15);
        return d.toISOString().split('T')[0];
@@ -32,7 +34,9 @@ export default function AgronomyTimelinePage() {
             const { data: rm } = await supabase.from('core_rooms').select('id, name');
             if(rm) setRooms(rm);
             const { data: sn } = await supabase.from('core_sensors').select('id, name, room_id');
-            if(sn) setSensors(sn);
+            if(sn) setAmbientSensors(sn);
+            const { data: soilSn } = await supabase.from('core_soil_sensors').select('id, name, room_id');
+            if(soilSn) setSoilSensors(soilSn);
         };
         loadMetadata();
     }, []);
@@ -52,7 +56,8 @@ export default function AgronomyTimelinePage() {
             if (evs) setEvents(evs);
 
             // Tel Query
-            let telQ = supabase.from('daily_telemetry').select('*')
+            const telTable = chartType === "ambient" ? 'daily_telemetry' : 'soil_telemetry';
+            let telQ = supabase.from(telTable).select('*')
                 .gte('created_at', startDate + "T00:00:00")
                 .lte('created_at', endDate + "T23:59:59")
                 .order('created_at', { ascending: true });
@@ -81,17 +86,23 @@ export default function AgronomyTimelinePage() {
                              tempSum: 0, tempCount: 0,
                              humSum: 0, humCount: 0,
                              vpdSum: 0, vpdCount: 0,
+                             soilSum: 0, soilCount: 0,
                              evento: null, eventDesc: '', eventType: ''
                          });
                     }
 
                     const record = groupedMap.get(tLabel);
-                    const temp = parseFloat(t.temperature_c);
-                    if(!isNaN(temp)) { record.tempSum += temp; record.tempCount++; }
-                    const hum = parseFloat(t.humidity_percent);
-                    if(!isNaN(hum)) { record.humSum += hum; record.humCount++; }
-                    const vpd = parseFloat(t.vpd_kpa);
-                    if(!isNaN(vpd)) { record.vpdSum += vpd; record.vpdCount++; }
+                    if (chartType === "ambient") {
+                        const temp = parseFloat(t.temperature_c);
+                        if(!isNaN(temp)) { record.tempSum += temp; record.tempCount++; }
+                        const hum = parseFloat(t.humidity_percent);
+                        if(!isNaN(hum)) { record.humSum += hum; record.humCount++; }
+                        const vpd = parseFloat(t.vpd_kpa);
+                        if(!isNaN(vpd)) { record.vpdSum += vpd; record.vpdCount++; }
+                    } else {
+                        const soil = parseFloat(t.moisture_pct);
+                        if(!isNaN(soil)) { record.soilSum += soil; record.soilCount++; }
+                    }
                 });
 
                 // Generar consolidado unificado promediado
@@ -101,6 +112,7 @@ export default function AgronomyTimelinePage() {
                     Temp: r.tempCount > 0 ? Number((r.tempSum / r.tempCount).toFixed(2)) : null,
                     Hum: r.humCount > 0 ? Number((r.humSum / r.humCount).toFixed(2)) : null,
                     VPD: r.vpdCount > 0 ? Number((r.vpdSum / r.vpdCount).toFixed(2)) : null,
+                    Soil: r.soilCount > 0 ? Number((r.soilSum / r.soilCount).toFixed(2)) : null,
                     evento: null, eventDesc: '', eventType: ''
                 }));
 
@@ -118,7 +130,7 @@ export default function AgronomyTimelinePage() {
                         consolidated.push({
                             timeLabel: ed.toLocaleDateString([],{day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}),
                             timestamp: ed.getTime(),
-                            Temp: null, Hum: null, VPD: null,
+                            Temp: null, Hum: null, VPD: null, Soil: null,
                             [evtKey]: 1, // Se ubicará en la parte inferior gracias a un eje Y independiente
                             eventDesc: e.description,
                             eventType: e.event_type
@@ -137,7 +149,7 @@ export default function AgronomyTimelinePage() {
     useEffect(() => {
         loadData();
         // eslint-disable-next-line
-    }, [startDate, endDate, selectedRoom, selectedSensor]);
+    }, [startDate, endDate, selectedRoom, selectedSensor, chartType]);
 
     // Realtime subscription for telemetry
     useEffect(() => {
@@ -161,7 +173,7 @@ export default function AgronomyTimelinePage() {
             supabase.removeChannel(channel);
         };
         // eslint-disable-next-line
-    }, [startDate, endDate, selectedRoom, selectedSensor]);
+    }, [startDate, endDate, selectedRoom, selectedSensor, chartType]);
 
     // UI Helpers
     const filteredEventsTimeline = events.filter(e => {
@@ -171,7 +183,8 @@ export default function AgronomyTimelinePage() {
 
     const getAvailableSensors = () => {
         if (selectedRoom === 'all') return [];
-        return sensors.filter(s => s.room_id === selectedRoom);
+        const tSensors = chartType === "ambient" ? ambientSensors : soilSensors;
+        return tSensors.filter(s => s.room_id === selectedRoom);
     };
 
     const CustomTooltip = ({ active, payload, label }: any) => {
@@ -257,6 +270,12 @@ export default function AgronomyTimelinePage() {
                 </div>
             </GlassCard>
 
+            {/* Tab Selector for Chart Type */}
+            <div className="flex gap-2 p-1 bg-black/20 border border-panel-border rounded-xl w-fit mx-auto relative z-30">
+                 <button onClick={() => { setChartType("ambient"); setSelectedSensor("all"); }} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${chartType === "ambient" ? "bg-indigo-600 text-white shadow-md" : "text-brand-slate-600 dark:text-slate-400 hover:text-white"}`}>Telemetría Ambiental (Clima)</button>
+                 <button onClick={() => { setChartType("soil"); setSelectedSensor("all"); }} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${chartType === "soil" ? "bg-blue-600 text-white shadow-md" : "text-brand-slate-600 dark:text-slate-400 hover:text-white"}`}>Humedad de Suelo</button>
+            </div>
+
             {/* Grafico Multi-Eje */}
             <GlassCard className="p-4 md:p-6 w-full overflow-hidden relative z-20">
                 <h3 className="font-bold text-lg mb-4 flex items-center gap-2">Monitor Dinámico</h3>
@@ -271,15 +290,23 @@ export default function AgronomyTimelinePage() {
                                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                                <XAxis dataKey="timeLabel" tick={{fontSize: 10, fill: '#888'}} interval="preserveStartEnd" minTickGap={30} />
                                
-                               <YAxis yAxisId="yClima" orientation="left" tick={{fontSize: 10, fill: '#888'}} domain={['dataMin - 2', 'dataMax + 2']} allowDataOverflow />
-                               <YAxis yAxisId="yHum" orientation="right" tick={{fontSize: 10, fill: '#888'}} hide />
+                               <YAxis yAxisId="yClima" orientation="left" tick={{fontSize: 10, fill: '#888'}} domain={chartType === "ambient" ? ['dataMin - 2', 'dataMax + 2'] : [0, 100]} allowDataOverflow />
+                               <YAxis yAxisId="yHum" orientation="right" tick={{fontSize: 10, fill: '#888'}} domain={[0, 100]} tickFormatter={(val) => `${val}%`} hide={chartType !== "ambient"} />
                                <YAxis yAxisId="yEvent" type="number" domain={[0, 15]} hide />
                                
                                <Tooltip content={<CustomTooltip />} />
                                <Legend wrapperStyle={{ fontSize: '12px' }} />
                                
-                               <Line yAxisId="yClima" type="monotone" dataKey="Temp" stroke="#facc15" strokeWidth={2} dot={false} name="Temperatura °C" connectNulls />
-                               <Line yAxisId="yHum" type="monotone" dataKey="Hum" stroke="#38bdf8" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Humedad %" connectNulls />
+                               {chartType === "ambient" && (
+                                 <>
+                                   <Line yAxisId="yClima" type="monotone" dataKey="Temp" stroke="#facc15" strokeWidth={2} dot={false} name="Temperatura °C" connectNulls />
+                                   <Line yAxisId="yHum" type="monotone" dataKey="Hum" stroke="#38bdf8" strokeWidth={2} strokeDasharray="5 5" dot={false} name="Humedad %" connectNulls />
+                                 </>
+                               )}
+
+                               {chartType === "soil" && (
+                                   <Line yAxisId="yClima" type="monotone" dataKey="Soil" stroke="#3b82f6" strokeWidth={2} dot={false} name="Humedad Suelo %" connectNulls />
+                               )}
                                
                                <Scatter yAxisId="yEvent" dataKey="evento_riego" fill="#3b82f6" shape="circle" name="💧 Riego / Nutrición" />
                                <Scatter yAxisId="yEvent" dataKey="evento_poda" fill="#22c55e" shape="circle" name="✂️ Poda" />

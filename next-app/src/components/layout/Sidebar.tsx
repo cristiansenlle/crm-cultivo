@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
@@ -37,8 +37,9 @@ export function Sidebar() {
     { name: "Bodega e Insumos", path: "/insumos", icon: <Warehouse size={22} /> },
     { name: "Punto de Venta", path: "/pos", icon: <ShoppingCart size={22} /> },
     { name: "Finanzas & ROI", path: "/analytics", icon: <ChartLineUp size={22} /> },
-    { name: "Timeline AgronÃ³mico", path: "/agronomy", icon: <ProjectorScreenChart size={22} /> },
+    { name: "Timeline Agronómico", path: "/agronomy", icon: <ProjectorScreenChart size={22} /> },
     { name: "Protocolos", path: "/protocolos", icon: <BookOpen size={22} /> },
+    { name: "Humedad de Suelo", path: "/iot/suelo", icon: <Plant size={22} /> },
     { name: "Centro IoT (Equipos)", path: "/iot/devices", icon: <Lightning size={22} /> }
   ];
 

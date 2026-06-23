@@ -1,1 +1,0 @@
-UPDATE workflow_entity SET settings = '{"saveDataErrorExecution":"all","saveDataSuccessExecution":"all"}' WHERE id = 'scpZdPe5Cp4MG98G';

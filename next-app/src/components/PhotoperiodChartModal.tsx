@@ -28,7 +28,7 @@ export function PhotoperiodChartModal({ batch, onClose }: { batch: any, onClose:
             const ganttData = [];
 
             if (logData && logData.length > 0) {
-                 logData.forEach((log) => {
+                 logData.forEach((log: any) => {
                      const ls = new Date(log.start_date);
                      const le = log.end_date ? new Date(log.end_date) : todayDate;
                      

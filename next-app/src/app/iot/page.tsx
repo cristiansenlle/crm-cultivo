@@ -21,7 +21,7 @@ export default function IotDashboard() {
         </div>
       </div>
 
-      <div className="flex space-x-4">
+      <div className="flex flex-col sm:flex-row gap-4 sm:space-x-4 sm:gap-0">
         <Link href="/iot/devices" className="bg-green-600 hover:bg-green-500 text-white font-medium py-3 px-6 rounded-lg transition-colors">
           Gestionar Dispositivos
         </Link>

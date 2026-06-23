@@ -30,16 +30,16 @@ export default function AnalyticsPage() {
         
         if (salesData) {
             sCount = salesData.length;
-            salesData.forEach(s => {
+            salesData.forEach((s: any) => {
                 rev += Number(s.revenue || 0);
                 cogs += Number(s.cost_of_goods || 0);
             });
-            setSales(salesData.sort((a,b)=> new Date(b.date).getTime() - new Date(a.date).getTime()));
+            setSales(salesData.sort((a: any, b: any)=> new Date(b.date).getTime() - new Date(a.date).getTime()));
         }
 
         let invValue = 0;
         if (quimicos) {
-            quimicos.forEach(q => {
+            quimicos.forEach((q: any) => {
                 const qNum = Number(q.qty || 0);
                 const ucNum = Number(q.unit_cost || 0);
                 invValue += (qNum * ucNum);
@@ -119,7 +119,7 @@ export default function AnalyticsPage() {
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                         <GlassCard>
                             <h3 className="text-lg font-bold mb-4 border-b border-panel-border pb-2">Desglose de Facturación <span className="text-sm font-mono opacity-50 ml-2">(${metrics.avgTicket.toLocaleString('es-AR', {maximumFractionDigits:0})} Avg Ticket)</span></h3>
-                            <div className="overflow-y-auto max-h-[400px]">
+                            <div className="overflow-auto max-h-[400px]">
                                 <table className="w-full text-left text-sm whitespace-nowrap">
                                     <thead className="sticky top-0 bg-panel-base/90 backdrop-blur">
                                         <tr className="text-[10px] uppercase font-mono text-brand-slate-600">

@@ -1,0 +1,35 @@
+# CANNABIS-CORE 360 OS
+
+- [ ] **1. Data Architecture & IoT (n8n Integration)**
+  - [ ] Define Database Schema (Telemetry, Batches, Sales)
+  - [ ] Define API Endpoints for n8n Webhooks
+  - [ ] Design Alert Logic (Critical Thresholds) & VPD Engine
+- [ ] **2. Automated Commercial Management**
+  - [ ] Define Sales Flow (n8n triggers for Invoice, Client confirmation, Ledger)
+  - [ ] Define Batch Traceability (QR code mapping to n8n life history graph)
+- [x] **3. UI/UX Dashboard (CANNABIS-CORE 360)**
+  - [x] Set up minimal dark mode aesthetic (HTML/CSS)
+  - [x] Implement Status Widgets (Green/Yellow/Red glowing states)
+  - [x] Build 'Live Grow Room' Module
+  - [x] Build 'Task Manager' Module
+  - [x] Build 'Sales & Inventory' Module
+  - [x] Build 'Financial Health' Module
+- [ ] **4. Module 1: Farming Management**
+  - [ ] Add Strain, Type, and Growth Stage tracking to DB schema
+  - [ ] Add Extended Telemetry (pH in/out, EC, Temp, Hum, CO2) to DB schema
+  - [ ] Implement CRUD for Strains and Batches (Create/Edit/Delete)
+  - [ ] Build UI for inserting Daily Telemetry & Auto-VPD graph
+- [ ] **5. Module 2: Post-Harvest & Traceability**
+  - [ ] Add Harvest management to DB schema (Shrinkage calculation)
+  - [ ] Add Inventory classification (Premium, Trim, Extracts) to DB schema
+  - [ ] Implement CRUD for Harvests and Inventory (Create/Edit/Delete)
+  - [ ] Build UI for Harvest processing
+- [x] **6. Module 3: Sales POS (Point of Sale)**
+  - [x] Add Customer CRM (Preferential Pricing tiers) to DB schema
+  - [x] Add Sales & Sale Items linked to Inventory to DB schema
+  - [ ] Implement CRUD for Customers and Sales Records (Create/Edit/Delete)
+  - [x] Build POS interface (Subtract stock, Financial metrics)
+- [x] **7. n8n Master Workflow (crm cannabis)**
+  - [x] Build generic Webhook endpoint in n8n for CRUD operations
+  - [x] Build Telemetry Webhook endpoint in n8n (Calculate VPD)
+  - [ ] Build POS Sales Webhook endpoint in n8n

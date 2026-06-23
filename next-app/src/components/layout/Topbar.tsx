@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { HouseLine, Plus, Sun, Moon, SignOut, X } from "@phosphor-icons/react";
+import { HouseLine, Plus, Sun, Moon, SignOut, X, List } from "@phosphor-icons/react";
 import { usePathname } from "next/navigation";
 import { useRoom } from "../../context/RoomContext";
 import { supabase } from "../../lib/supabase";
@@ -48,9 +48,17 @@ export function Topbar() {
   return (
     <>
     <header className="flex items-center justify-between px-4 lg:px-8 py-5 bg-gradient-to-b from-black/5 dark:from-black/40 to-transparent backdrop-blur-sm border-b border-panel-border z-10 sticky top-0">
-      <h1 className="text-xl lg:text-2xl font-extrabold tracking-tight hidden sm:block">
-        {getRouteTitle()}
-      </h1>
+      <div className="flex items-center gap-3">
+        <button 
+          onClick={() => window.dispatchEvent(new Event("toggle-mobile-sidebar"))}
+          className="md:hidden p-2 -ml-2 rounded-xl text-foreground hover:bg-black/5 dark:hover:bg-white/10 transition-colors"
+        >
+          <List size={26} />
+        </button>
+        <h1 className="text-lg sm:text-xl lg:text-2xl font-extrabold tracking-tight truncate max-w-[150px] sm:max-w-none">
+          {getRouteTitle()}
+        </h1>
+      </div>
 
       <div className="flex items-center gap-2 lg:gap-4 ml-auto">
         

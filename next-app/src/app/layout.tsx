@@ -41,7 +41,7 @@ export default function RootLayout({
       </head>
       <body className="min-h-screen flex font-sans hud-grid-bg bg-background text-foreground transition-colors duration-300">
         <RoomProvider>
-          <div className="h-screen sticky top-0 flex-shrink-0 relative z-20">
+          <div className="md:h-screen md:sticky top-0 flex-shrink-0 z-50">
              <Sidebar />
           </div>
           <div className="flex flex-col flex-1 min-w-0">

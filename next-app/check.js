@@ -1,15 +1,27 @@
 const { createClient } = require('@supabase/supabase-js');
+require('dotenv').config({ path: '.env.local' });
 
-const supabaseUrl = 'https://opnjrzixsrizdnphbjnq.supabase.co';
-const supabaseKey = 'HIDDEN_SECRET_BY_AI';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
-async function check() {
-  const { data: bData, error } = await supabase.from('core_batches').select('*').limit(1);
-  if(error) console.error(error);
-  else console.log("Core Batches columns:", Object.keys(bData[0] || {}));
-  
-  console.log("\nEjemplo:", bData[0]);
+async function checkData() {
+    console.log("Fetching last 5 telemetry records...");
+    
+    // El nombre del sensor o mac que usa el mqtt logger: shellyhtg3-d0cf13c2f578
+    // Let's just get the last 5 records of ANY sensor to see the newest globally
+    console.log("Fetching all table names...");
+    const { data, error } = await supabase
+        .from('daily_telemetry')
+        .select('*')
+        .eq('sensor_id', '41e5bdbb-a191-4e4a-8ec9-db40692c9f1f')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+    if(error) {
+        // Fallback or just print
+        console.error("Error querying Supabase:", error);
+    } else {
+        console.log(JSON.stringify(data, null, 2));
+    }
 }
 
-check();
+checkData();
