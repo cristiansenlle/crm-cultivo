@@ -9,3 +9,15 @@ temp/
 .DS_Store
 *.json
 *.sql*.js  
+
+# Ignorar scripts temporales del agente en la raiz
+/*.js
+/*.json
+!/package.json
+!/package-lock.json
+!/tsconfig.json
+/*.txt
+/*.sql
+/*.md
+!/README.md
+/*.py
