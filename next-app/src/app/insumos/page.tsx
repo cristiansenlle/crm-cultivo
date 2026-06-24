@@ -21,7 +21,10 @@ export default function InsumosPage() {
 
   const loadInventory = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('core_inventory_quimicos').select('*').order('created_at', { ascending: true });
+    const { data, error } = await supabase.from('core_inventory_quimicos').select('*');
+    if (error) {
+        console.error("Supabase Error:", error);
+    }
     if (data && !error) {
         const grouped = Array.from(
           data.reduce((acc: Map<string, any>, item: any) => {
