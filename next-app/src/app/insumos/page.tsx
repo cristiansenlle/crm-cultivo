@@ -239,10 +239,16 @@ export default function InsumosPage() {
                 <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Nombre Comercial</label>
                 <input 
                    type="text" required
+                   list="existing-products"
                    value={newName} onChange={e => setNewName(e.target.value)}
                    placeholder="Ej: Advanced Nutrients Grow"
                    className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 transition-colors"
                 />
+                <datalist id="existing-products">
+                    {quimicos.map((item: any) => (
+                        <option key={item.name} value={item.name} />
+                    ))}
+                </datalist>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
