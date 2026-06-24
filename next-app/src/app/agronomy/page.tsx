@@ -61,7 +61,7 @@ export default function AgronomyTimelinePage() {
                 .lte('date_occurred', endDate + "T23:59:59")
                 .order('date_occurred', { ascending: false });
             
-            // if (selectedRoom !== 'all') evtQ = evtQ.eq('room_id', selectedRoom); // Asume room_id, podria no estar en eventos viejos
+            if (selectedRoom !== 'all') evtQ = evtQ.eq('room_id', selectedRoom);
             const { data: evs } = await evtQ;
             
             if (evs) {
@@ -71,6 +71,7 @@ export default function AgronomyTimelinePage() {
                 
                 evs.forEach((e:any) => {
                     if (e.batch_id) batchSet.add(e.batch_id);
+                    if (selectedBatchTimeline !== "all" && e.batch_id !== selectedBatchTimeline) return;
                     if (e.description) {
                         if (e.description.includes('--- Bot Auto-Deductions ---')) {
                             const parts = e.description.split('--- Bot Auto-Deductions ---');
@@ -96,21 +97,24 @@ export default function AgronomyTimelinePage() {
             }
 
             // Tel Query
-            const telTable = chartType === "ambient" ? 'daily_telemetry' : 'soil_telemetry';
-            let telQ = supabase.from(telTable).select('*')
-                .gte('created_at', startDate + "T00:00:00")
-                .lte('created_at', endDate + "T23:59:59")
-                .order('created_at', { ascending: true });
-            
-            if (selectedRoom !== 'all') telQ = telQ.eq('room_id', selectedRoom);
-            if (selectedSensor !== 'all') telQ = telQ.eq('sensor_id', selectedSensor);
+            let tel: any[] | null = null;
+            if (chartType !== "nutrition") {
+                const telTable = chartType === "ambient" ? 'daily_telemetry' : 'soil_telemetry';
+                let telQ = supabase.from(telTable).select('*')
+                    .gte('created_at', startDate + "T00:00:00")
+                    .lte('created_at', endDate + "T23:59:59")
+                    .order('created_at', { ascending: true });
+                
+                if (selectedRoom !== 'all') telQ = telQ.eq('room_id', selectedRoom);
+                if (selectedSensor !== 'all') telQ = telQ.eq('sensor_id', selectedSensor);
 
-            const { data: tel } = await telQ;
+                const res = await telQ;
+                tel = res.data;
+            }
             
+            const groupedMap = new Map();
             if (tel) {
                 // Agrupar registros por etiqueta de tiempo para promediar lecturas coincidentes
-                const groupedMap = new Map();
-
                 tel.forEach((t:any) => {
                     const d = new Date(t.created_at);
                     // Redondear minutos a intervalos de 10 min para mayor suavidad en el promedio si se envían datos asincronizados
@@ -144,83 +148,83 @@ export default function AgronomyTimelinePage() {
                         if(!isNaN(soil)) { record.soilSum += soil; record.soilCount++; }
                     }
                 });
+            }
 
-                // Generar consolidado unificado promediado
-                const baseNutriObj: any = {};
-                selectedProducts.forEach(p => { baseNutriObj[`nutri_${p}`] = null; });
+            // Generar consolidado unificado promediado
+            const baseNutriObj: any = {};
+            selectedProducts.forEach(p => { baseNutriObj[`nutri_${p}`] = null; });
 
-                const consolidated: any[] = Array.from(groupedMap.values()).map(r => ({
-                    timeLabel: r.timeLabel,
-                    timestamp: r.timestamp,
-                    Temp: r.tempCount > 0 ? Number((r.tempSum / r.tempCount).toFixed(2)) : null,
-                    Hum: r.humCount > 0 ? Number((r.humSum / r.humCount).toFixed(2)) : null,
-                    VPD: r.vpdCount > 0 ? Number((r.vpdSum / r.vpdCount).toFixed(2)) : null,
-                    Soil: r.soilCount > 0 ? Number((r.soilSum / r.soilCount).toFixed(2)) : null,
-                    evento: null, eventDesc: '', eventType: '',
-                    ...baseNutriObj
-                }));
+            const consolidated: any[] = Array.from(groupedMap.values()).map(r => ({
+                timeLabel: r.timeLabel,
+                timestamp: r.timestamp,
+                Temp: r.tempCount > 0 ? Number((r.tempSum / r.tempCount).toFixed(2)) : null,
+                Hum: r.humCount > 0 ? Number((r.humSum / r.humCount).toFixed(2)) : null,
+                VPD: r.vpdCount > 0 ? Number((r.vpdSum / r.vpdCount).toFixed(2)) : null,
+                Soil: r.soilCount > 0 ? Number((r.soilSum / r.soilCount).toFixed(2)) : null,
+                evento: null, eventDesc: '', eventType: '',
+                ...baseNutriObj
+            }));
 
-                if (evs) {
-                    evs.forEach((e:any) => {
-                        // Filter by batch (if not all)
-                        if (selectedBatchTimeline !== "all" && e.batch_id !== selectedBatchTimeline) return;
+            if (evs) {
+                evs.forEach((e:any) => {
+                    // Filter by batch (if not all)
+                    if (selectedBatchTimeline !== "all" && e.batch_id !== selectedBatchTimeline) return;
 
-                        const ed = new Date(e.date_occurred);
-                        const evType = (e.event_type || '').toLowerCase();
-                        let evtKey = 'evento_otro';
-                        if(evType.includes('riego') || evType.includes('nutri') || evType.includes('agua')) evtKey = 'evento_riego';
-                        else if(evType.includes('poda')) evtKey = 'evento_poda';
-                        else if(evType.includes('manejo')) evtKey = 'evento_manejo';
-                        else if(evType.includes('alerta') || evType.includes('plaga') || evType.includes('ipm')) evtKey = 'evento_alerta';
-                        else if(evType.includes('fase') || evType.includes('foto')) evtKey = 'evento_fase';
+                    const ed = new Date(e.date_occurred);
+                    const evType = (e.event_type || '').toLowerCase();
+                    let evtKey = 'evento_otro';
+                    if(evType.includes('riego') || evType.includes('nutri') || evType.includes('agua')) evtKey = 'evento_riego';
+                    else if(evType.includes('poda')) evtKey = 'evento_poda';
+                    else if(evType.includes('manejo')) evtKey = 'evento_manejo';
+                    else if(evType.includes('alerta') || evType.includes('plaga') || evType.includes('ipm')) evtKey = 'evento_alerta';
+                    else if(evType.includes('fase') || evType.includes('foto')) evtKey = 'evento_fase';
 
-                        const eventObj: any = {
-                            timeLabel: ed.toLocaleDateString([],{day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}),
-                            timestamp: ed.getTime(),
-                            Temp: null, Hum: null, VPD: null, Soil: null,
-                            [evtKey]: 1, // Se ubicará en la parte inferior gracias a un eje Y independiente
-                            eventDesc: e.description,
-                            eventType: e.event_type,
-                            ...baseNutriObj
-                        };
+                    const eventObj: any = {
+                        timeLabel: ed.toLocaleDateString([],{day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}),
+                        timestamp: ed.getTime(),
+                        Temp: null, Hum: null, VPD: null, Soil: null,
+                        [evtKey]: 1, // Se ubicará en la parte inferior gracias a un eje Y independiente
+                        eventDesc: e.description,
+                        eventType: e.event_type,
+                        ...baseNutriObj
+                    };
 
-                        // Extract Dose for selected products
-                        if (e.description) {
-                            if (e.description.includes('--- Bot Auto-Deductions ---')) {
-                                const parts = e.description.split('--- Bot Auto-Deductions ---');
-                                if (parts.length > 1) {
-                                    const lines = parts[1].split('\n');
-                                    for (const line of lines) {
-                                        if (line.includes(':')) {
-                                            const [namePart, rest] = line.split(':');
-                                            const pName = namePart.trim();
-                                            if (selectedProducts.includes(pName)) {
-                                                const amountMatch = rest.match(/([0-9.]+)\s*(ml|g|L|kg)?/i);
-                                                if (amountMatch) {
-                                                    eventObj[`nutri_${pName}`] = parseFloat(amountMatch[1]);
-                                                }
+                    // Extract Dose for selected products
+                    if (e.description) {
+                        if (e.description.includes('--- Bot Auto-Deductions ---')) {
+                            const parts = e.description.split('--- Bot Auto-Deductions ---');
+                            if (parts.length > 1) {
+                                const lines = parts[1].split('\n');
+                                for (const line of lines) {
+                                    if (line.includes(':')) {
+                                        const [namePart, rest] = line.split(':');
+                                        const pName = namePart.trim();
+                                        if (selectedProducts.includes(pName)) {
+                                            const amountMatch = rest.match(/([0-9.]+)\s*(ml|g|L|kg)?/i);
+                                            if (amountMatch) {
+                                                eventObj[`nutri_${pName}`] = parseFloat(amountMatch[1]);
                                             }
                                         }
                                     }
                                 }
                             }
-                            // Soporte para nuevo formato
-                            const matches = [...e.description.matchAll(/(?:RIEGO|Nutrici[oó]n|PODA|EVENTO):\s*([^(]+?)\s*\(\s*([0-9.]+)\s*(?:ml|g|L|kg)/gi)];
-                            for (const match of matches) {
-                                const pName = match[1].trim();
-                                if (selectedProducts.includes(pName)) {
-                                    eventObj[`nutri_${pName}`] = parseFloat(match[2]);
-                                }
+                        }
+                        // Soporte para nuevo formato
+                        const matches = [...e.description.matchAll(/(?:RIEGO|Nutrici[oó]n|PODA|EVENTO):\s*([^(]+?)\s*\(\s*([0-9.]+)\s*(?:ml|g|L|kg)/gi)];
+                        for (const match of matches) {
+                            const pName = match[1].trim();
+                            if (selectedProducts.includes(pName)) {
+                                eventObj[`nutri_${pName}`] = parseFloat(match[2]);
                             }
                         }
+                    }
 
-                        consolidated.push(eventObj);
-                    });
-                }
-                
-                consolidated.sort((a,b) => a.timestamp - b.timestamp);
-                setChartData(consolidated);
+                    consolidated.push(eventObj);
+                });
             }
+            
+            consolidated.sort((a,b) => a.timestamp - b.timestamp);
+            setChartData(consolidated);
         } catch(e) {}
         setLoading(false);
     };
@@ -341,16 +345,21 @@ export default function AgronomyTimelinePage() {
                     </div>
                     <div>
                         <label className="text-[10px] font-mono text-brand-slate-600 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1"><Thermometer/> Aislamiento de Sensor</label>
-                        <select value={selectedSensor} onChange={e=>setSelectedSensor(e.target.value)} disabled={selectedRoom === 'all'} className="w-full bg-black/[0.05] dark:bg-black/30 border border-panel-border rounded p-2 text-sm text-foreground focus:border-indigo-500 outline-none disabled:opacity-50">
-                            {selectedRoom === 'all' ? (
-                                <option value="all">Bloqueado (Varias Salas)</option>
-                            ) : (
-                                <>
-                                  <option value="all">Promedio Real (Todos)</option>
-                                  {getAvailableSensors().map(s => <option key={s.id} value={s.id}>Sensor: {s.name}</option>)}
-                                </>
-                            )}
-                        </select>
+                        <div className="flex gap-2 items-center">
+                            <select 
+                                value={selectedSensor} 
+                                onChange={e=>setSelectedSensor(e.target.value)} 
+                                disabled={selectedRoom === 'all' || chartType === 'nutrition'} 
+                                className="w-full bg-black/[0.05] dark:bg-black/30 border border-panel-border rounded p-2 text-sm text-foreground focus:border-indigo-500 outline-none disabled:opacity-50"
+                            >
+                                <option value="all">Promedio Real (Todos)</option>
+                                {chartType !== "nutrition" && (
+                                    <>
+                                        {getAvailableSensors().map(s => <option key={s.id} value={s.id}>Sensor: {s.name}</option>)}
+                                    </>
+                                )}
+                            </select>
+                        </div>
                     </div>
                 </div>
 
