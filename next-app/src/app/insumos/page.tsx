@@ -21,8 +21,26 @@ export default function InsumosPage() {
 
   const loadInventory = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('core_inventory_quimicos').select('*').order('name');
-    if (data && !error) setQuimicos(data);
+    const { data, error } = await supabase.from('core_inventory_quimicos').select('*').order('created_at', { ascending: true });
+    if (data && !error) {
+        const grouped = Array.from(
+          data.reduce((acc: Map<string, any>, item: any) => {
+            const key = (item.name || "").trim().toLowerCase();
+            if (!acc.has(key)) {
+               acc.set(key, { ...item, original_qty: item.qty });
+            } else {
+               const existing = acc.get(key);
+               existing.qty += item.qty;
+               existing.id = item.id; // Keep latest ID for editing metadata
+               existing.unit_cost = item.unit_cost; // Latest cost
+               existing.min_stock = item.min_stock;
+            }
+            return acc;
+          }, new Map()).values()
+        );
+        grouped.sort((a: any, b: any) => (a.name || "").localeCompare(b.name || ""));
+        setQuimicos(grouped);
+    }
     setLoading(false);
   };
 
@@ -42,7 +60,7 @@ export default function InsumosPage() {
   };
 
   const openEditModal = (item: any) => {
-      setEditingId(item.id);
+      setEditingId(item._all_ids ? item._all_ids.join(',') : item.id);
       setNewName(item.name || "");
       setNewType(item.type || "fertilizante");
       // Rescatar UoM (Si no existe en el item viejo, usar 'unidades')
@@ -61,20 +79,25 @@ export default function InsumosPage() {
     const costTotal = parseFloat(newCost) || 0;
     const calculatedUnitCost = qtyTotal > 0 ? costTotal / qtyTotal : 0;
 
-    const payload = {
+    const payload: any = {
         name: newName,
         type: newType,
-        qty: qtyTotal,
-        unit_cost: Number(calculatedUnitCost.toFixed(2)),
         uom: newUom,
         min_stock: parseFloat(newMinStock) || 0,
         last_updated: new Date().toISOString()
     };
 
+    if (!editingId) {
+        payload.qty = qtyTotal;
+        payload.unit_cost = Number(calculatedUnitCost.toFixed(2));
+    }
+
     let errorResult = null;
 
     if(editingId) {
-       const { error } = await supabase.from('core_inventory_quimicos').update(payload).eq('id', editingId);
+       // If editingId is an array of IDs (because we grouped them), update all of them
+       const idsToUpdate = typeof editingId === 'string' && editingId.includes(',') ? editingId.split(',') : [editingId];
+       const { error } = await supabase.from('core_inventory_quimicos').update(payload).in('id', idsToUpdate);
        errorResult = error;
     } else {
        const { error } = await supabase.from('core_inventory_quimicos').insert([payload]);
@@ -257,7 +280,8 @@ export default function InsumosPage() {
                        type="number" step="0.01" required
                        value={newQty} onChange={e => setNewQty(e.target.value)}
                        placeholder="1000"
-                       className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 text-right font-mono"
+                       disabled={!!editingId}
+                       className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 text-right font-mono disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   </div>
                   <div>
@@ -266,9 +290,15 @@ export default function InsumosPage() {
                        type="number" step="0.01" required
                        value={newCost} onChange={e => setNewCost(e.target.value)}
                        placeholder="$ 5500.00"
-                       className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 text-right font-mono"
+                       disabled={!!editingId}
+                       className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 text-right font-mono disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   </div>
+                  {editingId && (
+                      <div className="col-span-2 text-[10px] text-yellow-500 font-mono">
+                          Nota: Para agregar nuevo stock o un costo diferente, crea un "Nuevo Reactivo Químico" con el mismo Nombre Comercial exacto. El sistema los agrupará automáticamente.
+                      </div>
+                  )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">

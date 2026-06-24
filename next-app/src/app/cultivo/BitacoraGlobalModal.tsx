@@ -41,32 +41,56 @@ export function BitacoraGlobalModal({ room, batches, onClose, onRefreshBatches }
     let finalCostTotal = 0;
     const splitFactor = batches.length;
     
+    let selectedProductIdForEvent: string | null = null;
+    
     // Verificación de stock y armado de Payload
     if (actionType === 'riego' || actionType === 'ipm') {
-       if (selectedProduct) {
-          const item = inventory.find(i => i.id === selectedProduct);
-          const reqAmount = parseFloat(amount) || 0;
+       if (selectedProduct) { // selectedProduct is now the NAME
+          const matchingItems = [...inventory]
+              .filter(i => i.name === selectedProduct)
+              .sort((a,b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
           
-          if (!item) {
-             alert("Producto no encontrado."); setIsSubmitting(false); return;
+          let reqAmount = parseFloat(amount) || 0;
+          
+          if (matchingItems.length === 0) {
+             alert("Producto no encontrado en inventario."); setIsSubmitting(false); return;
           }
           if (reqAmount <= 0) {
              alert("Ingresa una cantidad mayor a 0."); setIsSubmitting(false); return;
           }
-          if (reqAmount > item.qty) {
-             alert(`Stock Insuficiente. Requerís ${reqAmount} pero quedan ${item.qty} disponibles en Bodega.`); setIsSubmitting(false); return;
+          
+          const totalStock = matchingItems.reduce((sum, i) => sum + i.qty, 0);
+          if (reqAmount > totalStock) {
+             alert(`Stock Insuficiente. Requerís ${reqAmount} pero el total combinado es ${totalStock} disponibles en Bodega.`); setIsSubmitting(false); return;
+          }
+          
+          let remainingReq = reqAmount;
+          let calculatedCost = 0;
+          let lastConsumedItemId = matchingItems[0].id;
+
+          for (const item of matchingItems) {
+              if (remainingReq <= 0) break;
+              if (item.qty <= 0) continue; // Skip empty stocks
+              
+              const consume = Math.min(remainingReq, item.qty);
+              calculatedCost += parseFloat(item.unit_cost || 0) * consume;
+              
+              const newQty = item.qty - consume;
+              await supabase.from('core_inventory_quimicos').update({ qty: newQty }).eq('id', item.id);
+              
+              item.qty = newQty; // update local cache just in case
+              remainingReq -= consume;
+              lastConsumedItemId = item.id;
           }
           
           // Costo total de lo extraído de la bodega principal
-          finalCostTotal = parseFloat(item.unit_cost || 0) * reqAmount;
+          finalCostTotal = calculatedCost;
           
           // Anotar en descripción global el extraído por lote
           const qtyPerBatch = (reqAmount / splitFactor).toFixed(2);
-          finalDescGlobal = `${actionType.toUpperCase()}: ${item.name} (${qtyPerBatch} ml/g per cápita). ` + desc;
-
-          // 1. Deducir stock global inmediatamente
-          const newQty = item.qty - reqAmount;
-          await supabase.from('core_inventory_quimicos').update({ qty: newQty }).eq('id', item.id);
+          finalDescGlobal = `${actionType.toUpperCase()}: ${selectedProduct} (${qtyPerBatch} per cápita). ` + desc;
+          
+          selectedProductIdForEvent = lastConsumedItemId;
        } else {
           finalDescGlobal = `${actionType === 'riego' ? 'Sólo Agua / Preventivo Manual' : 'Acción Manual (sin insumo)'}. ` + desc;
        }
@@ -85,7 +109,7 @@ export function BitacoraGlobalModal({ room, batches, onClose, onRefreshBatches }
       room_id: room.id,
       event_type: actionType === 'riego' ? 'Riego' : actionType === 'ipm' ? 'IPM' : actionType,
       amount_applied: (actionType === 'riego' || actionType === 'ipm') && selectedProduct && amount ? parseFloat((parseFloat(amount) / splitFactor).toFixed(2)) : null,
-      product_id: (actionType === 'riego' || actionType === 'ipm') && selectedProduct ? selectedProduct : null,
+      product_id: (actionType === 'riego' || actionType === 'ipm') && selectedProduct ? selectedProductIdForEvent : null,
       total_cost: costPerBatch,
       description: finalDescGlobal,
       date_occurred: new Date().toISOString()
@@ -149,18 +173,27 @@ export function BitacoraGlobalModal({ room, batches, onClose, onRefreshBatches }
                 <div className="bg-black/[0.02] dark:bg-black/20 border border-panel-border/50 p-4 rounded-xl flex flex-col gap-4">
                 <div>
                    <label className="text-xs uppercase font-bold text-brand-slate-600 mb-2 block">Extracción de Insumo (Bodega Principal)</label>
-                   <select 
-                      value={selectedProduct} 
-                      onChange={(e)=>setSelectedProduct(e.target.value)} 
-                      className="w-full bg-panel-base border border-panel-border rounded-lg p-3 text-sm focus:border-emerald-500 outline-none truncate"
-                   >
-                      <option value="">{actionType === 'riego' ? '— Sólo Agua (Sin Costo) —' : '— Acción Física (Sin Producto) —'}</option>
-                      {inventory.map(item => (
-                          <option key={item.id} value={item.id}>
-                              {item.name} | Disponible: {item.qty} {item.unit} (${item.unit_cost}/u)
-                          </option>
-                      ))}
-                   </select>
+                       <select 
+                          value={selectedProduct} 
+                          onChange={(e)=>setSelectedProduct(e.target.value)} 
+                          className="w-full bg-panel-base border border-panel-border rounded-lg p-3 text-sm focus:border-emerald-500 outline-none truncate"
+                       >
+                          <option value="">{actionType === 'riego' ? '— Sólo Agua (Sin Costo) —' : '— Acción Física (Sin Producto) —'}</option>
+                          {Array.from(
+                             inventory.reduce((acc: Map<string, any>, item: any) => {
+                               if (!acc.has(item.name)) acc.set(item.name, { ...item });
+                               else acc.get(item.name).qty += item.qty;
+                               return acc;
+                             }, new Map()).values()
+                          )
+                          .filter((i: any) => i.qty > 0)
+                          .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                          .map((item: any) => (
+                              <option key={item.name} value={item.name}>
+                                  {item.name} | Disponible: {item.qty} {item.uom || 'unidades'} (${item.unit_cost}/u)
+                              </option>
+                          ))}
+                       </select>
                 </div>
                 {selectedProduct && (
                     <div>
