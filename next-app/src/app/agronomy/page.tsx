@@ -282,6 +282,7 @@ export default function AgronomyTimelinePage() {
           <div className="bg-panel-base/90 backdrop-blur-md border border-panel-border p-3 rounded-lg shadow-xl font-mono text-xs z-50 relative">
             <p className="font-bold text-foreground mb-2">{label}</p>
             {payload.map((entry: any, index: number) => {
+              if(entry.name === 'timeLabel') return null;
               if(entry.dataKey && entry.dataKey.startsWith('evento_')) {
                   return <div key={index} className="mt-2 font-bold max-w-[200px] whitespace-normal" style={{color: entry.color}}>[{entry.payload.eventType}] {entry.payload.eventDesc}</div>
               }
@@ -424,7 +425,7 @@ export default function AgronomyTimelinePage() {
                                
                                <YAxis yAxisId="yClima" orientation="left" tick={{fontSize: 10, fill: '#888'}} domain={chartType === "ambient" ? ['dataMin - 2', 'dataMax + 2'] : [0, 100]} allowDataOverflow hide={chartType === "nutrition"} />
                                <YAxis yAxisId="yHum" orientation="right" tick={{fontSize: 10, fill: '#888'}} domain={[0, 100]} tickFormatter={(val) => `${val}%`} hide={chartType !== "ambient"} />
-                               <YAxis yAxisId="yNutri" orientation={chartType === "nutrition" ? "left" : "right"} tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'auto']} hide={chartType !== "nutrition" || selectedProducts.length === 0} tickFormatter={(val) => `${val} ml/l`} />
+                               <YAxis yAxisId="yNutri" orientation={chartType === "nutrition" ? "left" : "right"} width={80} tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'auto']} hide={chartType !== "nutrition" || selectedProducts.length === 0} tickFormatter={(val) => `${val} ml/l`} />
                                <YAxis yAxisId="yEvent" type="number" domain={[0, 15]} hide />
                                
                                <Tooltip content={<CustomTooltip />} />
