@@ -6,6 +6,8 @@ import { ProjectorScreenChart, Calendar, Target, Clock, Funnel, MapPinLine, Ther
 import { supabase } from "../../lib/supabase";
 import { ResponsiveContainer, ComposedChart, Line, Scatter, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 
+const PRODUCT_COLORS = ['#ec4899', '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#14b8a6', '#6366f1'];
+
 export default function AgronomyTimelinePage() {
     // Master Lists
     const [rooms, setRooms] = useState<any[]>([]);
@@ -21,6 +23,14 @@ export default function AgronomyTimelinePage() {
     const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
     const [selectedRoom, setSelectedRoom] = useState("all");
     const [selectedSensor, setSelectedSensor] = useState("all");
+
+    // Timeline Specific Filters
+    const [selectedBatchTimeline, setSelectedBatchTimeline] = useState("all");
+    const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+    
+    // Extracted Master Lists from Events
+    const [availableBatches, setAvailableBatches] = useState<string[]>([]);
+    const [availableProducts, setAvailableProducts] = useState<string[]>([]);
 
     // Data States
     const [events, setEvents] = useState<any[]>([]);
@@ -53,7 +63,30 @@ export default function AgronomyTimelinePage() {
             
             // if (selectedRoom !== 'all') evtQ = evtQ.eq('room_id', selectedRoom); // Asume room_id, podria no estar en eventos viejos
             const { data: evs } = await evtQ;
-            if (evs) setEvents(evs);
+            
+            if (evs) {
+                // Extract Batches and Products from loaded events BEFORE filtering
+                const batchSet = new Set<string>();
+                const prodSet = new Set<string>();
+                
+                evs.forEach((e:any) => {
+                    if (e.batch_id) batchSet.add(e.batch_id);
+                    if (e.event_type === 'Nutricion' && e.description) {
+                        const parts = e.description.split('--- Bot Auto-Deductions ---');
+                        if (parts.length > 1) {
+                            const lines = parts[1].split('\n');
+                            for (const line of lines) {
+                                if (line.includes(':')) {
+                                    prodSet.add(line.split(':')[0].trim());
+                                }
+                            }
+                        }
+                    }
+                });
+                setAvailableBatches(Array.from(batchSet));
+                setAvailableProducts(Array.from(prodSet));
+                setEvents(evs);
+            }
 
             // Tel Query
             const telTable = chartType === "ambient" ? 'daily_telemetry' : 'soil_telemetry';
@@ -118,6 +151,9 @@ export default function AgronomyTimelinePage() {
 
                 if (evs) {
                     evs.forEach((e:any) => {
+                        // Filter by batch (if not all)
+                        if (selectedBatchTimeline !== "all" && e.batch_id !== selectedBatchTimeline) return;
+
                         const ed = new Date(e.date_occurred);
                         const evType = (e.event_type || '').toLowerCase();
                         let evtKey = 'evento_otro';
@@ -127,14 +163,36 @@ export default function AgronomyTimelinePage() {
                         else if(evType.includes('alerta') || evType.includes('plaga') || evType.includes('ipm')) evtKey = 'evento_alerta';
                         else if(evType.includes('fase') || evType.includes('foto')) evtKey = 'evento_fase';
 
-                        consolidated.push({
+                        const eventObj: any = {
                             timeLabel: ed.toLocaleDateString([],{day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}),
                             timestamp: ed.getTime(),
                             Temp: null, Hum: null, VPD: null, Soil: null,
                             [evtKey]: 1, // Se ubicará en la parte inferior gracias a un eje Y independiente
                             eventDesc: e.description,
                             eventType: e.event_type
-                        });
+                        };
+
+                        // Extract Dose for selected products
+                        if (e.event_type === 'Nutricion' && e.description) {
+                            const parts = e.description.split('--- Bot Auto-Deductions ---');
+                            if (parts.length > 1) {
+                                const lines = parts[1].split('\n');
+                                for (const line of lines) {
+                                    if (line.includes(':')) {
+                                        const [namePart, rest] = line.split(':');
+                                        const pName = namePart.trim();
+                                        if (selectedProducts.includes(pName)) {
+                                            const amountMatch = rest.match(/([0-9.]+)\s*(ml|g|L|kg)?/i);
+                                            if (amountMatch) {
+                                                eventObj[`nutri_${pName}`] = parseFloat(amountMatch[1]);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        consolidated.push(eventObj);
                     });
                 }
                 
@@ -149,7 +207,7 @@ export default function AgronomyTimelinePage() {
     useEffect(() => {
         loadData();
         // eslint-disable-next-line
-    }, [startDate, endDate, selectedRoom, selectedSensor, chartType]);
+    }, [startDate, endDate, selectedRoom, selectedSensor, chartType, selectedBatchTimeline, selectedProducts]);
 
     // Realtime subscription for telemetry
     useEffect(() => {
@@ -177,8 +235,9 @@ export default function AgronomyTimelinePage() {
 
     // UI Helpers
     const filteredEventsTimeline = events.filter(e => {
-        if (filterCategory === "all") return true;
-        return e.event_type === filterCategory;
+        const passBatch = selectedBatchTimeline === "all" || e.batch_id === selectedBatchTimeline;
+        const passCategory = filterCategory === "all" || e.event_type === filterCategory;
+        return passBatch && passCategory;
     });
 
     const getAvailableSensors = () => {
@@ -268,6 +327,41 @@ export default function AgronomyTimelinePage() {
                         </select>
                     </div>
                 </div>
+
+                {/* Second Row Filters (Events & Products) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start border-t border-panel-border/30 pt-4 mt-4">
+                    <div>
+                        <label className="text-[10px] font-mono text-brand-slate-600 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">Aislamiento de Lote (Timeline)</label>
+                        <select value={selectedBatchTimeline} onChange={e => setSelectedBatchTimeline(e.target.value)} className="w-full bg-black/[0.05] dark:bg-black/30 border border-panel-border rounded p-2 text-sm text-foreground focus:border-indigo-500 outline-none">
+                            <option value="all">TODOS LOS LOTES EN RANGO</option>
+                            {availableBatches.map(b => <option key={b} value={b}>{b}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-mono text-brand-slate-600 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">Dosis Productos (Nutrición)</label>
+                        <div className="flex flex-wrap gap-2 p-2 bg-black/[0.05] dark:bg-black/30 border border-panel-border rounded min-h-[38px] items-center">
+                            {availableProducts.length === 0 ? (
+                                <span className="text-xs font-mono text-brand-slate-600 dark:text-slate-400 opacity-50">No se detectaron aplicaciones en este rango</span>
+                            ) : (
+                                availableProducts.map(prod => {
+                                    const isSelected = selectedProducts.includes(prod);
+                                    return (
+                                        <button 
+                                            key={prod}
+                                            onClick={() => {
+                                                if (isSelected) setSelectedProducts(prev => prev.filter(p => p !== prod));
+                                                else setSelectedProducts(prev => [...prev, prod]);
+                                            }}
+                                            className={`px-2 py-1 text-[11px] font-bold rounded-md transition-colors ${isSelected ? 'bg-purple-600 text-white shadow-md border border-purple-500/50' : 'bg-black/20 text-brand-slate-600 dark:text-slate-400 hover:bg-black/40 border border-panel-border/30'}`}
+                                        >
+                                            {prod}
+                                        </button>
+                                    );
+                                })
+                            )}
+                        </div>
+                    </div>
+                </div>
             </GlassCard>
 
             {/* Tab Selector for Chart Type */}
@@ -292,6 +386,7 @@ export default function AgronomyTimelinePage() {
                                
                                <YAxis yAxisId="yClima" orientation="left" tick={{fontSize: 10, fill: '#888'}} domain={chartType === "ambient" ? ['dataMin - 2', 'dataMax + 2'] : [0, 100]} allowDataOverflow />
                                <YAxis yAxisId="yHum" orientation="right" tick={{fontSize: 10, fill: '#888'}} domain={[0, 100]} tickFormatter={(val) => `${val}%`} hide={chartType !== "ambient"} />
+                               <YAxis yAxisId="yNutri" orientation="right" tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'dataMax']} hide={selectedProducts.length === 0} tickFormatter={(val) => `${val} ml/g`} />
                                <YAxis yAxisId="yEvent" type="number" domain={[0, 15]} hide />
                                
                                <Tooltip content={<CustomTooltip />} />
@@ -307,6 +402,22 @@ export default function AgronomyTimelinePage() {
                                {chartType === "soil" && (
                                    <Line yAxisId="yClima" type="monotone" dataKey="Soil" stroke="#3b82f6" strokeWidth={2} dot={false} name="Humedad Suelo %" connectNulls />
                                )}
+
+                               {/* Dynamic Nutrition Doses Lines */}
+                               {selectedProducts.map((prod, idx) => (
+                                   <Line 
+                                       key={prod} 
+                                       yAxisId="yNutri" 
+                                       type="monotone" 
+                                       dataKey={`nutri_${prod}`} 
+                                       stroke={PRODUCT_COLORS[idx % PRODUCT_COLORS.length]} 
+                                       strokeWidth={3} 
+                                       dot={{ r: 5, strokeWidth: 2, fill: 'var(--bg-dark)' }} 
+                                       activeDot={{ r: 8 }}
+                                       name={`Dosis ${prod} (ml/g)`} 
+                                       connectNulls 
+                                   />
+                               ))}
                                
                                <Scatter yAxisId="yEvent" dataKey="evento_riego" fill="#3b82f6" shape="circle" name="💧 Riego / Nutrición" />
                                <Scatter yAxisId="yEvent" dataKey="evento_poda" fill="#22c55e" shape="circle" name="✂️ Poda" />
