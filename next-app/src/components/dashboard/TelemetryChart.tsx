@@ -5,7 +5,7 @@ import { Area, AreaChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "rec
 import { GlassCard } from "../ui/GlassCard";
 import { supabase } from "../../lib/supabase";
 
-export function TelemetryChart({ sensorId, type = "th" }: { sensorId: string, type?: "th" | "vpd" | "soil" }) {
+export function TelemetryChart({ sensorId, type = "th", vpdMode = "leaf" }: { sensorId: string, type?: "th" | "vpd" | "soil", vpdMode?: "leaf" | "ambient" }) {
   const [data, setData] = useState<{ time: string, temp?: number, hum?: number, vpd?: number, soil?: number }[]>([]);
   const [status, setStatus] = useState("Cargando...");
 
@@ -37,11 +37,31 @@ export function TelemetryChart({ sensorId, type = "th" }: { sensorId: string, ty
               soil: parseFloat(row.moisture_pct) || 0
             };
         }
+
+        const temp = parseFloat(row.temperature_c) || 0;
+        const hum = parseFloat(row.humidity_percent) || 0;
+        let vpd = parseFloat(row.vpd_kpa) || 0;
+
+        if (vpdMode === 'ambient') {
+            const svpAirPa = 610.78 * Math.exp((17.27 * temp) / (temp + 237.3));
+            const svpAirKpa = svpAirPa / 1000;
+            const avpKpa = svpAirKpa * (hum / 100);
+            vpd = Number((svpAirKpa - avpKpa).toFixed(2));
+        } else if (vpd === 0) {
+            const leafTemp = temp - 1.5;
+            const svpLeafPa = 610.78 * Math.exp((17.27 * leafTemp) / (leafTemp + 237.3));
+            const svpLeafKpa = svpLeafPa / 1000;
+            const svpAirPa = 610.78 * Math.exp((17.27 * temp) / (temp + 237.3));
+            const svpAirKpa = svpAirPa / 1000;
+            const avpKpa = svpAirKpa * (hum / 100);
+            vpd = Number((svpLeafKpa - avpKpa).toFixed(2));
+        }
+
         return {
           time: d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }),
-          temp: parseFloat(row.temperature_c) || 0,
-          hum: parseFloat(row.humidity_percent) || 0,
-          vpd: parseFloat(row.vpd_kpa) || 0
+          temp: temp,
+          hum: hum,
+          vpd: vpd
         };
       });
 

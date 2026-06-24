@@ -11,7 +11,7 @@ interface TelemetryRadiantProps {
   suggestionText?: string;
 }
 
-export function TelemetryRadiant({ type, value, status, suggestionText }: TelemetryRadiantProps) {
+export function TelemetryRadiant({ type, value, status, suggestionText, customLabel }: TelemetryRadiantProps & { customLabel?: string }) {
   const meta = {
     temperature: { icon: <ThermometerHot size={20} />, label: "Temperatura", unit: "°C" },
     humidity: { icon: <Drop size={20} />, label: "Humedad", unit: "%" },
@@ -36,7 +36,7 @@ export function TelemetryRadiant({ type, value, status, suggestionText }: Teleme
           <span className={`text-status-${glowColor === "emerald" ? "green" : glowColor === "none" ? "slate-500" : glowColor}`}>
             {meta[type].icon}
           </span>
-          {meta[type].label}
+          {customLabel || meta[type].label}
         </h3>
         
         {displayPill && (

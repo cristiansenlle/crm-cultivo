@@ -6,8 +6,8 @@ import { TelemetryChart } from "./TelemetryChart";
 import { useRoom } from "../../context/RoomContext";
 import { supabase } from "../../lib/supabase";
 
-function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string }) {
-  const [latestMetric, setLatestMetric] = useState<{temp: number, hum: number, vpd: number} | null>(null);
+function SensorDashboard({ sensor, roomPhase, vpdMode }: { sensor: any, roomPhase: string, vpdMode: "leaf" | "ambient" }) {
+  const [latestMetric, setLatestMetric] = useState<{temp: number, hum: number, rawVpd: number} | null>(null);
 
   const calcLeafVpd = (tempC: number, humPct: number) => {
     // Usamos offset de -1.5 para luces LED
@@ -20,6 +20,13 @@ function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string
     
     const avpKpa = svpAirKpa * (humPct / 100);
     return Number((svpLeafKpa - avpKpa).toFixed(2));
+  };
+
+  const calcAmbientVpd = (tempC: number, humPct: number) => {
+    const svpAirPa = 610.78 * Math.exp((17.27 * tempC) / (tempC + 237.3));
+    const svpAirKpa = svpAirPa / 1000;
+    const avpKpa = svpAirKpa * (humPct / 100);
+    return Number((svpAirKpa - avpKpa).toFixed(2));
   };
 
   const getSuggestions = (temp: number, hum: number, currentVpd: number, isFloro: boolean) => {
@@ -36,11 +43,13 @@ function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string
         return { temp: "Óptimo", hum: "Óptimo", tempStatus: "optimal" as const, humStatus: "optimal" as const };
      }
      
+     const calcFn = vpdMode === 'ambient' ? calcAmbientVpd : calcLeafVpd;
+
      // Buscar humedad ideal
      let targetHum = hum;
      let bestHumDiff = 999;
      for (let h = 10; h <= 95; h++) {
-        let v = calcLeafVpd(temp, h);
+        let v = calcFn(temp, h);
         let diff = Math.abs(v - targetVpd);
         if (diff < bestHumDiff) {
             bestHumDiff = diff;
@@ -52,7 +61,7 @@ function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string
      let targetTemp = temp;
      let bestTempDiff = 999;
      for (let t = 15; t <= 35; t += 0.5) {
-        let v = calcLeafVpd(t, hum);
+        let v = calcFn(t, hum);
         let diff = Math.abs(v - targetVpd);
         if (diff < bestTempDiff) {
             bestTempDiff = diff;
@@ -92,11 +101,11 @@ function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string
       if (data && data.length > 0) {
         const t = parseFloat(data[0].temperature_c) || 0;
         const h = parseFloat(data[0].humidity_percent) || 0;
-        const rawVpd = parseFloat(data[0].vpd_kpa);
+        const rawVpd = parseFloat(data[0].vpd_kpa) || 0;
         setLatestMetric({
           temp: t,
           hum: h,
-          vpd: rawVpd > 0 ? rawVpd : calcLeafVpd(t, h)
+          rawVpd: rawVpd
         });
       }
     };
@@ -117,12 +126,12 @@ function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string
           if (payload.new) {
              const t = parseFloat(payload.new.temperature_c) || 0;
              const h = parseFloat(payload.new.humidity_percent) || 0;
-             const rawVpd = parseFloat(payload.new.vpd_kpa);
+             const rawVpd = parseFloat(payload.new.vpd_kpa) || 0;
              
              setLatestMetric({
                 temp: t,
                 hum: h,
-                vpd: rawVpd > 0 ? rawVpd : calcLeafVpd(t, h)
+                rawVpd: rawVpd
              });
           }
         }
@@ -135,7 +144,12 @@ function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string
   }, [sensor.id]);
 
   const isFloro = (roomPhase || '').toLowerCase().includes('flora');
-  const suggestions = latestMetric ? getSuggestions(latestMetric.temp, latestMetric.hum, latestMetric.vpd, isFloro) : null;
+
+  const currentVpd = latestMetric ? 
+     (vpdMode === 'ambient' ? calcAmbientVpd(latestMetric.temp, latestMetric.hum) : (latestMetric.rawVpd > 0 ? latestMetric.rawVpd : calcLeafVpd(latestMetric.temp, latestMetric.hum)))
+     : 0;
+
+  const suggestions = latestMetric ? getSuggestions(latestMetric.temp, latestMetric.hum, currentVpd, isFloro) : null;
 
   return (
     <div className="flex flex-col gap-4 border border-panel-border/30 bg-black/5 dark:bg-white/5 rounded-2xl p-4 shadow-xl">
@@ -157,10 +171,14 @@ function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string
           status={suggestions?.humStatus || "danger"} 
           suggestionText={suggestions?.hum}
         />
-        <TelemetryRadiant type="vpd" value={latestMetric?.vpd || 0} status={
+        <TelemetryRadiant 
+          type="vpd" 
+          value={currentVpd} 
+          customLabel={vpdMode === 'ambient' ? "VPD Ambiental" : "VPD Hoja"}
+          status={
             (() => {
                 if(!latestMetric) return "danger";
-                const v = latestMetric.vpd;
+                const v = currentVpd;
                 
                 if (isFloro) {
                     if (v >= 1.2 && v <= 1.6) return "optimal";
@@ -179,7 +197,7 @@ function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string
         {/* Temp/Hum Chart */}
         <TelemetryChart sensorId={sensor.id} type="th" />
         {/* VPD Chart */}
-        <TelemetryChart sensorId={sensor.id} type="vpd" />
+        <TelemetryChart sensorId={sensor.id} type="vpd" vpdMode={vpdMode} />
       </section>
     </div>
   );
@@ -187,6 +205,7 @@ function SensorDashboard({ sensor, roomPhase }: { sensor: any, roomPhase: string
 
 export function DashboardOverview() {
   const { selectedRoom, sensors } = useRoom();
+  const [vpdMode, setVpdMode] = useState<"leaf" | "ambient">("leaf");
 
   if (!selectedRoom) return (
      <div className="w-full flex items-center justify-center p-12 text-brand-slate-600 font-mono text-sm border-2 border-dashed border-panel-border/30 rounded-xl">
@@ -204,7 +223,23 @@ export function DashboardOverview() {
 
   return (
     <div className="flex flex-col gap-8 w-full">
-       {ambientSensors.map(s => <SensorDashboard key={s.id} sensor={s} roomPhase={selectedRoom.phase} />)}
+      <div className="flex justify-end mb-[-1rem] relative z-20 pr-4">
+         <div className="flex items-center gap-1 bg-black/10 dark:bg-white/5 border border-panel-border/30 rounded-lg p-1">
+            <button 
+               onClick={() => setVpdMode("leaf")}
+               className={`px-3 py-1.5 text-xs font-mono font-bold tracking-wider rounded-md transition-all ${vpdMode === 'leaf' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 shadow-lg shadow-blue-500/10' : 'text-slate-500 hover:text-slate-300 border border-transparent'}`}
+            >
+               VPD HOJA
+            </button>
+            <button 
+               onClick={() => setVpdMode("ambient")}
+               className={`px-3 py-1.5 text-xs font-mono font-bold tracking-wider rounded-md transition-all ${vpdMode === 'ambient' ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30 shadow-lg shadow-blue-500/10' : 'text-slate-500 hover:text-slate-300 border border-transparent'}`}
+            >
+               VPD AMBIENTAL
+            </button>
+         </div>
+      </div>
+      {ambientSensors.map(s => <SensorDashboard key={s.id} sensor={s} roomPhase={selectedRoom.phase} vpdMode={vpdMode} />)}
     </div>
   );
 }
