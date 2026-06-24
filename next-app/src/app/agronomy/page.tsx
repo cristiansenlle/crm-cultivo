@@ -422,12 +422,10 @@ export default function AgronomyTimelinePage() {
                            <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
                                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                                <XAxis dataKey="timeLabel" tick={{fontSize: 10, fill: '#888'}} interval="preserveStartEnd" minTickGap={30} />
-                               
-                               <YAxis yAxisId="yClima" orientation="left" tick={{fontSize: 10, fill: '#888'}} domain={chartType === "ambient" ? ['dataMin - 2', 'dataMax + 2'] : [0, 100]} allowDataOverflow hide={chartType === "nutrition"} />
-                               <YAxis yAxisId="yHum" orientation="right" tick={{fontSize: 10, fill: '#888'}} domain={[0, 100]} tickFormatter={(val) => `${val}%`} hide={chartType !== "ambient"} />
-                               <YAxis yAxisId="yNutri" orientation={chartType === "nutrition" ? "left" : "right"} width={80} tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'auto']} hide={chartType !== "nutrition" || selectedProducts.length === 0} tickFormatter={(val) => `${val} ml/l`} />
+                               {chartType !== "nutrition" && <YAxis yAxisId="yClima" orientation="left" tick={{fontSize: 10, fill: '#888'}} domain={chartType === "ambient" ? ['dataMin - 2', 'dataMax + 2'] : [0, 100]} allowDataOverflow />}
+                               {chartType === "ambient" && <YAxis yAxisId="yHum" orientation="right" tick={{fontSize: 10, fill: '#888'}} domain={[0, 100]} tickFormatter={(val) => `${val}%`} />}
+                               {chartType === "nutrition" && selectedProducts.length > 0 && <YAxis yAxisId="yNutri" orientation="left" width={80} tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'dataMax']} tickFormatter={(val) => `${val} ml/l`} />}
                                <YAxis yAxisId="yEvent" type="number" domain={[0, 15]} hide />
-                               
                                <Tooltip content={<CustomTooltip />} />
                                <Legend wrapperStyle={{ fontSize: '12px' }} />
                                
