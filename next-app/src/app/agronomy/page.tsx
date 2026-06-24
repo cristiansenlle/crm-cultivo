@@ -139,6 +139,9 @@ export default function AgronomyTimelinePage() {
                 });
 
                 // Generar consolidado unificado promediado
+                const baseNutriObj: any = {};
+                selectedProducts.forEach(p => { baseNutriObj[`nutri_${p}`] = null; });
+
                 const consolidated: any[] = Array.from(groupedMap.values()).map(r => ({
                     timeLabel: r.timeLabel,
                     timestamp: r.timestamp,
@@ -146,7 +149,8 @@ export default function AgronomyTimelinePage() {
                     Hum: r.humCount > 0 ? Number((r.humSum / r.humCount).toFixed(2)) : null,
                     VPD: r.vpdCount > 0 ? Number((r.vpdSum / r.vpdCount).toFixed(2)) : null,
                     Soil: r.soilCount > 0 ? Number((r.soilSum / r.soilCount).toFixed(2)) : null,
-                    evento: null, eventDesc: '', eventType: ''
+                    evento: null, eventDesc: '', eventType: '',
+                    ...baseNutriObj
                 }));
 
                 if (evs) {
@@ -169,7 +173,8 @@ export default function AgronomyTimelinePage() {
                             Temp: null, Hum: null, VPD: null, Soil: null,
                             [evtKey]: 1, // Se ubicará en la parte inferior gracias a un eje Y independiente
                             eventDesc: e.description,
-                            eventType: e.event_type
+                            eventType: e.event_type,
+                            ...baseNutriObj
                         };
 
                         // Extract Dose for selected products
@@ -393,7 +398,7 @@ export default function AgronomyTimelinePage() {
                                
                                <YAxis yAxisId="yClima" orientation="left" tick={{fontSize: 10, fill: '#888'}} domain={chartType === "ambient" ? ['dataMin - 2', 'dataMax + 2'] : [0, 100]} allowDataOverflow hide={chartType === "nutrition"} />
                                <YAxis yAxisId="yHum" orientation="right" tick={{fontSize: 10, fill: '#888'}} domain={[0, 100]} tickFormatter={(val) => `${val}%`} hide={chartType !== "ambient"} />
-                               <YAxis yAxisId="yNutri" orientation={chartType === "nutrition" ? "left" : "right"} tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'dataMax']} hide={chartType !== "nutrition" || selectedProducts.length === 0} tickFormatter={(val) => `${val} ml/g`} />
+                               <YAxis yAxisId="yNutri" orientation={chartType === "nutrition" ? "left" : "right"} tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'auto']} hide={chartType !== "nutrition" || selectedProducts.length === 0} tickFormatter={(val) => `${val} ml/g`} />
                                <YAxis yAxisId="yEvent" type="number" domain={[0, 15]} hide />
                                
                                <Tooltip content={<CustomTooltip />} />
@@ -419,9 +424,9 @@ export default function AgronomyTimelinePage() {
                                        dataKey={`nutri_${prod}`} 
                                        stroke={PRODUCT_COLORS[idx % PRODUCT_COLORS.length]} 
                                        strokeWidth={3} 
-                                       dot={{ r: 5, strokeWidth: 2, fill: 'var(--bg-dark)' }} 
+                                       dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} 
                                        activeDot={{ r: 8 }}
-                                       name={`Dosis ${prod} (ml/g)`} 
+                                       name={`Dosis ${prod} (ml/g)`}  
                                        connectNulls 
                                    />
                                ))}
