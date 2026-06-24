@@ -71,7 +71,7 @@ export default function AgronomyTimelinePage() {
                 
                 evs.forEach((e:any) => {
                     if (e.batch_id) batchSet.add(e.batch_id);
-                    if (e.event_type?.toLowerCase().startsWith('nutrici') && e.description) {
+                    if (e.description && e.description.includes('--- Bot Auto-Deductions ---')) {
                         const parts = e.description.split('--- Bot Auto-Deductions ---');
                         if (parts.length > 1) {
                             const lines = parts[1].split('\n');
@@ -178,7 +178,7 @@ export default function AgronomyTimelinePage() {
                         };
 
                         // Extract Dose for selected products
-                        if (e.event_type?.toLowerCase().startsWith('nutrici') && e.description) {
+                        if (e.description && e.description.includes('--- Bot Auto-Deductions ---')) {
                             const parts = e.description.split('--- Bot Auto-Deductions ---');
                             if (parts.length > 1) {
                                 const lines = parts[1].split('\n');
