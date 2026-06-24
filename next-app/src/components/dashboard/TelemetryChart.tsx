@@ -47,7 +47,7 @@ export function TelemetryChart({ sensorId, type = "th", vpdMode = "leaf" }: { se
             const svpAirKpa = svpAirPa / 1000;
             const avpKpa = svpAirKpa * (hum / 100);
             vpd = Number((svpAirKpa - avpKpa).toFixed(2));
-        } else if (vpd === 0) {
+        } else {
             const leafTemp = temp - 1.5;
             const svpLeafPa = 610.78 * Math.exp((17.27 * leafTemp) / (leafTemp + 237.3));
             const svpLeafKpa = svpLeafPa / 1000;

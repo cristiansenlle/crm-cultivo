@@ -146,7 +146,7 @@ function SensorDashboard({ sensor, roomPhase, vpdMode }: { sensor: any, roomPhas
   const isFloro = (roomPhase || '').toLowerCase().includes('flora');
 
   const currentVpd = latestMetric ? 
-     (vpdMode === 'ambient' ? calcAmbientVpd(latestMetric.temp, latestMetric.hum) : (latestMetric.rawVpd > 0 ? latestMetric.rawVpd : calcLeafVpd(latestMetric.temp, latestMetric.hum)))
+     (vpdMode === 'ambient' ? calcAmbientVpd(latestMetric.temp, latestMetric.hum) : calcLeafVpd(latestMetric.temp, latestMetric.hum))
      : 0;
 
   const suggestions = latestMetric ? getSuggestions(latestMetric.temp, latestMetric.hum, currentVpd, isFloro) : null;
