@@ -419,12 +419,12 @@ export default function AgronomyTimelinePage() {
                        <div className="w-full h-full flex items-center justify-center font-mono opacity-50 border border-dashed border-panel-border/50 rounded">Sin Telemetría en este marco de tiempo</div>
                     ) : (
                        <ResponsiveContainer width="100%" height="100%">
-                           <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 10, bottom: 0 }}>
+                           <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: 30, bottom: 0 }}>
                                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                                <XAxis dataKey="timeLabel" tick={{fontSize: 10, fill: '#888'}} interval="preserveStartEnd" minTickGap={30} />
                                {chartType !== "nutrition" && <YAxis yAxisId="yClima" orientation="left" tick={{fontSize: 10, fill: '#888'}} domain={chartType === "ambient" ? ['dataMin - 2', 'dataMax + 2'] : [0, 100]} allowDataOverflow />}
                                {chartType === "ambient" && <YAxis yAxisId="yHum" orientation="right" tick={{fontSize: 10, fill: '#888'}} domain={[0, 100]} tickFormatter={(val) => `${val}%`} />}
-                               {chartType === "nutrition" && selectedProducts.length > 0 && <YAxis yAxisId="yNutri" orientation="left" width={80} tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'dataMax']} tickFormatter={(val) => `${val} ml/l`} />}
+                               {chartType === "nutrition" && selectedProducts.length > 0 && <YAxis yAxisId="yNutri" orientation="left" width={60} tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'dataMax']} tickFormatter={(val) => `${val} ml/l`} />}
                                <YAxis yAxisId="yEvent" type="number" domain={[0, 15]} hide />
                                <Tooltip content={<CustomTooltip />} />
                                <Legend wrapperStyle={{ fontSize: '12px' }} />
