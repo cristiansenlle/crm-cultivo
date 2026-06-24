@@ -71,15 +71,22 @@ export default function AgronomyTimelinePage() {
                 
                 evs.forEach((e:any) => {
                     if (e.batch_id) batchSet.add(e.batch_id);
-                    if (e.description && e.description.includes('--- Bot Auto-Deductions ---')) {
-                        const parts = e.description.split('--- Bot Auto-Deductions ---');
-                        if (parts.length > 1) {
-                            const lines = parts[1].split('\n');
-                            for (const line of lines) {
-                                if (line.includes(':')) {
-                                    prodSet.add(line.split(':')[0].trim());
+                    if (e.description) {
+                        if (e.description.includes('--- Bot Auto-Deductions ---')) {
+                            const parts = e.description.split('--- Bot Auto-Deductions ---');
+                            if (parts.length > 1) {
+                                const lines = parts[1].split('\n');
+                                for (const line of lines) {
+                                    if (line.includes(':')) {
+                                        prodSet.add(line.split(':')[0].trim());
+                                    }
                                 }
                             }
+                        }
+                        // Soporte para nuevo formato: RIEGO: Top veg (28.00 ml/g per cápita).
+                        const matches = [...e.description.matchAll(/(?:RIEGO|Nutrici[oó]n|PODA|EVENTO):\s*([^(]+?)\s*\(\s*([0-9.]+)\s*(?:ml|g|L|kg)/gi)];
+                        for (const match of matches) {
+                            prodSet.add(match[1].trim());
                         }
                     }
                 });
@@ -178,21 +185,31 @@ export default function AgronomyTimelinePage() {
                         };
 
                         // Extract Dose for selected products
-                        if (e.description && e.description.includes('--- Bot Auto-Deductions ---')) {
-                            const parts = e.description.split('--- Bot Auto-Deductions ---');
-                            if (parts.length > 1) {
-                                const lines = parts[1].split('\n');
-                                for (const line of lines) {
-                                    if (line.includes(':')) {
-                                        const [namePart, rest] = line.split(':');
-                                        const pName = namePart.trim();
-                                        if (selectedProducts.includes(pName)) {
-                                            const amountMatch = rest.match(/([0-9.]+)\s*(ml|g|L|kg)?/i);
-                                            if (amountMatch) {
-                                                eventObj[`nutri_${pName}`] = parseFloat(amountMatch[1]);
+                        if (e.description) {
+                            if (e.description.includes('--- Bot Auto-Deductions ---')) {
+                                const parts = e.description.split('--- Bot Auto-Deductions ---');
+                                if (parts.length > 1) {
+                                    const lines = parts[1].split('\n');
+                                    for (const line of lines) {
+                                        if (line.includes(':')) {
+                                            const [namePart, rest] = line.split(':');
+                                            const pName = namePart.trim();
+                                            if (selectedProducts.includes(pName)) {
+                                                const amountMatch = rest.match(/([0-9.]+)\s*(ml|g|L|kg)?/i);
+                                                if (amountMatch) {
+                                                    eventObj[`nutri_${pName}`] = parseFloat(amountMatch[1]);
+                                                }
                                             }
                                         }
                                     }
+                                }
+                            }
+                            // Soporte para nuevo formato
+                            const matches = [...e.description.matchAll(/(?:RIEGO|Nutrici[oó]n|PODA|EVENTO):\s*([^(]+?)\s*\(\s*([0-9.]+)\s*(?:ml|g|L|kg)/gi)];
+                            for (const match of matches) {
+                                const pName = match[1].trim();
+                                if (selectedProducts.includes(pName)) {
+                                    eventObj[`nutri_${pName}`] = parseFloat(match[2]);
                                 }
                             }
                         }
