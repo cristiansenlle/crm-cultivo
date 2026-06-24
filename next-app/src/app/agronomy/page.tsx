@@ -418,13 +418,13 @@ export default function AgronomyTimelinePage() {
                        <div className="w-full h-full flex items-center justify-center font-mono opacity-50 border border-dashed border-panel-border/50 rounded">Sin Telemetría en este marco de tiempo</div>
                     ) : (
                        <ResponsiveContainer width="100%" height="100%">
-                           <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                           <ComposedChart data={chartData} margin={{ top: 10, right: 10, left: chartType === "nutrition" ? 0 : -20, bottom: 0 }}>
                                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                                <XAxis dataKey="timeLabel" tick={{fontSize: 10, fill: '#888'}} interval="preserveStartEnd" minTickGap={30} />
                                
                                <YAxis yAxisId="yClima" orientation="left" tick={{fontSize: 10, fill: '#888'}} domain={chartType === "ambient" ? ['dataMin - 2', 'dataMax + 2'] : [0, 100]} allowDataOverflow hide={chartType === "nutrition"} />
                                <YAxis yAxisId="yHum" orientation="right" tick={{fontSize: 10, fill: '#888'}} domain={[0, 100]} tickFormatter={(val) => `${val}%`} hide={chartType !== "ambient"} />
-                               <YAxis yAxisId="yNutri" orientation={chartType === "nutrition" ? "left" : "right"} tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'auto']} hide={chartType !== "nutrition" || selectedProducts.length === 0} tickFormatter={(val) => `${val} ml/g`} />
+                               <YAxis yAxisId="yNutri" orientation={chartType === "nutrition" ? "left" : "right"} width={65} tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'auto']} hide={chartType !== "nutrition" || selectedProducts.length === 0} tickFormatter={(val) => `${val} ml/l`} />
                                <YAxis yAxisId="yEvent" type="number" domain={[0, 15]} hide />
                                
                                <Tooltip content={<CustomTooltip />} />
@@ -452,11 +452,11 @@ export default function AgronomyTimelinePage() {
                                        strokeWidth={3} 
                                        dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} 
                                        activeDot={{ r: 8 }}
-                                       name={`Dosis ${prod} (ml/g)`}  
+                                       name={`Dosis ${prod} (ml/l)`}  
                                        connectNulls 
                                    />
                                ))}
-                               
+                                                  
                                <Scatter yAxisId="yEvent" dataKey="evento_riego" fill="#3b82f6" shape="circle" name="💧 Riego / Nutrición" />
                                <Scatter yAxisId="yEvent" dataKey="evento_poda" fill="#22c55e" shape="circle" name="✂️ Poda" />
                                <Scatter yAxisId="yEvent" dataKey="evento_manejo" fill="#a855f7" shape="square" name="🪴 Manejo Estructural" />
