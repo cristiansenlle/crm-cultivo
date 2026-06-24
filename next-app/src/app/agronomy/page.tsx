@@ -15,7 +15,7 @@ export default function AgronomyTimelinePage() {
     const [soilSensors, setSoilSensors] = useState<any[]>([]);
     
     // UI Filter States
-    const [chartType, setChartType] = useState<"ambient" | "soil">("ambient");
+    const [chartType, setChartType] = useState<"ambient" | "soil" | "nutrition">("ambient");
     const [startDate, setStartDate] = useState(() => {
        const d = new Date(); d.setDate(d.getDate() - 15);
        return d.toISOString().split('T')[0];
@@ -71,7 +71,7 @@ export default function AgronomyTimelinePage() {
                 
                 evs.forEach((e:any) => {
                     if (e.batch_id) batchSet.add(e.batch_id);
-                    if (e.event_type === 'Nutricion' && e.description) {
+                    if (e.event_type?.toLowerCase().startsWith('nutrici') && e.description) {
                         const parts = e.description.split('--- Bot Auto-Deductions ---');
                         if (parts.length > 1) {
                             const lines = parts[1].split('\n');
@@ -173,7 +173,7 @@ export default function AgronomyTimelinePage() {
                         };
 
                         // Extract Dose for selected products
-                        if (e.event_type === 'Nutricion' && e.description) {
+                        if (e.event_type?.toLowerCase().startsWith('nutrici') && e.description) {
                             const parts = e.description.split('--- Bot Auto-Deductions ---');
                             if (parts.length > 1) {
                                 const lines = parts[1].split('\n');
@@ -236,7 +236,11 @@ export default function AgronomyTimelinePage() {
     // UI Helpers
     const filteredEventsTimeline = events.filter(e => {
         const passBatch = selectedBatchTimeline === "all" || e.batch_id === selectedBatchTimeline;
-        const passCategory = filterCategory === "all" || e.event_type === filterCategory;
+        let passCategory = true;
+        if (filterCategory !== "all") {
+             const evType = (e.event_type || "").toLowerCase();
+             passCategory = evType.includes(filterCategory.toLowerCase());
+        }
         return passBatch && passCategory;
     });
 
@@ -329,6 +333,7 @@ export default function AgronomyTimelinePage() {
                 </div>
 
                 {/* Second Row Filters (Events & Products) */}
+                {chartType === "nutrition" && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start border-t border-panel-border/30 pt-4 mt-4">
                     <div>
                         <label className="text-[10px] font-mono text-brand-slate-600 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">Aislamiento de Lote (Timeline)</label>
@@ -341,7 +346,7 @@ export default function AgronomyTimelinePage() {
                         <label className="text-[10px] font-mono text-brand-slate-600 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">Dosis Productos (Nutrición)</label>
                         <div className="flex flex-wrap gap-2 p-2 bg-black/[0.05] dark:bg-black/30 border border-panel-border rounded min-h-[38px] items-center">
                             {availableProducts.length === 0 ? (
-                                <span className="text-xs font-mono text-brand-slate-600 dark:text-slate-400 opacity-50">No se detectaron aplicaciones en este rango</span>
+                                <span className="text-xs font-mono text-brand-slate-600 dark:text-slate-400 opacity-50">No se detectaron aplicaciones en este rango. Verifique si existen riegos con autodeducciones registradas en la bitácora.</span>
                             ) : (
                                 availableProducts.map(prod => {
                                     const isSelected = selectedProducts.includes(prod);
@@ -362,12 +367,14 @@ export default function AgronomyTimelinePage() {
                         </div>
                     </div>
                 </div>
+                )}
             </GlassCard>
 
             {/* Tab Selector for Chart Type */}
-            <div className="flex gap-2 p-1 bg-black/20 border border-panel-border rounded-xl w-fit mx-auto relative z-30">
+            <div className="flex flex-wrap gap-2 p-1 bg-black/20 border border-panel-border rounded-xl w-fit mx-auto relative z-30 justify-center">
                  <button onClick={() => { setChartType("ambient"); setSelectedSensor("all"); }} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${chartType === "ambient" ? "bg-indigo-600 text-white shadow-md" : "text-brand-slate-600 dark:text-slate-400 hover:text-white"}`}>Telemetría Ambiental (Clima)</button>
                  <button onClick={() => { setChartType("soil"); setSelectedSensor("all"); }} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${chartType === "soil" ? "bg-blue-600 text-white shadow-md" : "text-brand-slate-600 dark:text-slate-400 hover:text-white"}`}>Humedad de Suelo</button>
+                 <button onClick={() => { setChartType("nutrition"); setSelectedSensor("all"); }} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${chartType === "nutrition" ? "bg-purple-600 text-white shadow-md" : "text-brand-slate-600 dark:text-slate-400 hover:text-white"}`}>Nutrición</button>
             </div>
 
             {/* Grafico Multi-Eje */}
@@ -384,9 +391,9 @@ export default function AgronomyTimelinePage() {
                                <CartesianGrid strokeDasharray="3 3" stroke="#ffffff10" vertical={false} />
                                <XAxis dataKey="timeLabel" tick={{fontSize: 10, fill: '#888'}} interval="preserveStartEnd" minTickGap={30} />
                                
-                               <YAxis yAxisId="yClima" orientation="left" tick={{fontSize: 10, fill: '#888'}} domain={chartType === "ambient" ? ['dataMin - 2', 'dataMax + 2'] : [0, 100]} allowDataOverflow />
+                               <YAxis yAxisId="yClima" orientation="left" tick={{fontSize: 10, fill: '#888'}} domain={chartType === "ambient" ? ['dataMin - 2', 'dataMax + 2'] : [0, 100]} allowDataOverflow hide={chartType === "nutrition"} />
                                <YAxis yAxisId="yHum" orientation="right" tick={{fontSize: 10, fill: '#888'}} domain={[0, 100]} tickFormatter={(val) => `${val}%`} hide={chartType !== "ambient"} />
-                               <YAxis yAxisId="yNutri" orientation="right" tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'dataMax']} hide={selectedProducts.length === 0} tickFormatter={(val) => `${val} ml/g`} />
+                               <YAxis yAxisId="yNutri" orientation={chartType === "nutrition" ? "left" : "right"} tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'dataMax']} hide={chartType !== "nutrition" || selectedProducts.length === 0} tickFormatter={(val) => `${val} ml/g`} />
                                <YAxis yAxisId="yEvent" type="number" domain={[0, 15]} hide />
                                
                                <Tooltip content={<CustomTooltip />} />
@@ -442,7 +449,7 @@ export default function AgronomyTimelinePage() {
                 <button onClick={() => setFilterCategory("riego")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'riego' ? 'bg-blue-600 text-white' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
                     Riegos
                 </button>
-                <button onClick={() => setFilterCategory("nutricion")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'nutricion' ? 'bg-purple-600 text-white' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
+                <button onClick={() => setFilterCategory("nutrici")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'nutrici' ? 'bg-purple-600 text-white' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
                     Nutrición
                 </button>
                 <button onClick={() => setFilterCategory("poda")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'poda' ? 'bg-emerald-600 text-foreground' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
