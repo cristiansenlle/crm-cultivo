@@ -15,11 +15,21 @@ export function DashboardControls() {
   
   const ambientSensors = sensors.filter(s => s.type !== 'soil');
 
-  const calcVpd = (tempC: number, humPct: number) => {
+  const calcAmbientVpd = (tempC: number, humPct: number) => {
     const svpPa = 610.78 * Math.exp((17.27 * tempC) / (tempC + 237.3));
     const svpKpa = svpPa / 1000;
     const avpKpa = svpKpa * (humPct / 100);
-    return svpKpa - avpKpa;
+    return Number((svpKpa - avpKpa).toFixed(2));
+  };
+
+  const calcLeafVpd = (tempC: number, humPct: number) => {
+    const leafTemp = tempC - 1.5;
+    const svpLeafPa = 610.78 * Math.exp((17.27 * leafTemp) / (leafTemp + 237.3));
+    const svpLeafKpa = svpLeafPa / 1000;
+    const svpAirPa = 610.78 * Math.exp((17.27 * tempC) / (tempC + 237.3));
+    const svpAirKpa = svpAirPa / 1000;
+    const avpKpa = svpAirKpa * (humPct / 100);
+    return Number((svpLeafKpa - avpKpa).toFixed(2));
   };
 
   const handlePostTelemetry = async (e: React.FormEvent) => {
@@ -31,7 +41,8 @@ export function DashboardControls() {
     const h = parseFloat(humidity);
     if (isNaN(t) || isNaN(h)) return alert("Datos inválidos");
 
-    const vpd = calcVpd(t, h);
+    const vpdAmbient = calcAmbientVpd(t, h);
+    const vpdLeaf = calcLeafVpd(t, h);
     setIsSubmitting(true);
 
     const payload = {
@@ -40,7 +51,7 @@ export function DashboardControls() {
         phase: selectedRoom.phase,
         temp: t,
         humidity: h,
-        vpd: vpd,
+        vpd: vpdLeaf,
         status: t > 30 ? 'critical' : 'optimal',
         timestamp: new Date().toISOString()
     };
@@ -51,7 +62,9 @@ export function DashboardControls() {
             room_id: selectedRoom.id,
             temperature_c: t,
             humidity_percent: h,
-            vpd_kpa: vpd
+            vpd_kpa: vpdLeaf, // Mantenemos vpd_kpa por retro-compatibilidad (asumiendo hoja como principal histórico)
+            vpd_ambient_kpa: vpdAmbient,
+            vpd_leaf_kpa: vpdLeaf
         }]);
 
         if (error) {

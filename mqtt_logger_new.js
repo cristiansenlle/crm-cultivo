@@ -199,7 +199,8 @@ client.on('message', async (topic, message) => {
                 const svpLeaf = 0.61078 * Math.exp((17.27 * leafTemp) / (leafTemp + 237.3));
                 const svpAir = 0.61078 * Math.exp((17.27 * tC) / (tC + 237.3));
                 const avpAir = svpAir * (rh / 100);
-                const vpd_kpa = Number((svpLeaf - avpAir).toFixed(2));
+                const vpdLeaf_kpa = Number((svpLeaf - avpAir).toFixed(2));
+                const vpdAmbient_kpa = Number((svpAir - avpAir).toFixed(2));
 
                 const { data: sensors } = await getSupabase('core_sensors');
                 if (sensors) {
@@ -210,10 +211,12 @@ client.on('message', async (topic, message) => {
                             room_id: matchedSensor.room_id,
                             temperature_c: tC,
                             humidity_percent: rh,
-                            vpd_kpa: vpd_kpa
+                            vpd_kpa: vpdLeaf_kpa,
+                            vpd_ambient_kpa: vpdAmbient_kpa,
+                            vpd_leaf_kpa: vpdLeaf_kpa
                         });
                         if (error) console.error("Error guardando telemetría:", error.message);
-                        else console.log(`[OK] Telemetría guardada para sensor ${matchedSensor.name} [VPD: ${vpd_kpa}]`);
+                        else console.log(`[OK] Telemetría guardada para sensor ${matchedSensor.name} [VPD: ${vpdLeaf_kpa}]`);
                     } else {
                         console.log(`[Warn] No hay sensor en BD mapeado a (${deviceId}). Usando ID como nombre.`);
                     }
