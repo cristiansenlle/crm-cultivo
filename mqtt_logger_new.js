@@ -201,7 +201,7 @@ client.on('message', async (topic, message) => {
                 const avpAir = svpAir * (rh / 100);
                 const vpd_kpa = Number((svpLeaf - avpAir).toFixed(2));
 
-                const { data: sensors } = await getSensors();
+                const { data: sensors } = await getSupabase('core_sensors');
                 if (sensors) {
                     const matchedSensor = sensors.find(s => s.name && s.name.includes(`(${deviceId})`));
                     if (matchedSensor) {
