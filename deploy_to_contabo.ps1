@@ -12,6 +12,9 @@ scp ".\next-app\src\app\iot\devices\BroadlinkPanel.tsx" "${vps_user}@${vps_ip}:$
 ssh "${vps_user}@${vps_ip}" "mkdir -p ${dest_base}/src/app/api/iot/mqtt_publish"
 scp ".\next-app\src\app\api\iot\mqtt_publish\route.ts" "${vps_user}@${vps_ip}:${dest_base}/src/app/api/iot/mqtt_publish/route.ts"
 
+# Copiar CultivoView.tsx
+scp ".\next-app\src\app\cultivo\CultivoView.tsx" "${vps_user}@${vps_ip}:${dest_base}/src/app/cultivo/CultivoView.tsx"
+
 Write-Host "Reconstruyendo la App en Contabo (esto puede tardar unos minutos)..." -ForegroundColor Cyan
 ssh "${vps_user}@${vps_ip}" "cd ${dest_base} && npm run build && pm2 restart crm-frontend"
 

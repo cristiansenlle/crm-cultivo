@@ -129,19 +129,6 @@ export async function POST(req: Request) {
           let totalSecs = ${totalSecs};
           let State = { expectedState: null, startTime: null };
           
-          function evaluateCycle(sys_unixtime) {
-              if (State.startTime === null) return;
-              let elapsed = sys_unixtime - State.startTime;
-              if (elapsed < 0) elapsed = 0;
-              let mod = elapsed % totalSecs;
-              let shouldBeOn = (mod < hoursOnSecs);
-              
-              if (State.expectedState !== shouldBeOn) {
-                  State.expectedState = shouldBeOn;
-                  Shelly.call("Switch.Set", { id: 0, on: shouldBeOn });
-              }
-          }
-          
           Shelly.addEventHandler(function(event, ud) {
             if (typeof event.info.state !== 'undefined' && event.component === 'switch:0') {
                let actualState = event.info.state;
@@ -155,11 +142,28 @@ export async function POST(req: Request) {
                            State.startTime = sys.unixtime - hoursOnSecs;
                         }
                         Shelly.call("KVS.Set", { key: KVS_KEY, value: State.startTime });
+                        let next_epoch = sys.unixtime + (actualState ? hoursOnSecs : (totalSecs - hoursOnSecs));
+                        MQTT.publish("cultivo/script_timers", JSON.stringify({ deviceId: Shelly.getDeviceInfo().id, next_epoch: next_epoch }));
                     }
                   });
                }
             }
           });
+          
+          function evaluateCycle(sys_unixtime) {
+              if (State.startTime === null) return;
+              let elapsed = sys_unixtime - State.startTime;
+              if (elapsed < 0) elapsed = 0;
+              let mod = elapsed % totalSecs;
+              let shouldBeOn = (mod < hoursOnSecs);
+              
+              if (State.expectedState !== shouldBeOn) {
+                  State.expectedState = shouldBeOn;
+                  let next_epoch = sys_unixtime + (shouldBeOn ? (hoursOnSecs - mod) : (totalSecs - mod));
+                  MQTT.publish("cultivo/script_timers", JSON.stringify({ deviceId: Shelly.getDeviceInfo().id, next_epoch: next_epoch }));
+                  Shelly.call("Switch.Set", { id: 0, on: shouldBeOn });
+              }
+          }
           
           function init() {
             Shelly.call("KVS.Get", { key: KVS_KEY }, function(res, err_code) {

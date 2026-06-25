@@ -178,7 +178,21 @@ export function CultivoView() {
   };
 
   const commitStage = async (batchId: string, nextStage: string, updates: any = {}) => {
-      updates.stage = nextStage;
+      const batch = batches.find(b => b.id === batchId);
+      if (batch) {
+          const lastDate = batch.last_stage_date ? new Date(batch.last_stage_date) : new Date(batch.start_date || batch.created_at || Date.now());
+          const daysInStage = Math.max(0, Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24)));
+          
+          const currentHistory = batch.stage_history || [];
+          const newHistory = [...currentHistory, { stage: batch.stage || 'vegetativo', days: daysInStage }];
+          
+          updates.stage = nextStage;
+          updates.last_stage_date = new Date().toISOString();
+          updates.stage_history = newHistory;
+      } else {
+          updates.stage = nextStage;
+      }
+      
       const { error } = await supabase.from('core_batches').update(updates).eq('id', batchId);
       if(!error) {
           // CHECK AUTO-TRANSICIÓN DE ROOM
@@ -356,7 +370,8 @@ export function CultivoView() {
                    )}
                    {batches.map(b => {
                      const isSecado = b.stage === 'cosecha seca';
-                     const days = Math.max(0, Math.floor((Date.now() - new Date(b.start_date || b.created_at).getTime()) / (1000 * 60 * 60 * 24)));
+                     const lastDateStr = b.last_stage_date || b.start_date || b.created_at;
+                     const days = Math.max(0, Math.floor((Date.now() - new Date(lastDateStr).getTime()) / (1000 * 60 * 60 * 24)));
                      const cost = batchCosts[b.id] || 0;
                      const stageStr = (b.stage || 'vegetativo').toLowerCase();
                      const stageColor = stageStr.includes('floración') ? 'text-purple-400' : stageStr.includes('cosecha') ? 'text-orange-400' : 'text-foreground';
@@ -373,8 +388,15 @@ export function CultivoView() {
                            </span>
                        </td>
                        <td className="py-4 px-4 text-center">
+                           {b.stage_history && b.stage_history.length > 0 && (
+                               <div className="text-[10px] font-mono text-brand-slate-500 mb-1 flex flex-col items-center leading-tight">
+                                   {b.stage_history.map((sh: any, idx: number) => (
+                                       <span key={idx} className="capitalize">{sh.stage}: {sh.days}d</span>
+                                   ))}
+                               </div>
+                           )}
                            <div className={`text-sm font-bold capitalize \${stageColor}`}>{b.stage || 'Vegetativo'}</div>
-                           <div className="text-xs font-mono text-brand-slate-600">Día {days} Activo</div>
+                           <div className="text-xs font-mono text-emerald-500/80 mt-0.5">Día {days} Activo</div>
                        </td>
                        <td className="py-4 px-4 text-center">
                            <div className="text-[11px] font-mono bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded text-foreground flex gap-1 justify-center">
