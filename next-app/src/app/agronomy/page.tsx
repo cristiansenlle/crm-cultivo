@@ -46,7 +46,10 @@ export default function AgronomyTimelinePage() {
             const { data: sn } = await supabase.from('core_sensors').select('id, name, room_id');
             if(sn) setAmbientSensors(sn);
             const { data: soilSn } = await supabase.from('core_soil_sensors').select('id, name, room_id');
-            if(soilSn) setSoilSensors(soilSn);
+            if(soilSn) {
+                soilSn.sort((a: any, b: any) => (a.name || '').localeCompare((b.name || ''), undefined, { numeric: true, sensitivity: 'base' }));
+                setSoilSensors(soilSn);
+            }
         };
         loadMetadata();
     }, []);

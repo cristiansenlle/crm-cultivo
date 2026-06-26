@@ -31,13 +31,18 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
     if (!supabase) return; // Fail gracefully if no keys
     try {
       const { data, error } = await supabase.from('core_rooms').select('*').order('name');
+      if (error) {
+          console.error("Supabase fetchRooms error:", error);
+      }
       if (data && !error) {
         setRooms(data);
         if (data.length > 0 && !selectedRoom) {
           setSelectedRoom(data[0]);
         }
       }
-    } catch(e) {}
+    } catch(e) {
+        console.error("fetchRooms exception:", e);
+    }
   };
 
   const fetchSensors = async () => {
@@ -58,6 +63,8 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
           allSensors = [...allSensors, ...soilRes.data.map((s: any) => ({ ...s, type: 'soil' }))];
       }
 
+      allSensors.sort((a: any, b: any) => (a.name || '').localeCompare((b.name || ''), undefined, { numeric: true, sensitivity: 'base' }));
+
       setSensors(allSensors);
 
       if (allSensors.length > 0) {
@@ -68,7 +75,9 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
       } else {
          setActiveSensor(null);
       }
-    } catch(e) {}
+    } catch(e) {
+        console.error("fetchSensors exception:", e);
+    }
   };
 
   useEffect(() => {
