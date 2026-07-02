@@ -87,8 +87,8 @@ export default function AgronomyTimelinePage() {
                                 }
                             }
                         }
-                        // Soporte para nuevo formato: RIEGO: Top veg (28.00 ml/g per cápita).
-                        const matches = [...e.description.matchAll(/(?:RIEGO|Nutrici[oó]n|PODA|EVENTO):\s*([^(]+?)\s*\(\s*([0-9.]+)\s*(?:ml|g|L|kg)/gi)];
+                        // Soporte para nuevo formato y formatos viejos per cápita
+                        const matches = [...e.description.matchAll(/(?:RIEGO|Nutrici[oó]n|PODA|EVENTO|IPM):\s*([^(]+?)\s*\(\s*([0-9.]+)/gi)];
                         for (const match of matches) {
                             prodSet.add(match[1].trim());
                         }
@@ -213,7 +213,7 @@ export default function AgronomyTimelinePage() {
                             }
                         }
                         // Soporte para nuevo formato
-                        const matches = [...e.description.matchAll(/(?:RIEGO|Nutrici[oó]n|PODA|EVENTO):\s*([^(]+?)\s*\(\s*([0-9.]+)\s*(?:ml|g|L|kg)/gi)];
+                        const matches = [...e.description.matchAll(/(?:RIEGO|Nutrici[oó]n|PODA|EVENTO|IPM):\s*([^(]+?)\s*\(\s*([0-9.]+)/gi)];
                         for (const match of matches) {
                             const pName = match[1].trim();
                             if (selectedProducts.includes(pName)) {

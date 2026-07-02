@@ -88,7 +88,8 @@ export function BitacoraGlobalModal({ room, batches, onClose, onRefreshBatches }
           
           // Anotar en descripción global el extraído por lote
           const qtyPerBatch = (reqAmount / splitFactor).toFixed(2);
-          finalDescGlobal = `${actionType.toUpperCase()}: ${selectedProduct} (${qtyPerBatch} per cápita). ` + desc;
+          const unit = matchingItems[0]?.uom || matchingItems[0]?.unit || 'unidades';
+          finalDescGlobal = `${actionType.toUpperCase()}: ${selectedProduct} (${qtyPerBatch} ${unit} por lote). ` + desc;
           
           selectedProductIdForEvent = lastConsumedItemId;
        } else {

@@ -158,7 +158,8 @@ export function BitacoraModal({ batch, onClose }: { batch: any, onClose: () => v
           }
           
           finalCost = calculatedCost;
-          finalDesc = `${actionType.toUpperCase()}: ${selectedProduct} (${reqAmount}). ` + desc;
+          const unit = matchingItems[0]?.uom || matchingItems[0]?.unit || 'unidades';
+          finalDesc = `${actionType.toUpperCase()}: ${selectedProduct} (${reqAmount} ${unit}). ` + desc;
           selectedProductIdForEvent = lastConsumedItemId;
 
        } else {
