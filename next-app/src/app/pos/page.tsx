@@ -86,29 +86,44 @@ export default function POSPage() {
         setIsProcessing(true);
         const subtotal = cart.reduce((sum, item) => sum + item.price, 0);
         const discountFactor = tiers[clientId] || 0;
-        const total = subtotal * (1 - discountFactor);
 
         try {
             for (const cartItem of cart) {
-                // 1. Deduct Inventory
-                const lot = inventory.find(c => c.id === cartItem.id);
-                if (lot) {
-                    const newQty = lot.qty - cartItem.qty;
-                    await supabase.from('core_inventory_cosechas').update({ qty: newQty }).eq('id', cartItem.id);
-                }
+                const revenueAmt = cartItem.price * (1 - discountFactor);
+                const costOfGoodsAmt = cartItem.cost * cartItem.qty; // Costo unitario * cantidad vendida
+                const txId = 'TX-WEB-' + Date.now();
+                const clientNameClean = clientName.trim() || 'Desconocido';
 
-                // 2. Insert Sale
-                // Note: The original DB table `core_sales` was used.
-                await supabase.from('core_sales').insert([{
-                    tx_id: 'TX-WEB-' + Date.now(),
-                    date: new Date().toISOString(),
-                    item_id: cartItem.id,
-                    qty_sold: cartItem.qty,
-                    revenue: cartItem.price * (1 - discountFactor), 
-                    cost_of_goods: cartItem.cost * cartItem.qty,
-                    client: clientId,
-                    customer_name: clientName.trim() || 'Desconocido'
-                }]);
+                // 1. Intentar deducir usando RPC para evitar race conditions y asegurar atomicidad
+                const { error: rpcError } = await supabase.rpc('procesar_venta_cosecha', {
+                    p_harvest_id: cartItem.id,
+                    p_qty_sold: cartItem.qty,
+                    p_revenue: revenueAmt,
+                    p_cost_of_goods: costOfGoodsAmt,
+                    p_tx_id: txId,
+                    p_client: clientId,
+                    p_customer_name: clientNameClean
+                });
+
+                if (rpcError) {
+                    console.warn('RPC procesar_venta_cosecha falló o no existe. Usando fallback tradicional de cliente.', rpcError);
+                    // Fallback tradicional (compatible con esquema previo)
+                    const lot = inventory.find(c => c.id === cartItem.id);
+                    if (lot) {
+                        const newQty = Math.max(0, lot.qty - cartItem.qty);
+                        await supabase.from('core_inventory_cosechas').update({ qty: newQty }).eq('id', cartItem.id);
+                    }
+                    await supabase.from('core_sales').insert([{
+                        tx_id: txId,
+                        date: new Date().toISOString(),
+                        item_id: cartItem.id,
+                        qty_sold: cartItem.qty,
+                        revenue: revenueAmt, 
+                        cost_of_goods: costOfGoodsAmt,
+                        client: clientId,
+                        customer_name: clientNameClean
+                    }]);
+                }
             }
 
             setCart([]);

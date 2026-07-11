@@ -25,6 +25,9 @@ export function CultivoView() {
 
   const [harvestModal, setHarvestModal] = useState<{isOpen: boolean, batch: any, nextStage: string}>({isOpen: false, batch: null, nextStage: ""});
   const [harvestGrams, setHarvestGrams] = useState("");
+  const [partialHarvests, setPartialHarvests] = useState<any[]>([]);
+  const [harvestTandaName, setHarvestTandaName] = useState("");
+  const [harvestPlantsCount, setHarvestPlantsCount] = useState("1");
 
   const [chartModal, setChartModal] = useState<{isOpen: boolean, batch: any}>({isOpen: false, batch: null});
 
@@ -101,6 +104,18 @@ export function CultivoView() {
 
   const handleDeleteBatch = async (batchId: string) => {
       if(!confirm("¿Está absolutamente seguro de eliminar este lote de cultivo? Esta acción podría fallar si el lote ya tiene histórico/operaciones adjuntas.")) return;
+      
+      // 1. Obtener IDs de las tandas de cosecha parcial de este lote
+      const { data: pHarvests } = await supabase.from('core_partial_harvests').select('id').eq('batch_id', batchId);
+      const harvestIds = (pHarvests || []).map((ph: any) => ph.id);
+
+      // 2. Eliminar stock de inventario de las tandas (y el registro heredado si existiera)
+      if (harvestIds.length > 0) {
+          await supabase.from('core_inventory_cosechas').delete().in('id', harvestIds);
+      }
+      await supabase.from('core_inventory_cosechas').delete().eq('id', batchId); // legacy delete
+
+      // 3. Eliminar el lote (las cosechas parciales se eliminarán en cascada en la BD)
       const { error } = await supabase.from('core_batches').delete().eq('id', batchId);
       if(error) {
           alert("No se pudo eliminar el lote debido a restricciones de integridad (el lote ya cuenta con un historial económico o agrónomo):\n" + error.message);
@@ -116,6 +131,7 @@ export function CultivoView() {
       setBatches(data);
       const batchIds = data.map((b: any) => b.id);
       if (batchIds.length > 0) {
+          // Fetch costs
           const { data: eventsData } = await supabase.from('core_agronomic_events').select('batch_id, total_cost').in('batch_id', batchIds);
           if (eventsData) {
               const costsMap: Record<string, number> = {};
@@ -126,9 +142,19 @@ export function CultivoView() {
               });
               setBatchCosts(costsMap);
           }
+          // Fetch partial harvests
+          const { data: harvestsData } = await supabase.from('core_partial_harvests').select('*').in('batch_id', batchIds);
+          if (harvestsData) {
+              setPartialHarvests(harvestsData);
+          } else {
+              setPartialHarvests([]);
+          }
+      } else {
+          setPartialHarvests([]);
       }
     } else {
       setBatches([]);
+      setPartialHarvests([]);
     }
   };
 
@@ -137,13 +163,13 @@ export function CultivoView() {
   }, [selectedRoom]);
 
   const advanceStageIndicator = (batch: any) => {
-      const stages = ['vegetativo', 'floración', 'cosecha húmeda', 'cosecha seca'];
+      const stages = ['vegetativo', 'floración', 'cosecha', 'finalizado'];
       const current = (batch.stage || 'vegetativo').toLowerCase();
       const curIdx = Math.max(0, stages.indexOf(current));
       
-      // Si la etapa actual ya es cosecha seca, avisar que el ciclo termino
+      // Si la etapa actual ya es finalizado, avisar que el ciclo termino
       if(curIdx === 3) {
-          alert('Este lote ya se encuentra en Cosecha Seca (Finalizado).');
+          alert('Este lote ya se encuentra en estado Finalizado (Ciclo cerrado).');
           return;
       }
       
@@ -158,16 +184,17 @@ export function CultivoView() {
           return;
       }
 
-      if (nextStage === 'cosecha húmeda') {
-          if(confirm(`¿Registrar Corte y avanzar estado a COSECHA HÚMEDA?`)) {
+      if (nextStage === 'cosecha') {
+          if(confirm(`¿Avanzar lote a fase de COSECHA (Activa por tandas)?`)) {
               commitStage(batch.id, nextStage, {});
           }
           return;
       }
 
-      if (nextStage === 'cosecha seca') {
-          setHarvestGrams("");
-          setHarvestModal({ isOpen: true, batch, nextStage });
+      if (nextStage === 'finalizado') {
+          if(confirm(`¿Finalizar y archivar este lote? Ya no se podrán registrar más cosechas parciales en él.`)) {
+              commitStage(batch.id, nextStage, {});
+          }
           return;
       }
 
@@ -189,6 +216,14 @@ export function CultivoView() {
           updates.stage = nextStage;
           updates.last_stage_date = new Date().toISOString();
           updates.stage_history = newHistory;
+
+          // Si se finaliza el lote, calcular el total cosechado acumulado
+          if (nextStage === 'finalizado') {
+              const { data: allHarvests } = await supabase.from('core_partial_harvests').select('weight_dry').eq('batch_id', batchId);
+              const totalDryWeight = (allHarvests || []).reduce((sum: number, h: any) => sum + Number(h.weight_dry || 0), 0);
+              updates.weight_dry = totalDryWeight;
+              updates.num_plants = 0; // Al finalizar no quedan plantas activas vivas
+          }
       } else {
           updates.stage = nextStage;
       }
@@ -247,37 +282,91 @@ export function CultivoView() {
       }
   };
 
+  const openPartialHarvestModal = (batch: any) => {
+      const existing = partialHarvests.filter(ph => ph.batch_id === batch.id);
+      setHarvestTandaName(`Tanda ${existing.length + 1}`);
+      setHarvestPlantsCount("1");
+      setHarvestGrams("");
+      setHarvestModal({ isOpen: true, batch, nextStage: "" });
+  };
+
   const handleHarvestSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       const grams = parseFloat(harvestGrams);
       if (isNaN(grams) || grams <= 0) return alert("Ingrese un gramaje válido");
       
+      const plantsCount = parseFloat(harvestPlantsCount);
+      if (isNaN(plantsCount) || plantsCount < 0) return alert("Ingrese un número de plantas válido");
+
       setHarvestModal(prev => ({...prev, isOpen: false}));
 
-      // 1. Update Core Batches
-      const updates = { 
-          stage: harvestModal.nextStage, 
-          weight_dry: grams 
+      // 1. Registrar la Tanda en la tabla de Cosechas Parciales
+      const totalOpex = batchCosts[harvestModal.batch.id] || 0;
+      const totalPlants = harvestModal.batch.num_plants || 1;
+      const proportionalOpex = Math.min(totalOpex, (plantsCount / totalPlants) * totalOpex);
+
+      const partialPayload = {
+          batch_id: harvestModal.batch.id,
+          tanda_name: harvestTandaName || 'Tanda General',
+          plants_harvested: plantsCount,
+          weight_dry: grams,
+          opex_allocated: proportionalOpex,
+          harvest_date: new Date().toISOString().split('T')[0]
       };
-      const { error } = await supabase.from('core_batches').update(updates).eq('id', harvestModal.batch.id);
+
+      const { data: partialData, error: partialError } = await supabase
+          .from('core_partial_harvests')
+          .insert([partialPayload])
+          .select();
+
+      if (partialError || !partialData || partialData.length === 0) {
+          return alert("Error al registrar la cosecha parcial en la BD: " + (partialError?.message || "Sin datos devueltos"));
+      }
+
+      const generatedId = partialData[0].id;
+
+      // 2. Inyectar a POS Inventario (Cross-module logic)
+      const lotName = `${harvestModal.batch.strain || harvestModal.batch.id.substring(0,8)} - ${harvestTandaName || 'Tanda'} (Lote ${harvestModal.batch.id.substring(0,4)})`;
+      const invPayload = {
+          id: generatedId, // UUID único de la tanda
+          name: lotName,
+          type: (harvestModal.batch.origen || '').toLowerCase() === 'externo' ? 'b2b' : 'cosecha_local',
+          qty: grams,
+          price: proportionalOpex / grams, // Costo unitario por gramo real (OpEx unitario)
+          date_added: new Date().toISOString()
+      };
       
-      if (!error) {
-          // 2. Inyectar a POS Inventario (Cross-module logic)
-          const lotName = `${harvestModal.batch.strain || harvestModal.batch.id.substring(0,8)} (Lote ${harvestModal.batch.id.substring(0,4)})`;
-          const invPayload = {
-              id: harvestModal.batch.id, // match UUID
-              name: lotName,
-              type: harvestModal.batch.origen === 'externo' ? 'b2b' : 'cosecha_local',
-              qty: grams,
-              price: batchCosts[harvestModal.batch.id] || 0, // Inyectamos el Opex
-              created_at: new Date().toISOString()
-          };
+      const { error: invError } = await supabase.from('core_inventory_cosechas').insert([invPayload]);
+      if (invError) {
+          return alert("Error de Inyección a Inventario POS: " + invError.message);
+      }
+
+      // 3. Decrementar población del lote y cerrar si llega a 0
+      const newPlantsCount = Math.max(0, totalPlants - plantsCount);
+      const batchUpdates: any = { num_plants: newPlantsCount };
+
+      if (newPlantsCount === 0) {
+          batchUpdates.stage = 'finalizado';
+          batchUpdates.last_stage_date = new Date().toISOString();
           
-          await supabase.from('core_inventory_cosechas').upsert([invPayload]);
-          alert("Cosecha Seca registrada exitosamente. Suministro habilitado en Inventario B2B.");
+          const lastDate = harvestModal.batch.last_stage_date ? new Date(harvestModal.batch.last_stage_date) : new Date(harvestModal.batch.start_date || harvestModal.batch.created_at || Date.now());
+          const daysInStage = Math.max(0, Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24)));
+          
+          const currentHistory = harvestModal.batch.stage_history || [];
+          batchUpdates.stage_history = [...currentHistory, { stage: harvestModal.batch.stage || 'cosecha', days: daysInStage }];
+
+          // Calcular la suma de todos los pesos secos parciales de este lote
+          const { data: allHarvests } = await supabase.from('core_partial_harvests').select('weight_dry').eq('batch_id', harvestModal.batch.id);
+          const totalDryWeight = (allHarvests || []).reduce((sum: number, h: any) => sum + Number(h.weight_dry || 0), 0) + grams;
+          batchUpdates.weight_dry = totalDryWeight;
+      }
+
+      const { error: batchError } = await supabase.from('core_batches').update(batchUpdates).eq('id', harvestModal.batch.id);
+      if (!batchError) {
+          alert("Tanda cosechada exitosamente. Stock inyectado en el POS con costo unitario calculado.");
           fetchBatches();
       } else {
-          alert("Error de Registro de Cosecha: " + error.message);
+          alert("Error de actualización del lote: " + batchError.message);
       }
   };
 
@@ -369,66 +458,81 @@ export function CultivoView() {
                        <tr><td colSpan={6} className="py-8 px-4 text-center text-brand-slate-600 italic">Sala sin lotes asignados.</td></tr>
                    )}
                    {batches.map(b => {
-                     const isSecado = b.stage === 'cosecha seca';
-                     const lastDateStr = b.last_stage_date || b.start_date || b.created_at;
-                     const days = Math.max(0, Math.floor((Date.now() - new Date(lastDateStr).getTime()) / (1000 * 60 * 60 * 24)));
-                     const cost = batchCosts[b.id] || 0;
-                     const stageStr = (b.stage || 'vegetativo').toLowerCase();
-                     const stageColor = stageStr.includes('floración') ? 'text-purple-400' : stageStr.includes('cosecha') ? 'text-orange-400' : 'text-foreground';
-                     
-                     return (
-                     <tr key={b.id} className={`border-b border-panel-border/20 transition-colors group \${isSecado ? 'opacity-40 hover:opacity-100' : 'hover:bg-black/5 dark:hover:bg-black/5 dark:hover:bg-white/5'}`}>
-                       <td className={`py-4 px-4 border-l-2 \${isSecado ? 'border-orange-500' : 'border-emerald-500'}`}>
-                         <div className={`font-bold text-base mb-1 \${isSecado ? 'line-through text-brand-slate-600' : 'text-foreground'}`}>{b.id}</div>
-                         <div className="text-xs font-mono text-brand-slate-600 flex items-center gap-1"><Info size={12}/> {b.strain || 'S/N'} <span className="uppercase text-emerald-500/80 ml-1">({b.origen || 'Clon'})</span></div>
-                       </td>
-                       <td className="py-4 px-4">
-                           <span className="flex items-center gap-1 font-bold text-foreground bg-panel-border/30 px-2.5 py-1 rounded-lg w-max">
-                              <Plant size={16} className={isSecado ? "text-orange-500" : "text-emerald-500"} /> {b.num_plants || '1'} indivs
-                           </span>
-                       </td>
-                       <td className="py-4 px-4 text-center">
-                           {b.stage_history && b.stage_history.length > 0 && (
-                               <div className="text-[10px] font-mono text-brand-slate-500 mb-1 flex flex-col items-center leading-tight">
-                                   {b.stage_history.map((sh: any, idx: number) => (
-                                       <span key={idx} className="capitalize">{sh.stage}: {sh.days}d</span>
-                                   ))}
-                               </div>
+                      const isSecado = (b.stage || '').toLowerCase() === 'finalizado' || (b.stage || '').toLowerCase() === 'cosecha seca';
+                      const lastDateStr = b.last_stage_date || b.start_date || b.created_at;
+                      const days = Math.max(0, Math.floor((Date.now() - new Date(lastDateStr).getTime()) / (1000 * 60 * 60 * 24)));
+                      const cost = batchCosts[b.id] || 0;
+                      const stageStr = (b.stage || 'vegetativo').toLowerCase();
+                      const stageColor = stageStr.includes('floración') ? 'text-purple-400' : stageStr.includes('cosecha') ? 'text-orange-400' : stageStr.includes('finalizado') ? 'text-brand-slate-500 line-through' : 'text-foreground';
+                      
+                      return (
+                      <tr key={b.id} className={`border-b border-panel-border/20 transition-colors group ${isSecado ? 'opacity-40 hover:opacity-100' : 'hover:bg-black/5 dark:hover:bg-black/5 dark:hover:bg-white/5'}`}>
+                        <td className={`py-4 px-4 border-l-2 ${isSecado ? 'border-orange-500' : 'border-emerald-500'}`}>
+                          <div className={`font-bold text-base mb-1 ${isSecado ? 'line-through text-brand-slate-600' : 'text-foreground'}`}>{b.id}</div>
+                          <div className="text-xs font-mono text-brand-slate-600 flex items-center gap-1"><Info size={12}/> {b.strain || 'S/N'} <span className="uppercase text-emerald-500/80 ml-1">({b.origen || 'Clon'})</span></div>
+                        </td>
+                        <td className="py-4 px-4">
+                            <span className="flex items-center gap-1 font-bold text-foreground bg-panel-border/30 px-2.5 py-1 rounded-lg w-max">
+                               <Plant size={16} className={isSecado ? "text-orange-500" : "text-emerald-500"} /> {b.num_plants || '0'} indivs
+                            </span>
+                        </td>
+                        <td className="py-4 px-4 text-center">
+                            {b.stage_history && b.stage_history.length > 0 && (
+                                <div className="text-[10px] font-mono text-brand-slate-500 mb-1 flex flex-col items-center leading-tight">
+                                    {b.stage_history.map((sh: any, idx: number) => (
+                                        <span key={idx} className="capitalize">{sh.stage}: {sh.days}d</span>
+                                    ))}
+                                </div>
+                            )}
+                            <div className={`text-sm font-bold capitalize ${stageColor}`}>{b.stage || 'Vegetativo'}</div>
+                            <div className="text-xs font-mono text-emerald-500/80 mt-0.5">Día {days} Activo</div>
+                            
+                            {(b.stage === 'cosecha' || b.stage === 'finalizado' || b.stage === 'cosecha seca') && (
+                                <div className="mt-2 flex flex-col gap-1 items-center max-w-[150px] mx-auto">
+                                    {partialHarvests.filter(ph => ph.batch_id === b.id).map((ph, idx) => (
+                                        <span key={idx} className="px-1.5 py-0.5 bg-orange-500/10 text-orange-400 rounded text-[9px] font-mono block w-full text-center truncate" title={`${ph.tanda_name}: ${ph.weight_dry}g`}>
+                                            {ph.tanda_name}: {ph.weight_dry}g
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </td>
+                        <td className="py-4 px-4 text-center">
+                            <div className="text-[11px] font-mono bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded text-foreground flex gap-1 justify-center">
+                              <span className="text-yellow-400">{b.light_hours || '-'}L</span> / <span className="text-blue-400">{b.dark_hours || '-'}O</span>
+                            </div>
+                            <div className="flex items-center justify-center gap-1 mt-2">
+                              <button onClick={() => { setFotoLuz(b.light_hours); setFotoOsc(b.dark_hours); setFotoModal({isOpen:true, batch:b, nextStage: b.stage}); }} className="btn-glow-emerald p-1 px-2 border border-panel-border text-[10px] uppercase font-bold text-brand-slate-600 rounded transition-all">Editar</button>
+                              <button onClick={() => setChartModal({isOpen: true, batch: b})} className="btn-glow-purple p-1 px-2 border border-panel-border text-[10px] uppercase font-bold text-brand-slate-600 rounded transition-all">Chart</button>
+                            </div>
+                        </td>
+                        <td className="py-4 px-4 text-right">
+                            <div className={`inline-flex items-center gap-1 font-mono font-bold text-base ${cost > 0 ? 'text-status-yellow' : 'text-brand-slate-600'}`}>
+                               <Coins size={16} /> {cost > 0 ? `$${cost.toFixed(2)}` : 'N/A'}
+                            </div>
+                        </td>
+                        <td className="py-4 px-4 text-right align-middle">
+                           {b.stage === 'cosecha' && (
+                              <button onClick={() => openPartialHarvestModal(b)} className="btn-glow-emerald px-2 py-2 mr-2 border border-emerald-500/30 text-emerald-500 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
+                                 + Cosechar
+                              </button>
                            )}
-                           <div className={`text-sm font-bold capitalize \${stageColor}`}>{b.stage || 'Vegetativo'}</div>
-                           <div className="text-xs font-mono text-emerald-500/80 mt-0.5">Día {days} Activo</div>
-                       </td>
-                       <td className="py-4 px-4 text-center">
-                           <div className="text-[11px] font-mono bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded text-foreground flex gap-1 justify-center">
-                             <span className="text-yellow-400">{b.light_hours || '-'}L</span> / <span className="text-blue-400">{b.dark_hours || '-'}O</span>
-                           </div>
-                           <div className="flex items-center justify-center gap-1 mt-2">
-                             <button onClick={() => { setFotoLuz(b.light_hours); setFotoOsc(b.dark_hours); setFotoModal({isOpen:true, batch:b, nextStage: b.stage}); }} className="btn-glow-emerald p-1 px-2 border border-panel-border text-[10px] uppercase font-bold text-brand-slate-600 rounded transition-all">Editar</button>
-                             <button onClick={() => setChartModal({isOpen: true, batch: b})} className="btn-glow-purple p-1 px-2 border border-panel-border text-[10px] uppercase font-bold text-brand-slate-600 rounded transition-all">Chart</button>
-                           </div>
-                       </td>
-                       <td className="py-4 px-4 text-right">
-                           <div className={`inline-flex items-center gap-1 font-mono font-bold text-base \${cost > 0 ? 'text-status-yellow' : 'text-brand-slate-600'}`}>
-                              <Coins size={16} /> {cost > 0 ? `$${cost.toFixed(2)}` : 'N/A'}
-                           </div>
-                       </td>
-                       <td className="py-4 px-4 text-right align-middle">
-                          <button onClick={() => advanceStageIndicator(b)} className={`btn-glow-purple px-2 py-2 mr-2 border text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg \${isSecado ? 'border-brand-slate-600 text-brand-slate-600 cursor-not-allowed' : 'border-panel-border text-brand-slate-600'}`} disabled={isSecado}>
-                             &#10148; Ciclar
-                          </button>
-                          <button onClick={() => setActiveBitacora(b)} className="btn-glow-emerald px-2 py-2 mr-2 border border-panel-border text-brand-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
-                             Bitácora
-                          </button>
-                          <button onClick={() => { setEditBatch(b as any); setEditBatchModalOpen(true); }} className="btn-glow-yellow px-2 py-2 border mr-2 border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Editar">
-                             <PencilSimple size={14} weight="bold" />
-                          </button>
-                          <button onClick={() => handleDeleteBatch(b.id)} className="btn-glow-red px-2 py-2 border border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Eliminar">
-                             <Trash size={14} weight="bold" />
-                          </button>
-                       </td>
-                     </tr>
-                     )
-                   })}
+                           <button onClick={() => advanceStageIndicator(b)} className={`btn-glow-purple px-2 py-2 mr-2 border text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg ${isSecado ? 'border-brand-slate-600 text-brand-slate-600 cursor-not-allowed' : 'border-panel-border text-brand-slate-600'}`} disabled={isSecado}>
+                              &#10148; {b.stage === 'cosecha' ? 'Finalizar' : 'Ciclar'}
+                           </button>
+                           <button onClick={() => setActiveBitacora(b)} className="btn-glow-emerald px-2 py-2 mr-2 border border-panel-border text-brand-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
+                              Bitácora
+                           </button>
+                           <button onClick={() => { setEditBatch(b as any); setEditBatchModalOpen(true); }} className="btn-glow-yellow px-2 py-2 border mr-2 border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Editar">
+                              <PencilSimple size={14} weight="bold" />
+                           </button>
+                           <button onClick={() => handleDeleteBatch(b.id)} className="btn-glow-red px-2 py-2 border border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Eliminar">
+                              <Trash size={14} weight="bold" />
+                           </button>
+                        </td>
+                      </tr>
+                      )
+                    })}
                  </tbody>
                </table>
              </div>
@@ -468,25 +572,41 @@ export function CultivoView() {
         </div>
       )}
 
-      {/* Modal Cosecha Balance */}
+      {/* Modal Cosecha Balance (Tanda Cosecha Seca Parcial) */}
       {harvestModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
             <GlassCard className="max-w-md w-full p-6 shadow-2xl relative border-t-4 border-t-orange-500">
                 <button onClick={() => setHarvestModal(prev => ({...prev, isOpen: false}))} className="absolute top-4 right-4 text-brand-slate-600 hover:text-foreground transition-colors"><AppWindow size={24}/></button>
-                <h2 className="text-xl font-bold mb-2 flex items-center gap-2 text-orange-500">Cierre de Ciclo productivo</h2>
-                <p className="text-brand-slate-600 dark:text-slate-400 text-sm mb-4">La red biométrica enviará el volumen Cosechado-Seco al POS como Producto Terminado. Ingrese el resultado.</p>
+                <h2 className="text-xl font-bold mb-2 flex items-center gap-2 text-orange-500">Carga de Cosecha Seca Parcial</h2>
+                <p className="text-brand-slate-600 dark:text-slate-400 text-sm mb-4">Ingrese los datos para la inyección de stock de esta tanda. El costo se distribuirá proporcionalmente por planta.</p>
                 
-                <div className="bg-orange-500/10 border border-orange-500/20 p-3 rounded-lg mb-6">
-                   <span className="text-xs font-mono text-orange-400 block mb-1">Costo Acumulado OpEx para traspaso:</span>
-                   <span className="text-lg font-bold text-foreground">${batchCosts[harvestModal.batch.id] || 0} ARG</span>
+                <div className="bg-orange-500/10 border border-orange-500/20 p-3 rounded-lg mb-6 grid grid-cols-2 gap-2 text-left">
+                   <div>
+                       <span className="text-[10px] font-mono text-orange-400 block">OpEx Total Acumulado:</span>
+                       <span className="text-sm font-bold text-foreground">${batchCosts[harvestModal.batch.id] || 0} ARG</span>
+                   </div>
+                   <div>
+                       <span className="text-[10px] font-mono text-orange-400 block">Plantas Restantes:</span>
+                       <span className="text-sm font-bold text-foreground">{harvestModal.batch.num_plants || 0} vivas</span>
+                   </div>
                 </div>
 
                 <form onSubmit={handleHarvestSubmit} className="flex flex-col gap-4">
-                    <div>
-                        <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Peso Final Neto (Dry - gramos)</label>
-                        <input type="number" step="0.01" required placeholder="Ej: 450.5" value={harvestGrams} onChange={e=>setHarvestGrams(e.target.value)} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-4 text-2xl font-black text-right focus:border-orange-500 outline-none text-foreground"/>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Identificador Tanda</label>
+                            <input type="text" required placeholder="Ej: Tanda 1" value={harvestTandaName} onChange={e=>setHarvestTandaName(e.target.value)} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 text-sm focus:border-orange-500 outline-none text-foreground font-bold"/>
+                        </div>
+                        <div>
+                            <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Plantas Cosechadas</label>
+                            <input type="number" min="1" max={harvestModal.batch.num_plants || 1} required value={harvestPlantsCount} onChange={e=>setHarvestPlantsCount(e.target.value)} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 text-sm focus:border-orange-500 outline-none text-foreground text-center font-bold"/>
+                        </div>
                     </div>
-                    <button type="submit" className="mt-2 w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-lg shadow-lg">INYECTAR A INVENTARIO POS</button>
+                    <div>
+                        <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Peso Seco Neto (Gramos)</label>
+                        <input type="number" step="0.01" required placeholder="Ej: 85.5" value={harvestGrams} onChange={e=>setHarvestGrams(e.target.value)} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-4 text-2xl font-black text-right focus:border-orange-500 outline-none text-foreground"/>
+                    </div>
+                    <button type="submit" className="mt-2 w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-lg shadow-lg">INYECTAR TANDA A INVENTARIO POS</button>
                 </form>
             </GlassCard>
         </div>

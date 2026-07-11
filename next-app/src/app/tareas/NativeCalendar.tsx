@@ -58,7 +58,7 @@ export function NativeCalendar() {
     if (rData) setRooms(rData);
     if (bData) {
         setAllBatches(bData);
-        setBatches(bData.filter((b: any) => b.stage !== 'cosechado' && b.stage !== 'curado'));
+        setBatches(bData.filter((b: any) => b.stage !== 'finalizado' && b.stage !== 'cosecha seca' && b.stage !== 'cosechado' && b.stage !== 'curado'));
     }
   };
 
