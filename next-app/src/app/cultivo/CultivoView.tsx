@@ -7,6 +7,8 @@ import { supabase } from "../../lib/supabase";
 import { BitacoraModal } from "./BitacoraModal";
 import { BitacoraGlobalModal } from "./BitacoraGlobalModal";
 import { PhotoperiodChartModal } from "../../components/PhotoperiodChartModal";
+import { BatchReportModal } from "./BatchReportModal";
+import { Camera, ShieldCheck, X } from "@phosphor-icons/react";
 
 export function CultivoView() {
   const [rooms, setRooms] = useState<any[]>([]);
@@ -40,6 +42,13 @@ export function CultivoView() {
   const [editBatchModalOpen, setEditBatchModalOpen] = useState(false);
   const [editBatch, setEditBatch] = useState<{id: string, strain: string, num_plants: number, origen: string, location: string, stage: string}>({ id: "", strain: "", num_plants: 1, origen: "Semilla", location: "", stage: "vegetativo" });
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+
+  // Finalize Batch & Report State
+  const [activeReportBatch, setActiveReportBatch] = useState<any | null>(null);
+  const [finalizeModal, setFinalizeModal] = useState<{isOpen: boolean, batch: any}>({isOpen: false, batch: null});
+  const [finalizeNotes, setFinalizeNotes] = useState("");
+  const [finalizePhotos, setFinalizePhotos] = useState<FileList | null>(null);
+  const [isFinalizing, setIsFinalizing] = useState(false);
 
   const fetchRooms = async () => {
     setLoading(true);
@@ -192,9 +201,9 @@ export function CultivoView() {
       }
 
       if (nextStage === 'finalizado') {
-          if(confirm(`¿Finalizar y archivar este lote? Ya no se podrán registrar más cosechas parciales en él.`)) {
-              commitStage(batch.id, nextStage, {});
-          }
+          setFinalizeNotes("");
+          setFinalizePhotos(null);
+          setFinalizeModal({ isOpen: true, batch });
           return;
       }
 
@@ -245,6 +254,81 @@ export function CultivoView() {
           fetchBatches(); 
       } else {
           alert("Error crítico actualizando etapa: " + error.message);
+      }
+  };
+
+  const fileToBase64 = (file: File): Promise<string> => {
+      return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.readAsDataURL(file);
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = error => reject(error);
+      });
+  };
+
+  const uploadPhotos = async (batchId: string, files: FileList): Promise<string[]> => {
+      const urls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${batchId}/${Date.now()}-${i}.${fileExt}`;
+          
+          try {
+              const { data, error } = await supabase.storage
+                  .from('batch-harvests')
+                  .upload(fileName, file, {
+                      cacheControl: '3600',
+                      upsert: true
+                  });
+                  
+              if (!error && data) {
+                  const { data: { publicUrl } } = supabase.storage
+                      .from('batch-harvests')
+                      .getPublicUrl(fileName);
+                  if (publicUrl) {
+                      urls.push(publicUrl);
+                      continue;
+                  }
+              }
+          } catch (e) {
+              console.warn("Supabase Storage error, using Base64 fallback:", e);
+          }
+          
+          const base64 = await fileToBase64(file);
+          urls.push(base64);
+      }
+      return urls;
+  };
+
+  const handleFinalizeSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!finalizeModal.batch) return;
+      setIsFinalizing(true);
+      
+      try {
+          let photoUrls: string[] = [];
+          if (finalizePhotos && finalizePhotos.length > 0) {
+              photoUrls = await uploadPhotos(finalizeModal.batch.id, finalizePhotos);
+          }
+          
+          const updates: any = {
+              harvest_notes: finalizeNotes,
+              harvest_photos: photoUrls
+          };
+          
+          const batchId = finalizeModal.batch.id;
+          
+          setFinalizeModal({ isOpen: false, batch: null });
+          setFinalizeNotes("");
+          setFinalizePhotos(null);
+          
+          await commitStage(batchId, 'finalizado', updates);
+          alert("Lote finalizado y archivado. Reporte de cultivo disponible.");
+          fetchBatches();
+      } catch (err: any) {
+          alert("Error al finalizar lote: " + err.message);
+      } finally {
+          setIsFinalizing(false);
       }
   };
 
@@ -517,9 +601,15 @@ export function CultivoView() {
                                  + Cosechar
                               </button>
                            )}
-                           <button onClick={() => advanceStageIndicator(b)} className={`btn-glow-purple px-2 py-2 mr-2 border text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg ${isSecado ? 'border-brand-slate-600 text-brand-slate-600 cursor-not-allowed' : 'border-panel-border text-brand-slate-600'}`} disabled={isSecado}>
-                              &#10148; {b.stage === 'cosecha' ? 'Finalizar' : 'Ciclar'}
-                           </button>
+                           {isSecado ? (
+                               <button onClick={() => setActiveReportBatch(b)} className="btn-glow-purple px-2 py-2 mr-2 border border-purple-500/30 text-purple-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
+                                  📊 Reporte
+                               </button>
+                            ) : (
+                               <button onClick={() => advanceStageIndicator(b)} className="btn-glow-purple px-2 py-2 mr-2 border border-panel-border text-brand-slate-600 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg">
+                                  &#10148; {b.stage === 'cosecha' ? 'Finalizar' : 'Ciclar'}
+                               </button>
+                            )}
                            <button onClick={() => setActiveBitacora(b)} className="btn-glow-emerald px-2 py-2 mr-2 border border-panel-border text-brand-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
                               Bitácora
                            </button>
@@ -696,6 +786,65 @@ export function CultivoView() {
                 </form>
             </GlassCard>
         </div>
+      )}
+      
+      {/* Modal Finalizar Lote (Conclusión + Fotos) */}
+      {finalizeModal.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
+            <GlassCard className="max-w-md w-full p-6 shadow-2xl relative border-t-4 border-t-purple-500">
+                <button onClick={() => setFinalizeModal({isOpen: false, batch: null})} className="absolute top-4 right-4 text-brand-slate-600 hover:text-foreground transition-colors"><X size={20}/></button>
+                <h2 className="text-xl font-bold mb-2 flex items-center gap-2 text-purple-400">
+                   <ShieldCheck size={24}/> Finalizar y Archivar Lote
+                </h2>
+                <p className="text-brand-slate-600 dark:text-slate-400 text-sm mb-4">
+                   El lote pasará al historial de archivados. Ingrese una conclusión y suba fotos del resultado del cultivo.
+                </p>
+                
+                <form onSubmit={handleFinalizeSubmit} className="flex flex-col gap-4">
+                    <div>
+                        <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Conclusión / Notas Finales</label>
+                        <textarea 
+                            rows={3}
+                            placeholder="Describa el resultado del cultivo, aroma, calidad, problemas surgidos, etc..."
+                            value={finalizeNotes}
+                            onChange={e=>setFinalizeNotes(e.target.value)}
+                            className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 text-sm focus:border-purple-500 outline-none text-foreground resize-none"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Fotos de la Cosecha</label>
+                        <div className="flex items-center justify-center w-full">
+                            <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-panel-border hover:border-purple-500/50 rounded-xl cursor-pointer bg-black/5 hover:bg-black/10 transition-colors">
+                                <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
+                                    <Camera size={28} className="text-brand-slate-600 mb-2"/>
+                                    <p className="text-xs text-brand-slate-600 font-bold mb-1">Haga clic para subir fotos</p>
+                                    <p className="text-[10px] text-brand-slate-600/70 font-mono">PNG, JPG hasta 5MB {finalizePhotos ? `(${finalizePhotos.length} seleccionadas)` : '(múltiple)'}</p>
+                                </div>
+                                <input 
+                                    type="file" 
+                                    multiple 
+                                    accept="image/*"
+                                    onChange={e => setFinalizePhotos(e.target.files)}
+                                    className="hidden" 
+                                />
+                            </label>
+                        </div>
+                    </div>
+                    <button 
+                        disabled={isFinalizing}
+                        type="submit" 
+                        className="mt-4 w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-3 rounded-lg shadow-lg flex justify-center items-center gap-2 transition-all"
+                    >
+                        {isFinalizing ? 'PROCESANDO...' : 'CONFIRMAR CIERRE Y GENERAR REPORTE'}
+                    </button>
+                </form>
+            </GlassCard>
+        </div>
+      )}
+
+      {/* Modal Reporte de Lote */}
+      {activeReportBatch && (
+        <BatchReportModal batch={activeReportBatch} onClose={() => setActiveReportBatch(null)} />
       )}
     </>
   );
