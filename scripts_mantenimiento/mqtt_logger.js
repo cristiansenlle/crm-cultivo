@@ -245,7 +245,7 @@ client.on('message', async (topic, message) => {
 
                 const { data: sensors } = await getSupabase('core_sensors');
                 if (sensors) {
-                    const matchedSensor = sensors.find(s => s.name && s.name.includes(`(${deviceId})`));
+                    const matchedSensor = sensors.find(s => s.name && s.name.includes(deviceId));
                     if (matchedSensor) {
                         const { error } = await insertSupabase('daily_telemetry', {
                             sensor_id: matchedSensor.id,
