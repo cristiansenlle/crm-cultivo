@@ -602,9 +602,14 @@ export function CultivoView() {
                               </button>
                            )}
                            {isSecado ? (
-                               <button onClick={() => setActiveReportBatch(b)} className="btn-glow-purple px-2 py-2 mr-2 border border-purple-500/30 text-purple-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
-                                  📊 Reporte
-                               </button>
+                               <div className="inline-flex gap-2 mr-2">
+                                   <button onClick={() => setActiveReportBatch(b)} className="btn-glow-purple px-2 py-2 border border-purple-500/30 text-purple-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
+                                      📊 Reporte
+                                   </button>
+                                   <button onClick={() => { setFinalizeNotes(b.harvest_notes || ""); setFinalizePhotos(null); setFinalizeModal({ isOpen: true, batch: b }); }} className="btn-glow-yellow px-2 py-2 border border-yellow-500/30 text-yellow-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1">
+                                      📷 Fotos/Notas
+                                   </button>
+                               </div>
                             ) : (
                                <button onClick={() => advanceStageIndicator(b)} className="btn-glow-purple px-2 py-2 mr-2 border border-panel-border text-brand-slate-600 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg">
                                   &#10148; {b.stage === 'cosecha' ? 'Finalizar' : 'Ciclar'}
@@ -844,7 +849,16 @@ export function CultivoView() {
 
       {/* Modal Reporte de Lote */}
       {activeReportBatch && (
-        <BatchReportModal batch={activeReportBatch} onClose={() => setActiveReportBatch(null)} />
+        <BatchReportModal 
+          batch={activeReportBatch} 
+          onClose={() => setActiveReportBatch(null)} 
+          onEditReport={(b) => {
+             setActiveReportBatch(null);
+             setFinalizeNotes(b.harvest_notes || "");
+             setFinalizePhotos(null);
+             setFinalizeModal({ isOpen: true, batch: b });
+          }}
+        />
       )}
     </>
   );

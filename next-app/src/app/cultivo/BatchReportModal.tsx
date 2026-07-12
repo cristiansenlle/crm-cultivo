@@ -5,7 +5,8 @@ import { GlassCard } from "../../components/ui/GlassCard";
 import { 
   Info, Plant, Calendar, Thermometer, Drop, 
   ChartLineUp, Coins, CalendarCheck, FileText, 
-  Printer, X, Tree, Gauge, ShieldCheck, ShoppingBag
+  Printer, X, Tree, Gauge, ShieldCheck, ShoppingBag,
+  Camera
 } from "@phosphor-icons/react";
 import { supabase } from "../../lib/supabase";
 import { 
@@ -16,9 +17,10 @@ import {
 interface BatchReportModalProps {
   batch: any;
   onClose: () => void;
+  onEditReport?: (batch: any) => void;
 }
 
-export function BatchReportModal({ batch, onClose }: BatchReportModalProps) {
+export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportModalProps) {
   const [loading, setLoading] = useState(true);
   const [climateData, setClimateData] = useState<any[]>([]);
   const [soilData, setSoilData] = useState<any[]>([]);
@@ -191,6 +193,11 @@ export function BatchReportModal({ batch, onClose }: BatchReportModalProps) {
             <FileText size={24} /> Reporte de Cultivo Finalizado
           </h2>
           <div className="flex items-center gap-2">
+            {onEditReport && (
+              <button onClick={() => onEditReport(batch)} className="flex items-center gap-1.5 px-3 py-1.5 bg-yellow-600/20 text-yellow-400 border border-yellow-500/30 hover:bg-yellow-600 hover:text-white rounded-lg transition-colors font-bold text-xs">
+                <Camera size={16} /> Subir Fotos / Notas
+              </button>
+            )}
             <button onClick={handlePrint} className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600/20 text-blue-400 border border-blue-500/30 hover:bg-blue-600 hover:text-white rounded-lg transition-colors font-bold text-xs">
               <Printer size={16} /> Imprimir PDF
             </button>
@@ -258,27 +265,41 @@ export function BatchReportModal({ batch, onClose }: BatchReportModalProps) {
           </div>
 
           {/* Notas de Cosecha y Fotos */}
-          {(batch.harvest_notes || (batch.harvest_photos && batch.harvest_photos.length > 0)) && (
-            <GlassCard className="p-6 border-l-4 border-l-orange-500 bg-orange-500/5">
-              <h3 className="text-lg font-bold text-orange-400 flex items-center gap-2 mb-4">
-                <ShieldCheck size={22}/> Bitácora de Cosecha & Fotos Finales
-              </h3>
-              {batch.harvest_notes && (
-                <p className="text-sm italic text-brand-slate-700 dark:text-slate-300 font-sans mb-4 whitespace-pre-wrap">
-                  "{batch.harvest_notes}"
-                </p>
-              )}
-              {batch.harvest_photos && batch.harvest_photos.length > 0 && (
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-2">
-                  {batch.harvest_photos.map((url: string, index: number) => (
-                    <div key={index} className="aspect-square rounded-xl overflow-hidden border border-panel-border/50 relative group bg-black/10">
-                      <img src={url} alt={`Cosecha ${index + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </GlassCard>
-          )}
+          <GlassCard className="p-6 border-l-4 border-l-orange-500 bg-orange-500/5 print:break-inside-avoid">
+            <h3 className="text-lg font-bold text-orange-400 flex items-center gap-2 mb-4">
+              <ShieldCheck size={22}/> Bitácora de Cosecha & Fotos Finales
+            </h3>
+            {batch.harvest_notes || (batch.harvest_photos && batch.harvest_photos.length > 0) ? (
+              <>
+                {batch.harvest_notes && (
+                  <p className="text-sm italic text-brand-slate-700 dark:text-slate-300 font-sans mb-4 whitespace-pre-wrap">
+                    "{batch.harvest_notes}"
+                  </p>
+                )}
+                {batch.harvest_photos && batch.harvest_photos.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-2">
+                    {batch.harvest_photos.map((url: string, index: number) => (
+                      <div key={index} className="aspect-square rounded-xl overflow-hidden border border-panel-border/50 relative group bg-black/10">
+                        <img src={url} alt={`Cosecha ${index + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-6 print:hidden">
+                <p className="text-sm text-brand-slate-600 mb-3 font-sans">No se han registrado conclusiones ni fotos para esta cosecha.</p>
+                {onEditReport && (
+                  <button 
+                    onClick={() => onEditReport(batch)}
+                    className="px-4 py-2 bg-orange-600/20 text-orange-400 border border-orange-500/30 hover:bg-orange-600 hover:text-white rounded-lg transition-colors font-bold text-xs"
+                  >
+                    📷 Subir Fotos y Conclusión ahora
+                  </button>
+                )}
+              </div>
+            )}
+          </GlassCard>
 
           {/* Gráficos de Telemetría */}
           <GlassCard className="p-6 print:break-inside-avoid">
