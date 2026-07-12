@@ -529,17 +529,17 @@ export function CultivoView() {
                <table className="w-full text-left text-sm whitespace-nowrap">
                  <thead>
                    <tr className="border-b border-panel-border/50 text-brand-slate-600 font-mono text-xs uppercase tracking-wider">
-                     <th className="py-3 px-4 font-normal">Identidad / Genética</th>
-                     <th className="py-3 px-4 font-normal">Población</th>
-                     <th className="py-3 px-4 font-normal text-center">Fase de Ciclo</th>
-                     <th className="py-3 px-4 text-center">Fotoperiodo</th>
-                     <th className="py-3 px-4 font-normal text-right">Inversión Recurrente</th>
-                     <th className="py-3 px-4 text-right">Operaciones Máquina</th>
+                     <th className="py-3 px-2.5 font-normal">Identidad / Genética</th>
+                     <th className="py-3 px-2.5 font-normal">Población</th>
+                     <th className="py-3 px-2.5 font-normal text-center">Fase de Ciclo</th>
+                     <th className="py-3 px-2.5 text-center">Fotoperiodo</th>
+                     <th className="py-3 px-2.5 font-normal text-right">Inversión Recurrente</th>
+                     <th className="py-3 px-2.5 text-right">Operaciones Máquina</th>
                    </tr>
                  </thead>
                  <tbody className="font-sans">
                    {batches.length === 0 && (
-                       <tr><td colSpan={6} className="py-8 px-4 text-center text-brand-slate-600 italic">Sala sin lotes asignados.</td></tr>
+                       <tr><td colSpan={6} className="py-8 px-2.5 text-center text-brand-slate-600 italic">Sala sin lotes asignados.</td></tr>
                    )}
                    {batches.map(b => {
                       const isSecado = (b.stage || '').toLowerCase() === 'finalizado' || (b.stage || '').toLowerCase() === 'cosecha seca';
@@ -551,16 +551,16 @@ export function CultivoView() {
                       
                       return (
                       <tr key={b.id} className={`border-b border-panel-border/20 transition-colors group ${isSecado ? 'opacity-40 hover:opacity-100' : 'hover:bg-black/5 dark:hover:bg-black/5 dark:hover:bg-white/5'}`}>
-                        <td className={`py-4 px-4 border-l-2 ${isSecado ? 'border-orange-500' : 'border-emerald-500'}`}>
+                        <td className={`py-3 px-2.5 border-l-2 ${isSecado ? 'border-orange-500' : 'border-emerald-500'}`}>
                           <div className={`font-bold text-base mb-1 ${isSecado ? 'line-through text-brand-slate-600' : 'text-foreground'}`}>{b.id}</div>
                           <div className="text-xs font-mono text-brand-slate-600 flex items-center gap-1"><Info size={12}/> {b.strain || 'S/N'} <span className="uppercase text-emerald-500/80 ml-1">({b.origen || 'Clon'})</span></div>
                         </td>
-                        <td className="py-4 px-4">
+                        <td className="py-3 px-2.5">
                             <span className="flex items-center gap-1 font-bold text-foreground bg-panel-border/30 px-2.5 py-1 rounded-lg w-max">
                                <Plant size={16} className={isSecado ? "text-orange-500" : "text-emerald-500"} /> {b.num_plants || '0'} indivs
                             </span>
                         </td>
-                        <td className="py-4 px-4 text-center">
+                        <td className="py-3 px-2.5 text-center">
                             {b.stage_history && b.stage_history.length > 0 && (
                                 <div className="text-[10px] font-mono text-brand-slate-500 mb-1 flex flex-col items-center leading-tight">
                                     {b.stage_history.map((sh: any, idx: number) => (
@@ -581,47 +581,47 @@ export function CultivoView() {
                                 </div>
                             )}
                         </td>
-                        <td className="py-4 px-4 text-center">
+                        <td className="py-3 px-2.5 text-center">
                             <div className="text-[11px] font-mono bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded text-foreground flex gap-1 justify-center">
                               <span className="text-yellow-400">{b.light_hours || '-'}L</span> / <span className="text-blue-400">{b.dark_hours || '-'}O</span>
                             </div>
                             <div className="flex items-center justify-center gap-1 mt-2">
-                              <button onClick={() => { setFotoLuz(b.light_hours); setFotoOsc(b.dark_hours); setFotoModal({isOpen:true, batch:b, nextStage: b.stage}); }} className="btn-glow-emerald p-1 px-2 border border-panel-border text-[10px] uppercase font-bold text-brand-slate-600 rounded transition-all">Editar</button>
-                              <button onClick={() => setChartModal({isOpen: true, batch: b})} className="btn-glow-purple p-1 px-2 border border-panel-border text-[10px] uppercase font-bold text-brand-slate-600 rounded transition-all">Chart</button>
+                              <button onClick={() => { setFotoLuz(b.light_hours); setFotoOsc(b.dark_hours); setFotoModal({isOpen:true, batch:b, nextStage: b.stage}); }} className="btn-glow-emerald py-0.5 px-1.5 border border-panel-border text-[9px] uppercase font-bold text-brand-slate-600 rounded transition-all">Editar</button>
+                              <button onClick={() => setChartModal({isOpen: true, batch: b})} className="btn-glow-purple py-0.5 px-1.5 border border-panel-border text-[9px] uppercase font-bold text-brand-slate-600 rounded transition-all">Chart</button>
                             </div>
                         </td>
-                        <td className="py-4 px-4 text-right">
+                        <td className="py-3 px-2.5 text-right">
                             <div className={`inline-flex items-center gap-1 font-mono font-bold text-base ${cost > 0 ? 'text-status-yellow' : 'text-brand-slate-600'}`}>
                                <Coins size={16} /> {cost > 0 ? `$${cost.toFixed(2)}` : 'N/A'}
                             </div>
                         </td>
-                        <td className="py-4 px-4 text-right align-middle">
+                        <td className="py-3 px-2.5 text-right align-middle">
                            {b.stage === 'cosecha' && (
-                              <button onClick={() => openPartialHarvestModal(b)} className="btn-glow-emerald px-2 py-2 mr-2 border border-emerald-500/30 text-emerald-500 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
+                              <button onClick={() => openPartialHarvestModal(b)} className="btn-glow-emerald px-2 py-1 mr-1 border border-emerald-500/30 text-emerald-500 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
                                  + Cosechar
                               </button>
                            )}
                            {isSecado ? (
-                               <div className="inline-flex gap-2 mr-2">
-                                   <button onClick={() => setActiveReportBatch(b)} className="btn-glow-purple px-2 py-2 border border-purple-500/30 text-purple-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
+                               <div className="inline-flex gap-1.5 mr-1">
+                                   <button onClick={() => setActiveReportBatch(b)} className="btn-glow-purple px-1.5 py-1 border border-purple-500/30 text-purple-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
                                       📊 Reporte
                                    </button>
-                                   <button onClick={() => { setFinalizeNotes(b.harvest_notes || ""); setFinalizePhotos(null); setFinalizeModal({ isOpen: true, batch: b }); }} className="btn-glow-yellow px-2 py-2 border border-yellow-500/30 text-yellow-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1">
-                                      📷 Fotos/Notas
+                                   <button onClick={() => { setFinalizeNotes(b.harvest_notes || ""); setFinalizePhotos(null); setFinalizeModal({ isOpen: true, batch: b }); }} className="btn-glow-yellow px-1.5 py-1 border border-yellow-500/30 text-yellow-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1">
+                                      📷 Fotos
                                    </button>
                                </div>
                             ) : (
-                               <button onClick={() => advanceStageIndicator(b)} className="btn-glow-purple px-2 py-2 mr-2 border border-panel-border text-brand-slate-600 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg">
+                               <button onClick={() => advanceStageIndicator(b)} className="btn-glow-purple px-2 py-1 mr-1 border border-panel-border text-brand-slate-600 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg">
                                   &#10148; {b.stage === 'cosecha' ? 'Finalizar' : 'Ciclar'}
                                </button>
                             )}
-                           <button onClick={() => setActiveBitacora(b)} className="btn-glow-emerald px-2 py-2 mr-2 border border-panel-border text-brand-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
+                           <button onClick={() => setActiveBitacora(b)} className="btn-glow-emerald px-2 py-1 mr-1 border border-panel-border text-brand-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
                               Bitácora
                            </button>
-                           <button onClick={() => { setEditBatch(b as any); setEditBatchModalOpen(true); }} className="btn-glow-yellow px-2 py-2 border mr-2 border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Editar">
+                           <button onClick={() => { setEditBatch(b as any); setEditBatchModalOpen(true); }} className="btn-glow-yellow px-2 py-1 border mr-1 border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Editar">
                               <PencilSimple size={14} weight="bold" />
                            </button>
-                           <button onClick={() => handleDeleteBatch(b.id)} className="btn-glow-red px-2 py-2 border border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Eliminar">
+                           <button onClick={() => handleDeleteBatch(b.id)} className="btn-glow-red px-2 py-1 border border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Eliminar">
                               <Trash size={14} weight="bold" />
                            </button>
                         </td>
