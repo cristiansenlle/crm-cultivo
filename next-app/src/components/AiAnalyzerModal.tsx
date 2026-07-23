@@ -24,7 +24,7 @@ export default function AiAnalyzerModal({ onClose }: { onClose: () => void }) {
 
     useEffect(() => {
         // Cargar salas al iniciar
-        supabase.from('core_rooms').select('id, name').then(({data}) => {
+        supabase.from('core_rooms').select('id, name').then(({data}: {data: any}) => {
             if (data) setRooms(data);
         });
 
