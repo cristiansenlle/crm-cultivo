@@ -20,6 +20,7 @@ export const metadata: Metadata = {
 import { Sidebar } from "../components/layout/Sidebar";
 import { Topbar } from "../components/layout/Topbar";
 import { RoomProvider } from "../context/RoomContext";
+import AiAssistantFAB from "../components/AiAssistantFAB";
 
 export default function RootLayout({
   children,
@@ -50,6 +51,7 @@ export default function RootLayout({
                {children}
             </main>
           </div>
+          <AiAssistantFAB />
         </RoomProvider>
       </body>
     </html>
