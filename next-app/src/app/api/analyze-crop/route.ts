@@ -98,7 +98,11 @@ export async function POST(req: NextRequest) {
                 stage_history: batchInfo.stage_history || [],
                 planted: batchInfo.start_date,
                 room: batchInfo.room_name,
-                room_phase: batchInfo.room_phase
+                room_phase: batchInfo.room_phase,
+                photoperiod: {
+                    light_hours: batchInfo.light_hours,
+                    dark_hours: batchInfo.dark_hours
+                }
             } : 'No disponible',
             recent_internal_climate: recentClimate || 'No disponible',
             recent_agronomic_events: recentEvents || 'No disponible',
@@ -108,16 +112,16 @@ export async function POST(req: NextRequest) {
         console.log("--- CONTEXT DOSSIER ---", JSON.stringify(contextDossier, null, 2));
 
         const prompt = `Eres un ingeniero agrónomo senior especialista en el cultivo de cannabis indoor de alto rendimiento.
-        Analiza las imágenes adjuntas cruzando OBLIGATORIAMENTE la información visual con el siguiente contexto de datos de la base de datos (telemetría y bitácora).
+        Analiza las imágenes adjuntas cruzando OBLIGATORIAMENTE la información visual con el siguiente contexto de datos de la base de datos (telemetría, clima externo, fotoperiodo y bitácora).
         
         CONTEXTO DEL LOTE Y SALA:
         ${JSON.stringify(contextDossier, null, 2)}
         
         INSTRUCCIONES CRÍTICAS:
         1. TOMA NOTA DE LA FECHA ACTUAL ("current_date") en el contexto para evaluar correctamente hace cuántos días ocurrieron los "recent_agronomic_events". No alucines que un riego de hace 1 día fue hace un mes.
-        2. TOMA NOTA DE LOS DÍAS EN LA FASE ACTUAL ("days_in_current_stage"). Tu análisis debe tener sentido agronómico experto para esa cantidad de días en la fase actual.
+        2. TOMA NOTA DE LOS DÍAS EN LA FASE ACTUAL ("days_in_current_stage") Y EL FOTOPERIODO ("photoperiod"). Tu análisis debe tener sentido agronómico experto para esa cantidad de días en la fase actual y verificar si el fotoperiodo configurado es correcto para la fase.
         3. Identifica el estado general de las plantas, posibles plagas, deficiencias o excesos nutricionales observados en las fotos.
-        4. CRUCE DE DATOS: Tienes que mencionar explícitamente los datos provistos en "recent_agronomic_events" y en "recent_internal_climate" o "external_weather". Correlaciona lo visual con el historial.
+        4. CRUCE DE DATOS INTEGRAL: Tienes que mencionar explícitamente los datos provistos en "recent_agronomic_events" (riegos, nutrición), en "recent_internal_climate" (VPD, Temp, Humedad) y en "external_weather" (clima exterior en la ubicación actual). Correlaciona TODO con lo que ves en las imágenes. Si el clima exterior es extremo, advierte cómo podría afectar al indoor.
         5. Provee un score de salud del 0 al 100.
         6. Sugiere acciones correctivas o preventivas a corto plazo.
         
