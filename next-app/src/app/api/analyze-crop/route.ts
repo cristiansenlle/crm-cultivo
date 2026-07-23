@@ -182,7 +182,7 @@ export async function POST(req: NextRequest) {
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
-                model: "anthropic/claude-3.5-sonnet", // Modelo experto elegido
+                model: "anthropic/claude-sonnet-5", // Modelo experto elegido
                 messages: openRouterMessages,
                 response_format: { type: "json_object" }
             })
