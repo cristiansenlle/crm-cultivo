@@ -145,7 +145,7 @@ export async function POST(req: NextRequest) {
         `;
 
         // Procesar imágenes (asumimos que llegan como Data URLs base64: "data:image/jpeg;base64,....")
-        const aiContents = [{ text: prompt }];
+        const aiContents: any[] = [{ text: prompt }];
         for (const imgUrl of images) {
             if (typeof imgUrl === 'string' && imgUrl.startsWith('data:image/')) {
                 const match = imgUrl.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
