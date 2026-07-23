@@ -20,20 +20,31 @@ export async function POST(req: NextRequest) {
 
         // 1. Recopilar datos externos (Clima Open-Meteo)
         let externalWeather = null;
-        if (lat && lon) {
-            try {
-                const weatherRes = await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&hourly=relative_humidity_2m`);
-                if (weatherRes.ok) {
-                    const wData = await weatherRes.json();
-                    externalWeather = {
-                        temp: wData.current_weather?.temperature,
-                        windspeed: wData.current_weather?.windspeed,
-                        humidity: wData.hourly?.relative_humidity_2m?.[0]
-                    };
-                }
-            } catch (e) {
-                console.warn("No se pudo obtener clima exterior:", e);
+        // Fallback a Wilde, Buenos Aires si no hay geolocalización
+        const fetchLat = lat || -34.6973;
+        const fetchLon = lon || -58.3114;
+        
+        try {
+            const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${fetchLat}&longitude=${fetchLon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=3&timezone=auto`;
+            const weatherRes = await fetch(weatherUrl);
+            if (weatherRes.ok) {
+                const wData = await weatherRes.json();
+                externalWeather = {
+                    current: {
+                        temp: wData.current?.temperature_2m,
+                        humidity: wData.current?.relative_humidity_2m,
+                        wind_speed: wData.current?.wind_speed_10m
+                    },
+                    forecast_next_3_days: {
+                        dates: wData.daily?.time,
+                        temp_max: wData.daily?.temperature_2m_max,
+                        temp_min: wData.daily?.temperature_2m_min,
+                        precip_prob: wData.daily?.precipitation_probability_max
+                    }
+                };
             }
+        } catch (e) {
+            console.warn("No se pudo obtener clima exterior:", e);
         }
 
         // 2. Recopilar datos de Supabase
@@ -114,16 +125,25 @@ export async function POST(req: NextRequest) {
         const prompt = `Eres un ingeniero agrónomo senior especialista en el cultivo de cannabis indoor de alto rendimiento.
         Analiza las imágenes adjuntas cruzando OBLIGATORIAMENTE la información visual con el siguiente contexto de datos de la base de datos (telemetría, clima externo, fotoperiodo y bitácora).
         
+        BASE DE CONOCIMIENTOS - TIEMPOS DEL CANNABIS:
+        - Vegetativo: Fotoperiodo 18/6. Crecimiento estructural.
+        - Floración Semanas 1-3 (Días 1-21): Estiramiento (stretch) y formación inicial de botones florales (pelos blancos). No hay resina.
+        - Floración Semanas 4-5 (Días 22-35): Engorde de cálices. Los pistilos siguen mayormente blancos. Comienza la producción visible de resina (tricomas transparentes), PERO NO HAY MADURACIÓN DE TRICOMAS AÚN.
+        - Floración Semanas 6-7 (Días 36-49): Los cálices se hinchan. Los pistilos comienzan a oxidarse (marrón/naranja). Los tricomas pasan de transparentes a lechosos.
+        - Floración Semanas 8-10+ (Días 50-70+): Maduración final. Tricomas lechosos y ámbar.
+        ¡NUNCA asumas que a los 28 días de floración debe haber maduración de tricomas! Utiliza esta guía para juzgar la coherencia temporal.
+        
         CONTEXTO DEL LOTE Y SALA:
         ${JSON.stringify(contextDossier, null, 2)}
         
         INSTRUCCIONES CRÍTICAS:
-        1. TOMA NOTA DE LA FECHA ACTUAL ("current_date") en el contexto para evaluar correctamente hace cuántos días ocurrieron los "recent_agronomic_events". No alucines que un riego de hace 1 día fue hace un mes.
-        2. TOMA NOTA DE LOS DÍAS EN LA FASE ACTUAL ("days_in_current_stage") Y EL FOTOPERIODO ("photoperiod"). Tu análisis debe tener sentido agronómico experto para esa cantidad de días en la fase actual y verificar si el fotoperiodo configurado es correcto para la fase.
-        3. Identifica el estado general de las plantas, posibles plagas, deficiencias o excesos nutricionales observados en las fotos.
-        4. CRUCE DE DATOS INTEGRAL: Tienes que mencionar explícitamente los datos provistos en "recent_agronomic_events" (riegos, nutrición), en "recent_internal_climate" (VPD, Temp, Humedad) y en "external_weather" (clima exterior en la ubicación actual). Correlaciona TODO con lo que ves en las imágenes. Si el clima exterior es extremo, advierte cómo podría afectar al indoor.
-        5. Provee un score de salud del 0 al 100.
-        6. Sugiere acciones correctivas o preventivas a corto plazo.
+        1. TOMA NOTA DE LA FECHA ACTUAL ("current_date") en el contexto para evaluar hace cuántos días ocurrieron los "recent_agronomic_events". 
+        2. TOMA NOTA DE LOS DÍAS EN LA FASE ACTUAL ("days_in_current_stage"). Usa la Base de Conocimientos de arriba para saber exactamente qué esperar ver en la planta según esos días, y no te adelantes en el tiempo.
+        3. FOTOPERIODO ("photoperiod"): Verifica si tiene sentido agronómico para la fase.
+        4. CLIMA EXTERNO ACTUAL Y FUTURO ("external_weather"): Incluye en el diagnóstico ("diagnosis") un análisis obligatorio sobre cómo el clima exterior *actual* y *pronosticado* para los próximos 3 días (temperatura y lluvia) puede impactar el cultivo indoor (ej. altas humedades pronosticadas obligan a vigilar el VPD y encender deshumidificadores).
+        5. CRUCE DE DATOS INTEGRAL: Correlaciona lo que ves en las fotos con "recent_agronomic_events" (riegos, nutrición), "recent_internal_climate" (VPD, Temp, Hum) y "external_weather".
+        6. Provee un score de salud del 0 al 100.
+        7. Sugiere acciones correctivas o preventivas a corto plazo.
         
         Debes responder ÚNICAMENTE con un objeto JSON válido con la siguiente estructura exacta:
         {
