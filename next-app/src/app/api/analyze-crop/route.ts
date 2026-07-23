@@ -1,14 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { GoogleGenAI } from '@google/genai';
 
 // Instanciar cliente de Supabase (Admin) para lectura de datos
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const adminSupabase = (supabaseUrl && supabaseServiceKey) ? createClient(supabaseUrl, supabaseServiceKey) : null;
-
-// Instanciar cliente de Gemini
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 export async function POST(req: NextRequest) {
     try {
@@ -67,7 +63,7 @@ export async function POST(req: NextRequest) {
                 if (climErr) console.error("Climate Fetch Error:", climErr);
             }
 
-            // Eventos agronómicos recientes (Sin columnas inexistentes)
+            // Eventos agronómicos recientes
             const { data: events, error: evErr } = await adminSupabase.from('core_agronomic_events')
                 .select('event_type, description, water_liters, date_occurred, status')
                 .eq('batch_id', batchId)
@@ -141,56 +137,78 @@ export async function POST(req: NextRequest) {
                 }
             ]
         }
-        No devuelvas texto fuera del JSON (sin bloques \`\`\`json).
+        No devuelvas texto fuera del JSON (sin bloques \`\`\`json ni formatos markdown).
         `;
 
-        // Procesar imágenes (asumimos que llegan como Data URLs base64: "data:image/jpeg;base64,....")
-        const aiContents: any[] = [{ text: prompt }];
+        // Formato para OpenRouter
+        const openRouterMessages: any[] = [
+            {
+                role: "user",
+                content: [
+                    { type: "text", text: prompt }
+                ]
+            }
+        ];
+
+        let imageCount = 0;
         for (const imgUrl of images) {
             if (typeof imgUrl === 'string' && imgUrl.startsWith('data:image/')) {
-                const match = imgUrl.match(/^data:(image\/[a-zA-Z]+);base64,(.+)$/);
-                if (match) {
-                    aiContents.push({
-                        inlineData: {
-                            mimeType: match[1],
-                            data: match[2]
-                        }
-                    });
-                }
+                openRouterMessages[0].content.push({
+                    type: "image_url",
+                    image_url: {
+                        url: imgUrl
+                    }
+                });
+                imageCount++;
             }
         }
 
-        if (aiContents.length === 1) {
+        if (imageCount === 0) {
              return NextResponse.json({ error: 'No se pudieron procesar las imágenes.' }, { status: 400 });
         }
 
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: aiContents,
-            config: {
-                responseMimeType: "application/json",
-            }
+        const openRouterKey = process.env.OPENROUTER_API_KEY || '';
+        if (!openRouterKey) {
+            throw new Error("API Key de OpenRouter no configurada en las variables de entorno.");
+        }
+
+        // Llamada a OpenRouter
+        const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${openRouterKey}`,
+                "HTTP-Referer": "https://cannabiscrm.com",
+                "X-Title": "CRM Cannabis AI",
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: "anthropic/claude-3.5-sonnet", // Modelo experto elegido
+                messages: openRouterMessages,
+                response_format: { type: "json_object" }
+            })
         });
 
-        let aiResult = response.text;
+        if (!response.ok) {
+             const errText = await response.text();
+             throw new Error(`OpenRouter Error: ${errText}`);
+        }
+
+        const data = await response.json();
+        let aiResult = data.choices?.[0]?.message?.content;
+        
         if (!aiResult) {
             throw new Error("No response from AI");
         }
 
+        // Limpiar posible Markdown
+        if (aiResult.startsWith('\`\`\`json')) {
+            aiResult = aiResult.replace(/^\`\`\`json\n?/, '').replace(/\n?\`\`\`$/, '');
+        } else if (aiResult.startsWith('\`\`\`')) {
+            aiResult = aiResult.replace(/^\`\`\`\n?/, '').replace(/\n?\`\`\`$/, '');
+        }
+
         // Parseamos la respuesta para validarla
         const parsedResult = JSON.parse(aiResult);
-
-        // Opcional: Insertar en la base de datos de historial de IA
-        // if (adminSupabase) {
-        //     await adminSupabase.from('core_image_analyses').insert({
-        //         batch_id: batchId,
-        //         context_snapshot: contextDossier,
-        //         health_score: parsedResult.health_score,
-        //         issues_detected: parsedResult.issues_detected,
-        //         recommendations: parsedResult.recommendations,
-        //         suggested_actions: parsedResult.suggested_actions
-        //     });
-        // }
 
         return NextResponse.json(parsedResult);
     } catch (error: any) {
