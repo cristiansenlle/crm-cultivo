@@ -9,7 +9,8 @@ import { BitacoraGlobalModal } from "./BitacoraGlobalModal";
 import { PhotoperiodChartModal } from "../../components/PhotoperiodChartModal";
 import { BatchReportModal } from "./BatchReportModal";
 import { AiHealthChartModal } from "../../components/AiHealthChartModal";
-import { Camera, ShieldCheck, X, Activity } from "@phosphor-icons/react";
+import { Camera, ShieldCheck, X } from "@phosphor-icons/react";
+import { Activity } from "lucide-react";
 
 export function CultivoView() {
   const [rooms, setRooms] = useState<any[]>([]);
