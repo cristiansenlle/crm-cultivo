@@ -234,6 +234,23 @@ export async function POST(req: NextRequest) {
         // Parseamos la respuesta para validarla
         const parsedResult = JSON.parse(aiResult);
 
+        // Guardar el log del análisis en la base de datos
+        if (adminSupabase && batchId) {
+            try {
+                await adminSupabase.from('core_image_analyses').insert({
+                    batch_id: batchId,
+                    health_score: parsedResult.health_score || null,
+                    recommendations: (parsedResult.diagnosis || '') + '\n\n' + (parsedResult.recommendations || ''),
+                    issues_detected: parsedResult.issues_detected || [],
+                    suggested_actions: parsedResult.suggested_actions || [],
+                    context_snapshot: contextDossier
+                });
+                console.log("Analysis saved to DB successfully");
+            } catch (dbErr) {
+                console.error("No se pudo guardar el log de IA en BD:", dbErr);
+            }
+        }
+
         return NextResponse.json(parsedResult);
     } catch (error: any) {
         console.error('Error en analyze-crop API:', error);

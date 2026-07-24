@@ -8,7 +8,8 @@ import { BitacoraModal } from "./BitacoraModal";
 import { BitacoraGlobalModal } from "./BitacoraGlobalModal";
 import { PhotoperiodChartModal } from "../../components/PhotoperiodChartModal";
 import { BatchReportModal } from "./BatchReportModal";
-import { Camera, ShieldCheck, X } from "@phosphor-icons/react";
+import { AiHealthChartModal } from "../../components/AiHealthChartModal";
+import { Camera, ShieldCheck, X, Activity } from "@phosphor-icons/react";
 
 export function CultivoView() {
   const [rooms, setRooms] = useState<any[]>([]);
@@ -32,6 +33,7 @@ export function CultivoView() {
   const [harvestPlantsCount, setHarvestPlantsCount] = useState("1");
 
   const [chartModal, setChartModal] = useState<{isOpen: boolean, batch: any}>({isOpen: false, batch: null});
+  const [healthChartModal, setHealthChartModal] = useState<{isOpen: boolean, batch: any}>({isOpen: false, batch: null});
 
   // New Batch State
   const [addBatchModalOpen, setAddBatchModalOpen] = useState(false);
@@ -615,6 +617,7 @@ export function CultivoView() {
                                   &#10148; {b.stage === 'cosecha' ? 'Finalizar' : 'Ciclar'}
                                </button>
                             )}
+                           <button onClick={() => setHealthChartModal({isOpen: true, batch: b})} className="btn-glow-purple px-2 py-1 mr-1 border border-panel-border text-brand-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1"><Activity size={12}/> IA</button>
                            <button onClick={() => setActiveBitacora(b)} className="btn-glow-emerald px-2 py-1 mr-1 border border-panel-border text-brand-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
                               Bitácora
                            </button>
@@ -710,6 +713,11 @@ export function CultivoView() {
       {/* Modal Chart de Fotoperiodo Histórico */}
       {chartModal.isOpen && (
         <PhotoperiodChartModal batch={chartModal.batch} onClose={() => setChartModal({isOpen: false, batch: null})} />
+      )}
+
+      {/* Modal Historial IA */}
+      {healthChartModal.isOpen && (
+        <AiHealthChartModal batch={healthChartModal.batch} onClose={() => setHealthChartModal({isOpen: false, batch: null})} />
       )}
       {/* Modal Nuevo Lote */}
       {addBatchModalOpen && (

@@ -40,7 +40,7 @@ export default function AiAnalyzerModal({ onClose }: { onClose: () => void }) {
 
     useEffect(() => {
         if (selectedRoomId) {
-            supabase.from('core_batches').select('id, strain').eq('location', selectedRoomId).then(({data}) => {
+            supabase.from('core_batches').select('id, strain, current_phase').eq('location', selectedRoomId).then(({data}) => {
                 if (data) setBatches(data);
             });
         }
@@ -204,8 +204,22 @@ export default function AiAnalyzerModal({ onClose }: { onClose: () => void }) {
                                     <h3 className="text-lg font-semibold text-gray-100 mb-1">Captura de Imágenes</h3>
                                     <p className="text-sm text-gray-400 mb-3">La IA necesita ver bien a tus niñas. 📸 Sugerimos:</p>
                                     <ul className="text-sm text-emerald-300 space-y-1.5 bg-emerald-950/30 p-3 rounded-xl border border-emerald-900/50">
-                                        <li>• 1 foto general de la estructura.</li>
-                                        <li>• 1 foto de cerca de hojas sospechosas o ápices.</li>
+                                        {currentBatch?.current_phase === 'Floración' ? (
+                                            <>
+                                                <li>• 1 foto del dosel (canopy) completo.</li>
+                                                <li>• 1 foto de cerca de los cálices/tricomas.</li>
+                                            </>
+                                        ) : currentBatch?.current_phase === 'Vegetativo' ? (
+                                            <>
+                                                <li>• 1 foto estructural de la planta entera.</li>
+                                                <li>• 1 foto del follaje (hojas superiores).</li>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <li>• 1 foto general de la estructura.</li>
+                                                <li>• 1 foto de cerca de hojas sospechosas o ápices.</li>
+                                            </>
+                                        )}
                                         <li>• Evita luces HPS muy amarillas si es posible.</li>
                                     </ul>
                                 </div>
