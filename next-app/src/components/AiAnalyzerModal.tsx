@@ -40,7 +40,8 @@ export default function AiAnalyzerModal({ onClose }: { onClose: () => void }) {
 
     useEffect(() => {
         if (selectedRoomId) {
-            supabase.from('core_batches').select('id, strain, current_phase').eq('location', selectedRoomId).then(({data}) => {
+            supabase.from('core_batches').select('id, strain, stage').eq('location', selectedRoomId).then(({data, error}) => {
+                if (error) console.error("Error fetching batches:", error);
                 if (data) setBatches(data);
             });
         }
@@ -204,12 +205,12 @@ export default function AiAnalyzerModal({ onClose }: { onClose: () => void }) {
                                     <h3 className="text-lg font-semibold text-gray-100 mb-1">Captura de Imágenes</h3>
                                     <p className="text-sm text-gray-400 mb-3">La IA necesita ver bien a tus niñas. 📸 Sugerimos:</p>
                                     <ul className="text-sm text-emerald-300 space-y-1.5 bg-emerald-950/30 p-3 rounded-xl border border-emerald-900/50">
-                                        {currentBatch?.current_phase === 'Floración' ? (
+                                        {(currentBatch?.stage === 'floración' || currentBatch?.stage === 'Floración') ? (
                                             <>
                                                 <li>• 1 foto del dosel (canopy) completo.</li>
                                                 <li>• 1 foto de cerca de los cálices/tricomas.</li>
                                             </>
-                                        ) : currentBatch?.current_phase === 'Vegetativo' ? (
+                                        ) : (currentBatch?.stage === 'vegetativo' || currentBatch?.stage === 'Vegetativo') ? (
                                             <>
                                                 <li>• 1 foto estructural de la planta entera.</li>
                                                 <li>• 1 foto del follaje (hojas superiores).</li>
