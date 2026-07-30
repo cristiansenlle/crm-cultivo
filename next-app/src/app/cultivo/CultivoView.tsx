@@ -598,36 +598,38 @@ export function CultivoView() {
                                <Coins size={16} /> {cost > 0 ? `$${cost.toFixed(2)}` : 'N/A'}
                             </div>
                         </td>
-                        <td className="py-3 px-2.5 text-right align-middle">
+                        <td className="py-3 px-2.5 align-middle">
+                           <div className="flex items-center justify-end gap-1.5 flex-wrap">
                            {b.stage === 'cosecha' && (
-                              <button onClick={() => openPartialHarvestModal(b)} className="btn-glow-emerald px-2 py-1 mr-1 border border-emerald-500/30 text-emerald-500 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
+                              <button onClick={() => openPartialHarvestModal(b)} className="btn-glow-emerald px-2 py-1 border border-emerald-500/30 text-emerald-500 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
                                  + Cosechar
                               </button>
                            )}
                            {isSecado ? (
-                               <div className="inline-flex gap-1.5 mr-1">
-                                   <button onClick={() => setActiveReportBatch(b)} className="btn-glow-purple px-1.5 py-1 border border-purple-500/30 text-purple-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
-                                      📊 Reporte
-                                   </button>
+                                <div className="inline-flex gap-1.5">
+                                    <button onClick={() => setActiveReportBatch(b)} className="btn-glow-purple px-1.5 py-1 border border-purple-500/30 text-purple-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
+                                       📊 Reporte
+                                    </button>
                                    <button onClick={() => { setFinalizeNotes(b.harvest_notes || ""); setFinalizePhotos(null); setFinalizeModal({ isOpen: true, batch: b }); }} className="btn-glow-yellow px-1.5 py-1 border border-yellow-500/30 text-yellow-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1">
                                       📷 Fotos
                                    </button>
                                </div>
                             ) : (
-                               <button onClick={() => advanceStageIndicator(b)} className="btn-glow-purple px-2 py-1 mr-1 border border-panel-border text-brand-slate-600 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg">
+                               <button onClick={() => advanceStageIndicator(b)} className="btn-glow-purple px-2 py-1 border border-panel-border text-brand-slate-600 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg">
                                   &#10148; {b.stage === 'cosecha' ? 'Finalizar' : 'Ciclar'}
                                </button>
                             )}
-                           <button onClick={() => setHealthChartModal({isOpen: true, batch: b})} className="btn-glow-purple px-2 py-1 mr-1 border border-panel-border text-brand-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1"><Activity size={12}/> IA</button>
-                           <button onClick={() => setActiveBitacora(b)} className="btn-glow-emerald px-2 py-1 mr-1 border border-panel-border text-brand-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
+                           <button onClick={() => setHealthChartModal({isOpen: true, batch: b})} className="btn-glow-purple px-2 py-1 border border-panel-border text-brand-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1"><Activity size={12}/> IA</button>
+                           <button onClick={() => setActiveBitacora(b)} className="btn-glow-emerald px-2 py-1 border border-panel-border text-brand-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
                               Bitácora
                            </button>
-                           <button onClick={() => { setEditBatch(b as any); setEditBatchModalOpen(true); }} className="btn-glow-yellow px-2 py-1 border mr-1 border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Editar">
+                           <button onClick={() => { setEditBatch(b as any); setEditBatchModalOpen(true); }} className="btn-glow-yellow px-2 py-1 border border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Editar">
                               <PencilSimple size={14} weight="bold" />
                            </button>
-                           <button onClick={() => handleDeleteBatch(b.id)} className="btn-glow-red px-2 py-1 border border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Eliminar">
-                              <Trash size={14} weight="bold" />
-                           </button>
+                            <button onClick={() => handleDeleteBatch(b.id)} className="btn-glow-red px-2 py-1 border border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Eliminar">
+                               <Trash size={14} weight="bold" />
+                            </button>
+                           </div>
                         </td>
                       </tr>
                       )
