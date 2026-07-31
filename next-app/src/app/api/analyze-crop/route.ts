@@ -83,6 +83,16 @@ export async function POST(req: NextRequest) {
             recentEvents = events;
             if (evErr) console.error("Events Fetch Error:", evErr);
             
+            // Historial de Análisis IA anteriores
+            let pastAnalyses = null;
+            const { data: pastAi, error: aiErr } = await adminSupabase.from('core_image_analyses')
+                .select('created_at, health_score, issues_detected, recommendations')
+                .eq('batch_id', batchId)
+                .order('created_at', { ascending: false })
+                .limit(3);
+            if (aiErr) console.error("AI History Fetch Error:", aiErr);
+            pastAnalyses = pastAi;
+
             // Adjuntar info de la sala al batchInfo de forma manual
             if (batchInfo && roomInfo) {
                 batchInfo.room_name = roomInfo.name;
@@ -117,7 +127,8 @@ export async function POST(req: NextRequest) {
             } : 'No disponible',
             recent_internal_climate: recentClimate || 'No disponible',
             recent_agronomic_events: recentEvents || 'No disponible',
-            external_weather: externalWeather || 'No disponible (sin geolocalización)'
+            external_weather: externalWeather || 'No disponible (sin geolocalización)',
+            past_ai_analyses: pastAnalyses || 'Sin historial'
         };
         
         console.log("--- CONTEXT DOSSIER ---", JSON.stringify(contextDossier, null, 2));
@@ -139,11 +150,12 @@ export async function POST(req: NextRequest) {
         INSTRUCCIONES CRÍTICAS:
         1. TOMA NOTA DE LA FECHA ACTUAL ("current_date") en el contexto para evaluar hace cuántos días ocurrieron los "recent_agronomic_events". 
         2. TOMA NOTA DE LOS DÍAS EN LA FASE ACTUAL ("days_in_current_stage"). Usa la Base de Conocimientos de arriba para saber exactamente qué esperar ver en la planta según esos días, y no te adelantes en el tiempo.
-        3. FOTOPERIODO ("photoperiod"): Verifica si tiene sentido agronómico para la fase.
-        4. CLIMA EXTERNO ACTUAL Y FUTURO ("external_weather"): Incluye en el diagnóstico ("diagnosis") un análisis obligatorio sobre cómo el clima exterior *actual* y *pronosticado* para los próximos 3 días (temperatura y lluvia) puede impactar el cultivo indoor (ej. altas humedades pronosticadas obligan a vigilar el VPD y encender deshumidificadores).
-        5. CRUCE DE DATOS INTEGRAL: Correlaciona lo que ves en las fotos con "recent_agronomic_events" (riegos, nutrición), "recent_internal_climate" (VPD, Temp, Hum) y "external_weather".
-        6. Provee un score de salud del 0 al 100.
-        7. Sugiere acciones correctivas o preventivas a corto plazo.
+        3. FOTOPERIODO EXPERIMENTAL: El cultivador utiliza a menudo fotoperiodos NO convencionales para buscar mejores resultados. Evalúa el estado de la planta sin asumir que un fotoperiodo inusual es necesariamente un error. Si ves estrés luminoso, menciónalo, pero de lo contrario asume que es una técnica controlada.
+        4. HISTORIAL DE IA ("past_ai_analyses"): Revisa tus propios análisis anteriores para este lote. Compara si los problemas ("issues_detected") que encontraste antes han mejorado o empeorado y si el "health_score" va en alza o en baja. Retroaliméntate de tu historial para no ser redundante.
+        5. CLIMA EXTERNO ACTUAL Y FUTURO ("external_weather"): Incluye en el diagnóstico ("diagnosis") un análisis obligatorio sobre cómo el clima exterior *actual* y *pronosticado* para los próximos 3 días (temperatura y lluvia) puede impactar el cultivo indoor (ej. altas humedades pronosticadas obligan a vigilar el VPD y encender deshumidificadores).
+        6. CRUCE DE DATOS INTEGRAL: Correlaciona lo que ves en las fotos con el historial de IA, "recent_agronomic_events" (riegos, nutrición), "recent_internal_climate" (VPD, Temp, Hum) y "external_weather".
+        7. Provee un score de salud del 0 al 100.
+        8. Sugiere acciones correctivas o preventivas a corto plazo.
         
         Debes responder ÚNICAMENTE con un objeto JSON válido con la siguiente estructura exacta:
         {
