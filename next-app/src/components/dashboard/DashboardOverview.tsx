@@ -5,6 +5,7 @@ import { TelemetryRadiant } from "./TelemetryRadiant";
 import { TelemetryChart } from "./TelemetryChart";
 import { useRoom } from "../../context/RoomContext";
 import { supabase } from "../../lib/supabase";
+import { BookOpen } from "@phosphor-icons/react/dist/ssr";
 
 function SensorDashboard({ sensor, roomPhase, vpdMode }: { sensor: any, roomPhase: string, vpdMode: "leaf" | "ambient" }) {
   const [latestMetric, setLatestMetric] = useState<{temp: number, hum: number, rawVpd: number} | null>(null);
@@ -29,15 +30,21 @@ function SensorDashboard({ sensor, roomPhase, vpdMode }: { sensor: any, roomPhas
     return Number((svpAirKpa - avpKpa).toFixed(2));
   };
 
-  const getSuggestions = (temp: number, hum: number, currentVpd: number, isFloro: boolean) => {
-     let minVpd = 0.8;
-     let maxVpd = 1.2;
-     let targetVpd = 1.0;
-     if (isFloro) {
-        minVpd = 1.2;
-        maxVpd = 1.6;
-        targetVpd = 1.4;
-     }
+  const getVpdTargets = () => {
+    const p = (roomPhase || '').toLowerCase();
+    if (p.includes('clone') || p.includes('esqueje')) {
+        return vpdMode === 'ambient' ? { min: 0.6, max: 1.0, target: 0.8 } : { min: 0.4, max: 0.8, target: 0.6 };
+    } else if (p.includes('flora')) {
+        return vpdMode === 'ambient' ? { min: 1.4, max: 1.8, target: 1.6 } : { min: 1.2, max: 1.6, target: 1.4 };
+    } else if (p.includes('secado')) {
+        return vpdMode === 'ambient' ? { min: 1.0, max: 1.4, target: 1.2 } : { min: 0.8, max: 1.2, target: 1.0 };
+    }
+    // Vegetativo (default)
+    return vpdMode === 'ambient' ? { min: 1.0, max: 1.4, target: 1.2 } : { min: 0.8, max: 1.2, target: 1.0 };
+  };
+
+  const getSuggestions = (temp: number, hum: number, currentVpd: number) => {
+     const { min: minVpd, max: maxVpd, target: targetVpd } = getVpdTargets();
      
      if (currentVpd >= minVpd && currentVpd <= maxVpd) {
         return { temp: "Óptimo", hum: "Óptimo", tempStatus: "optimal" as const, humStatus: "optimal" as const };
@@ -143,13 +150,11 @@ function SensorDashboard({ sensor, roomPhase, vpdMode }: { sensor: any, roomPhas
     };
   }, [sensor.id]);
 
-  const isFloro = (roomPhase || '').toLowerCase().includes('flora');
-
   const currentVpd = latestMetric ? 
      (vpdMode === 'ambient' ? calcAmbientVpd(latestMetric.temp, latestMetric.hum) : calcLeafVpd(latestMetric.temp, latestMetric.hum))
      : 0;
 
-  const suggestions = latestMetric ? getSuggestions(latestMetric.temp, latestMetric.hum, currentVpd, isFloro) : null;
+  const suggestions = latestMetric ? getSuggestions(latestMetric.temp, latestMetric.hum, currentVpd) : null;
 
   return (
     <div className="flex flex-col gap-4 border border-panel-border/30 bg-black/5 dark:bg-white/5 rounded-2xl p-4 shadow-xl">
@@ -179,16 +184,11 @@ function SensorDashboard({ sensor, roomPhase, vpdMode }: { sensor: any, roomPhas
             (() => {
                 if(!latestMetric) return "danger";
                 const v = currentVpd;
+                const { min, max } = getVpdTargets();
                 
-                if (isFloro) {
-                    if (v >= 1.2 && v <= 1.6) return "optimal";
-                    if (v < 1.0 || v > 1.8) return "danger";
-                    return "warning";
-                } else { // Vegetativo por defecto
-                    if (v >= 0.8 && v <= 1.2) return "optimal";
-                    if (v < 0.6 || v > 1.4) return "danger";
-                    return "warning";
-                }
+                if (v >= min && v <= max) return "optimal";
+                if (v >= min - 0.2 && v <= max + 0.2) return "warning";
+                return "danger";
             })()
         } />
       </section>
@@ -240,6 +240,46 @@ export function DashboardOverview() {
          </div>
       </div>
       {ambientSensors.map(s => <SensorDashboard key={s.id} sensor={s} roomPhase={selectedRoom.phase} vpdMode={vpdMode} />)}
+      <VpdLegend vpdMode={vpdMode} />
     </div>
+  );
+}
+
+function VpdLegend({ vpdMode }: { vpdMode: "leaf" | "ambient" }) {
+  const isAmbient = vpdMode === 'ambient';
+  
+  const ranges = {
+     clones: isAmbient ? "0.6 - 1.0 kPa" : "0.4 - 0.8 kPa",
+     veg: isAmbient ? "1.0 - 1.4 kPa" : "0.8 - 1.2 kPa",
+     flora: isAmbient ? "1.4 - 1.8 kPa" : "1.2 - 1.6 kPa",
+     danger: isAmbient ? "< 0.6 o > 1.8 kPa" : "< 0.4 o > 1.6 kPa"
+  };
+
+  return (
+    <section className="mt-2">
+      <div className="w-full bg-panel-base/80 border border-panel-border/30 rounded-xl p-4 shadow-xl backdrop-blur-md">
+        <div className="mb-4 text-brand-slate-600 dark:text-slate-300 font-bold flex items-center gap-2 border-b border-panel-border/50 pb-3">
+           <BookOpen weight="bold" size={20} /> Rangos Óptimos ({vpdMode === 'ambient' ? 'VPD Ambiental' : 'VPD Hoja'})
+        </div>
+        <div className="flex gap-4 overflow-x-auto pb-2">
+          <div className="flex-1 min-w-[150px] p-3 rounded-lg bg-blue-500/10 border-l-4 border-blue-500">
+             <span className="block text-sm font-bold">Propagación</span>
+             <span className="text-xs text-brand-slate-600 dark:text-slate-400">{ranges.clones}</span>
+          </div>
+          <div className="flex-1 min-w-[150px] p-3 rounded-lg bg-status-green/10 border-l-4 border-status-green">
+             <span className="block text-sm font-bold">Vegetativo</span>
+             <span className="text-xs text-brand-slate-600 dark:text-slate-400">{ranges.veg}</span>
+          </div>
+          <div className="flex-1 min-w-[150px] p-3 rounded-lg bg-status-yellow/10 border-l-4 border-status-yellow">
+             <span className="block text-sm font-bold">Floración</span>
+             <span className="text-xs text-brand-slate-600 dark:text-slate-400">{ranges.flora}</span>
+          </div>
+          <div className="flex-1 min-w-[150px] p-3 rounded-lg bg-status-red/10 border-l-4 border-status-red">
+             <span className="block text-sm font-bold">⚠️ Peligro</span>
+             <span className="text-xs text-brand-slate-600 dark:text-slate-400">{ranges.danger}</span>
+          </div>
+        </div>
+      </div>
+    </section>
   );
 }
