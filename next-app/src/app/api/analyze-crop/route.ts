@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
         let batchInfo = null;
         let recentEvents = null;
         let recentClimate = null;
+        let pastAnalyses = null;
 
         if (adminSupabase) {
             // Lote
@@ -84,7 +85,6 @@ export async function POST(req: NextRequest) {
             if (evErr) console.error("Events Fetch Error:", evErr);
             
             // Historial de Análisis IA anteriores
-            let pastAnalyses = null;
             const { data: pastAi, error: aiErr } = await adminSupabase.from('core_image_analyses')
                 .select('created_at, health_score, issues_detected, recommendations')
                 .eq('batch_id', batchId)
