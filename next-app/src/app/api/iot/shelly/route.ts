@@ -41,11 +41,43 @@ export async function POST(req: Request) {
           auto_off_delay: payload.auto_off_delay
         });
         break;
-            case 'create_sequence':
+      case 'create_sequence':
         const triggerState = payload.trigger === 'on' ? 'true' : 'false';
         const targetState = payload.targetAction === 'on' ? 'true' : 'false';
         const toggleParam = payload.targetDuration > 0 ? `, toggle_after: ${payload.targetDuration}` : '';
-                if (payload.delaySeconds > 0) {
+        const isPassive = payload.ruleType === 'passive';
+        
+        if (isPassive) {
+          const scriptCode = `
+            let State = { timerHandle: null };
+            MQTT.subscribe("${payload.targetDeviceId}/events/rpc", function(topic, msg) {
+              let ev = JSON.parse(msg);
+              if (ev.method === "NotifyStatus" && typeof ev.params["switch:0"] !== "undefined") {
+                 let s = ev.params["switch:0"].output;
+                 if (s === ${triggerState}) {
+                    if (${payload.delaySeconds} > 0) {
+                        State.timerHandle = Timer.set(${payload.delaySeconds * 1000}, false, function() {
+                           Shelly.call("Switch.Set", { id: 0, on: ${targetState}${toggleParam} });
+                        });
+                    } else {
+                        Shelly.call("Switch.Set", { id: 0, on: ${targetState}${toggleParam} });
+                    }
+                 } else {
+                    if (State.timerHandle !== null) {
+                       Timer.clear(State.timerHandle);
+                       State.timerHandle = null;
+                    }
+                 }
+              }
+            });
+          `;
+          const scriptName = payload.ruleName || ('Passv_' + Date.now());
+          const scriptCreateRes: any = await shelly.createScript(scriptName.substring(0,25));
+          await shelly.putScriptCode(scriptCreateRes.id, scriptCode);
+          await shelly.startScript(scriptCreateRes.id);
+          result = { success: true };
+        } else {
+          if (payload.delaySeconds > 0) {
             let scriptCode = '';
             if (payload.delaySeconds > 3600) {
               // Robust script for delays > 1 hour
@@ -95,26 +127,27 @@ export async function POST(req: Request) {
                 });
               `;
             }
-          const scriptCreateRes: any = await shelly.createScript('Sequence_' + Date.now());
-          await shelly.putScriptCode(scriptCreateRes.id, scriptCode);
-          await shelly.startScript(scriptCreateRes.id);
-          result = { success: true };
-        } else {
-          // Secuencia instantanea
-          const scriptCode = `
-            Shelly.addEventHandler(function(event, ud) {
-              if (typeof event.info.state !== 'undefined' && event.component === 'switch:0') {
-                if (event.info.state === ${triggerState}) {
-                  MQTT.publish("${payload.targetDeviceId}/rpc", JSON.stringify({id: 1, src: "${deviceId}", method: "Switch.Set", params: {id: 0, on: ${targetState}${toggleParam}}}));
+            const scriptCreateRes: any = await shelly.createScript('Sequence_' + Date.now());
+            await shelly.putScriptCode(scriptCreateRes.id, scriptCode);
+            await shelly.startScript(scriptCreateRes.id);
+            result = { success: true };
+          } else {
+            // Secuencia instantanea
+            const scriptCode = `
+              Shelly.addEventHandler(function(event, ud) {
+                if (typeof event.info.state !== 'undefined' && event.component === 'switch:0') {
+                  if (event.info.state === ${triggerState}) {
+                    MQTT.publish("${payload.targetDeviceId}/rpc", JSON.stringify({id: 1, src: "${deviceId}", method: "Switch.Set", params: {id: 0, on: ${targetState}${toggleParam}}}));
+                  }
                 }
-              }
-            });
-          `;
-          const scriptName = payload.ruleName || ('Auto_' + Date.now());
-          const scriptCreateRes: any = await shelly.createScript(scriptName.substring(0,25));
-          await shelly.putScriptCode(scriptCreateRes.id, scriptCode);
-          await shelly.startScript(scriptCreateRes.id);
-          result = { success: true };
+              });
+            `;
+            const scriptName = payload.ruleName || ('Auto_' + Date.now());
+            const scriptCreateRes: any = await shelly.createScript(scriptName.substring(0,25));
+            await shelly.putScriptCode(scriptCreateRes.id, scriptCode);
+            await shelly.startScript(scriptCreateRes.id);
+            result = { success: true };
+          }
         }
         break;
 

@@ -5,20 +5,14 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { Timer, Trash2 } from 'lucide-react';
 
-const MOCK_DEVICES: Record<string, any> = {
-  '1': { id: '1', name: 'Shelly Relé 1', type: 'switch', deviceId: 'shellyplus1-8813bf9fc354' },
-  '2': { id: '2', name: 'Shelly Relé 2', type: 'switch', deviceId: 'shellyplus1-8813bf9f8878' },
-  '3': { id: '3', name: 'Shelly H&T Gen3', type: 'sensor', deviceId: 'shellyhtg3-d0cf13c2f578' },
-};
-
 export default function DevicePage() {
   const params = useParams();
-  const device = MOCK_DEVICES[params.id as string];
-  const [deviceName, setDeviceName] = useState(device?.name || 'Dispositivo Desconocido');
-  const [newName, setNewName] = useState(device?.name || '');
+  const [device, setDevice] = useState<any>(null);
+  const [deviceName, setDeviceName] = useState('Cargando...');
+  const [newName, setNewName] = useState('');
   const [isOn, setIsOn] = useState(false);
   const [history, setHistory] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'control' | 'schedules' | 'rules' | 'settings' | 'mqtt_config'>(device?.type === 'sensor' ? 'mqtt_config' : 'control');
+  const [activeTab, setActiveTab] = useState<'control' | 'schedules' | 'rules' | 'settings' | 'mqtt_config'>('control');
 
   // Schedule States
   const [schedules, setSchedules] = useState<any[]>([]);
@@ -41,12 +35,38 @@ export default function DevicePage() {
   // Rule States
   const [scripts, setScripts] = useState<any[]>([]);
   const [ruleTrigger, setRuleTrigger] = useState('on');
-  const [ruleTargetDev, setRuleTargetDev] = useState(device?.id === '1' ? 'shellyplus1-8813bf9f8878' : 'shellyplus1-8813bf9fc354');
+  const [ruleTargetDev, setRuleTargetDev] = useState('');
   const [ruleAction, setRuleAction] = useState('off');
   const [ruleTargetDuration, setRuleTargetDuration] = useState(0);
   const [ruleDelay, setRuleDelay] = useState(0);
-  const [allDevices, setAllDevices] = useState(Object.values(MOCK_DEVICES));
+  const [ruleType, setRuleType] = useState('active');
+  const [allDevices, setAllDevices] = useState<any[]>([]);
   const [viewingScript, setViewingScript] = useState<any>(null);
+
+  useEffect(() => {
+    // Fetch all devices from DB to find the current one and populate the "allDevices" list for cross-rules
+    fetch('/api/iot/devices')
+      .then(r => r.json())
+      .then(data => {
+        if (data.success && data.data) {
+          const devs = data.data.map((d: any) => ({ ...d, deviceId: d.device_id }));
+          setAllDevices(devs);
+          const found = devs.find((d: any) => d.id === params.id || d.id === parseInt(params.id as string));
+          if (found) {
+            setDevice(found);
+            setDeviceName(found.name);
+            setNewName(found.name);
+            if (found.type === 'shellyhtg3') setActiveTab('mqtt_config');
+            if (devs.length > 1) {
+              const other = devs.find((d: any) => d.id !== found.id);
+              if (other) setRuleTargetDev(other.deviceId);
+            }
+          } else {
+            setDeviceName('Dispositivo No Encontrado');
+          }
+        }
+      });
+  }, [params.id]);
 
   useEffect(() => {
     if (device) {
@@ -236,7 +256,8 @@ export default function DevicePage() {
           targetDeviceId: ruleTargetDev,
           targetAction: ruleAction,
             targetDuration: ruleTargetDuration,
-          delaySeconds: ruleDelay
+          delaySeconds: ruleDelay,
+          ruleType: ruleType
         }
       })
     });
@@ -276,10 +297,27 @@ export default function DevicePage() {
         if (delayMatch) delaySecs = Math.floor(parseInt(delayMatch[1])/1000);
         else if (robustDelayMatch) delaySecs = parseInt(robustDelayMatch[1]);
         const delayStr = delaySecs > 0 ? ` tras ${delaySecs} segundos` : '';
-        
         const ipStr = targetIpMatch ? targetIpMatch[1] : '?';
 
         parsedRule = `REGLA: Si este dispositivo se ${triggerStr}${delayStr}, entonces el dispositivo remoto [${ipStr}] debe ${targetStr}${toggleStr}.`;
+      } else if (rawCode.includes('MQTT.subscribe')) {
+        const targetIpMatch = rawCode.match(/MQTT\.subscribe\("([^/]+)\/events\/rpc"/);
+        const triggerMatch = rawCode.match(/s === (true|false)/);
+        const targetOnMatch = rawCode.match(/on: (true|false)/);
+        const targetToggleMatch = rawCode.match(/toggle_after: ([0-9]+)/);
+        const delayMatch = rawCode.match(/Timer\.set\(([0-9]+), false/);
+
+        const triggerStr = triggerMatch ? (triggerMatch[1] === 'true' ? 'ENCIENDE' : 'APAGA') : 'CAMBIA';
+        const targetStr = targetOnMatch ? (targetOnMatch[1] === 'true' ? 'ENCENDERSE' : 'APAGARSE') : 'CAMBIAR';
+        const toggleStr = targetToggleMatch ? ` durante ${targetToggleMatch[1]} segundos` : '';
+        
+        let delaySecs = 0;
+        if (delayMatch) delaySecs = Math.floor(parseInt(delayMatch[1])/1000);
+        const delayStr = delaySecs > 0 ? ` tras ${delaySecs} segundos` : '';
+        
+        const ipStr = targetIpMatch ? targetIpMatch[1] : '?';
+
+        parsedRule = `REGLA PASIVA: Escuchando a [${ipStr}]. Si se ${triggerStr}, entonces ESTE dispositivo debe ${targetStr}${delayStr}${toggleStr}.`;
       } else {
         parsedRule = 'No se pudo interpretar la regla. Revisa el cdigo fuente.';
       }
@@ -551,16 +589,61 @@ export default function DevicePage() {
       {activeTab === 'rules' && (
         <div className="space-y-6 pt-4">
           <div className="bg-panel-base backdrop-blur-md border border-panel-border rounded-xl p-6">
-            <h2 className="text-xl font-semibold mb-2">Crear Automatizacion Cruzada</h2>
-            <p className="text-sm text-foreground/60 dark:text-foreground/60 mb-6">El script vivirá en este dispositivo y enviará comandos MQTT al otro Shelly con precision milimetrica.</p>
-            <div className="grid grid-cols-1 md:grid-cols-6 items-end gap-4">
-              <div className="md:col-span-1"><label className="block text-sm font-medium text-foreground/60 dark:text-foreground/60 mb-1">Si este se...</label><select value={ruleTrigger} onChange={e => setRuleTrigger(e.target.value)} className="w-full bg-background border border-panel-border rounded-lg px-4 py-2 text-foreground"><option value="on">Enciende</option><option value="off">Apaga</option></select></div>
-              <div className="md:col-span-1"><label className="block text-sm font-medium text-foreground/60 dark:text-foreground/60 mb-1">Retraso (Segs)</label><input type="number" min="0" value={ruleDelay} onChange={e => setRuleDelay(Number(e.target.value))} className="w-full bg-background border border-panel-border rounded-lg px-4 py-2 text-foreground" /></div>
-              <div className="md:col-span-2"><label className="block text-sm font-medium text-foreground/60 dark:text-foreground/60 mb-1">Entonces el Dispositivo...</label><select value={ruleTargetDev} onChange={e => setRuleTargetDev(e.target.value)} className="w-full bg-background border border-panel-border rounded-lg px-4 py-2 text-foreground">{allDevices.map(d => <option key={d.id} value={d.deviceId}>{d.name} ({d.deviceId})</option>)}</select></div>
-              <div className="md:col-span-1"><label className="block text-sm font-medium text-foreground/60 dark:text-foreground/60 mb-1">Debe...</label><select value={ruleAction} onChange={e => setRuleAction(e.target.value)} className="w-full bg-background border border-panel-border rounded-lg px-4 py-2 text-foreground"><option value="on">Encenderse</option><option value="off">Apagarse</option></select></div>
-              <div className="md:col-span-1"><label className="block text-sm font-medium text-foreground/60 dark:text-foreground/60 mb-1">Duracion (Segs) [Opc]</label><input type="number" min="0" value={ruleTargetDuration} onChange={e => setRuleTargetDuration(Number(e.target.value))} className="w-full bg-background border border-panel-border rounded-lg px-4 py-2 text-foreground" placeholder="0 = Infinito" /></div>
+            <h2 className="text-xl font-semibold mb-4">Crear Automatización Cruzada</h2>
+            <div className="flex gap-4 mb-6">
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" value="active" checked={ruleType === 'active'} onChange={() => setRuleType('active')} className="text-purple-600" />
+                <span className={ruleType === 'active' ? 'font-semibold text-purple-400' : 'text-foreground/60'}>Regla Activa (Enviar Comando)</span>
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input type="radio" value="passive" checked={ruleType === 'passive'} onChange={() => setRuleType('passive')} className="text-emerald-600" />
+                <span className={ruleType === 'passive' ? 'font-semibold text-emerald-400' : 'text-foreground/60'}>Regla Pasiva (Escuchar Remoto)</span>
+              </label>
             </div>
-            <button onClick={createRule} disabled={loading} className="mt-6 bg-purple-600 hover:bg-purple-500 text-foreground font-medium py-2 px-6 rounded-lg">{loading ? '...' : '+ Agregar Regla'}</button>
+            
+            <p className="text-sm text-foreground/60 dark:text-foreground/60 mb-6">
+              {ruleType === 'active' 
+                ? 'El script vivirá en ESTE dispositivo y enviará comandos MQTT al otro Shelly.' 
+                : 'El script vivirá en ESTE dispositivo y escuchará pasivamente los comandos del otro Shelly (útil si el otro alcanzó el límite de 3 scripts).'}
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-6 items-end gap-4">
+              <div className="md:col-span-1">
+                <label className="block text-sm font-medium text-foreground/60 dark:text-foreground/60 mb-1">
+                  {ruleType === 'active' ? 'Si este se...' : 'Si el remoto se...'}
+                </label>
+                <select value={ruleTrigger} onChange={e => setRuleTrigger(e.target.value)} className="w-full bg-background border border-panel-border rounded-lg px-4 py-2 text-foreground">
+                  <option value="on">Enciende</option><option value="off">Apaga</option>
+                </select>
+              </div>
+              <div className="md:col-span-1">
+                <label className="block text-sm font-medium text-foreground/60 dark:text-foreground/60 mb-1">Retraso (Segs)</label>
+                <input type="number" min="0" value={ruleDelay} onChange={e => setRuleDelay(Number(e.target.value))} className="w-full bg-background border border-panel-border rounded-lg px-4 py-2 text-foreground" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-foreground/60 dark:text-foreground/60 mb-1">
+                  {ruleType === 'active' ? 'El Dispositivo Remoto...' : 'Dispositivo Remoto (a escuchar)...'}
+                </label>
+                <select value={ruleTargetDev} onChange={e => setRuleTargetDev(e.target.value)} className="w-full bg-background border border-panel-border rounded-lg px-4 py-2 text-foreground">
+                  {allDevices.filter(d => d.deviceId !== device.deviceId).map(d => <option key={d.id} value={d.deviceId}>{d.name} ({d.deviceId})</option>)}
+                </select>
+              </div>
+              <div className="md:col-span-1">
+                <label className="block text-sm font-medium text-foreground/60 dark:text-foreground/60 mb-1">
+                  {ruleType === 'active' ? 'Debe...' : 'ESTE debe...'}
+                </label>
+                <select value={ruleAction} onChange={e => setRuleAction(e.target.value)} className="w-full bg-background border border-panel-border rounded-lg px-4 py-2 text-foreground">
+                  <option value="on">Encenderse</option><option value="off">Apagarse</option>
+                </select>
+              </div>
+              <div className="md:col-span-1">
+                <label className="block text-sm font-medium text-foreground/60 dark:text-foreground/60 mb-1">Duración (Segs) [Opc]</label>
+                <input type="number" min="0" value={ruleTargetDuration} onChange={e => setRuleTargetDuration(Number(e.target.value))} className="w-full bg-background border border-panel-border rounded-lg px-4 py-2 text-foreground" placeholder="0 = Infinito" />
+              </div>
+            </div>
+            <button onClick={createRule} disabled={loading} className={`mt-6 ${ruleType === 'active' ? 'bg-purple-600 hover:bg-purple-500' : 'bg-emerald-600 hover:bg-emerald-500'} text-foreground font-medium py-2 px-6 rounded-lg`}>
+              {loading ? '...' : '+ Agregar Regla'}
+            </button>
           </div>
           <div className="bg-panel-base backdrop-blur-md border border-panel-border rounded-xl overflow-x-auto">
             <table className="min-w-full divide-y divide-zinc-800">
