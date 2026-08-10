@@ -48,29 +48,63 @@ export async function POST(req: Request) {
         const isPassive = payload.ruleType === 'passive';
         
         if (isPassive) {
-          const scriptCode = `
-            let State = { timerHandle: null };
-            MQTT.subscribe("${payload.targetDeviceId}/events/rpc", function(topic, msg) {
-              let ev = JSON.parse(msg);
-              if (ev.method === "NotifyStatus" && typeof ev.params["switch:0"] !== "undefined") {
-                 let s = ev.params["switch:0"].output;
-                 if (s === ${triggerState}) {
-                    if (${payload.delaySeconds} > 0) {
-                        State.timerHandle = Timer.set(${payload.delaySeconds * 1000}, false, function() {
-                           Shelly.call("Switch.Set", { id: 0, on: ${targetState}${toggleParam} });
-                        });
-                    } else {
+          let scriptCode = '';
+          if (payload.delaySeconds > 3600) {
+            // Robust passive script for delays > 1 hour
+            scriptCode = `
+              let State = { triggerTime: 0, triggered: false };
+              MQTT.subscribe("${payload.targetDeviceId}/events/rpc", function(topic, msg) {
+                let ev = JSON.parse(msg);
+                if (ev.method === "NotifyStatus" && typeof ev.params["switch:0"] !== "undefined") {
+                   let s = ev.params["switch:0"].output;
+                   if (s === ${triggerState}) {
+                      Shelly.call("Sys.GetStatus", {}, function(sys) {
+                        if (sys.unixtime) { State.triggerTime = sys.unixtime; State.triggered = false; }
+                      });
+                   } else {
+                      State.triggerTime = 0;
+                   }
+                }
+              });
+              Timer.set(60000, true, function() {
+                if (State.triggerTime > 0 && !State.triggered) {
+                  Shelly.call("Sys.GetStatus", {}, function(sys) {
+                    if (sys.unixtime) {
+                      if (sys.unixtime - State.triggerTime >= ${payload.delaySeconds}) {
+                        State.triggered = true;
                         Shelly.call("Switch.Set", { id: 0, on: ${targetState}${toggleParam} });
+                      }
                     }
-                 } else {
-                    if (State.timerHandle !== null) {
-                       Timer.clear(State.timerHandle);
-                       State.timerHandle = null;
-                    }
-                 }
-              }
-            });
-          `;
+                  });
+                }
+              });
+            `;
+          } else {
+            // Simple passive script for short delays
+            scriptCode = `
+              let State = { timerHandle: null };
+              MQTT.subscribe("${payload.targetDeviceId}/events/rpc", function(topic, msg) {
+                let ev = JSON.parse(msg);
+                if (ev.method === "NotifyStatus" && typeof ev.params["switch:0"] !== "undefined") {
+                   let s = ev.params["switch:0"].output;
+                   if (s === ${triggerState}) {
+                      if (${payload.delaySeconds} > 0) {
+                          State.timerHandle = Timer.set(${payload.delaySeconds * 1000}, false, function() {
+                             Shelly.call("Switch.Set", { id: 0, on: ${targetState}${toggleParam} });
+                          });
+                      } else {
+                          Shelly.call("Switch.Set", { id: 0, on: ${targetState}${toggleParam} });
+                      }
+                   } else {
+                      if (State.timerHandle !== null) {
+                         Timer.clear(State.timerHandle);
+                         State.timerHandle = null;
+                      }
+                   }
+                }
+              });
+            `;
+          }
           const scriptName = payload.ruleName || ('Passv_' + Date.now());
           const scriptCreateRes: any = await shelly.createScript(scriptName.substring(0,25));
           await shelly.putScriptCode(scriptCreateRes.id, scriptCode);
