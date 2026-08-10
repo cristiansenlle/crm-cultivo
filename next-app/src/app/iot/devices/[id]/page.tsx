@@ -188,14 +188,18 @@ export default function DevicePage() {
   const createSchedule = async () => {
     setLoading(true);
     const [hh, mm] = newSchTime.split(':');
-    const timespec = `0 ${mm} ${hh} * * *`;
+    const timespec = `0 ${mm} ${hh} * * SUN,MON,TUE,WED,THU,FRI,SAT`;
     
-    await fetch('/api/iot/shelly', {
+    const res = await fetch('/api/iot/shelly', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         deviceId: device.deviceId, action: 'create_schedule', payload: { timespec, on: newSchAction === 'true' }
       })
     });
+    const data = await res.json();
+    if (!data.success) {
+      alert('Error creando programación: ' + (data.error || 'Desconocido'));
+    }
     await fetchSchedules();
     setLoading(false);
   };
@@ -212,12 +216,18 @@ export default function DevicePage() {
       auto_off_delay: timerAction === 'off' ? totalSeconds : 0
     };
 
-    await fetch('/api/iot/shelly', {
+    const res = await fetch('/api/iot/shelly', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ deviceId: device.deviceId, action: 'set_timers', payload })
     });
+    
+    if (res.ok) {
+      await fetchConfig(); // <-- Refrescar la UI para mostrar los timers
+      alert('Temporizador Auto-' + (timerAction === 'on' ? 'ON' : 'OFF') + ' configurado exitosamente.');
+    } else {
+      alert('Error configurando el temporizador.');
+    }
     setLoading(false);
-    alert('Temporizador Auto-' + (timerAction === 'on' ? 'ON' : 'OFF') + ' configurado exitosamente.');
   };
 
   const deleteSchedule = async (id: number) => {
