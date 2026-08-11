@@ -53,16 +53,26 @@ export async function POST(req: Request) {
             // Robust passive script for delays > 1 hour
             scriptCode = `
               let State = { triggerTime: 0, triggered: false };
+              let KVS_KEY = "passive_timer_" + "${payload.targetDeviceId}";
+              Shelly.call("KVS.Get", { key: KVS_KEY }, function(res, err) {
+                if (!err && res && res.value) { State.triggerTime = Number(res.value); }
+              });
+
               MQTT.subscribe("${payload.targetDeviceId}/events/rpc", function(topic, msg) {
                 let ev = JSON.parse(msg);
                 if (ev.method === "NotifyStatus" && typeof ev.params["switch:0"] !== "undefined") {
                    let s = ev.params["switch:0"].output;
                    if (s === ${triggerState}) {
                       Shelly.call("Sys.GetStatus", {}, function(sys) {
-                        if (sys.unixtime) { State.triggerTime = sys.unixtime; State.triggered = false; }
+                        if (sys.unixtime) { 
+                          State.triggerTime = sys.unixtime; 
+                          State.triggered = false; 
+                          Shelly.call("KVS.Set", { key: KVS_KEY, value: String(sys.unixtime) });
+                        }
                       });
                    } else {
                       State.triggerTime = 0;
+                      Shelly.call("KVS.Delete", { key: KVS_KEY });
                    }
                 }
               });
@@ -72,6 +82,8 @@ export async function POST(req: Request) {
                     if (sys.unixtime) {
                       if (sys.unixtime - State.triggerTime >= ${payload.delaySeconds}) {
                         State.triggered = true;
+                        State.triggerTime = 0;
+                        Shelly.call("KVS.Delete", { key: KVS_KEY });
                         Shelly.call("Switch.Set", { id: 0, on: ${targetState}${toggleParam} });
                       }
                     }
