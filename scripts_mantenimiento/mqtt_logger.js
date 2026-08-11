@@ -67,6 +67,8 @@ async function getSupabase(table) {
 }
 
 const scriptTimers = {};
+const pendingNotifications = {};
+const lastNotifiedState = {};
 
 async function notifyWhatsApp(deviceId, eventStr, state = null) {
   try {
@@ -222,10 +224,21 @@ client.on('message', async (topic, message) => {
                 console.log(`[${new Date().toISOString()}] Evento detectado: ${deviceId} -> ${eventStr}`);
                 const { error } = await insertSupabase('device_logs', { device_ip: deviceId, event: eventStr, source: 'mqtt_logger' });
                 if (error) console.error("Error al guardar en Supabase:", error.message);
-                // Esperar 1.5 segundos antes de notificar para dar tiempo a que lleguen los timers de los scripts
-                setTimeout(() => {
-                    notifyWhatsApp(deviceId, eventStr, state);
-                }, 1500);
+
+                if (pendingNotifications[deviceId]) {
+                    clearTimeout(pendingNotifications[deviceId]);
+                    delete pendingNotifications[deviceId];
+                }
+                
+                if (lastNotifiedState[deviceId] !== eventStr) {
+                    pendingNotifications[deviceId] = setTimeout(() => {
+                        lastNotifiedState[deviceId] = eventStr;
+                        notifyWhatsApp(deviceId, eventStr, state);
+                        delete pendingNotifications[deviceId];
+                    }, 15000);
+                } else {
+                    console.log(`[Debounce] Mensaje de WhatsApp omitido para ${deviceId} (estado ya era ${eventStr})`);
+                }
             }
         }
 
