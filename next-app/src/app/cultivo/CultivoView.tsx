@@ -243,14 +243,24 @@ export function CultivoView() {
       const { error } = await supabase.from('core_batches').update(updates).eq('id', batchId);
       if(!error) {
           // CHECK AUTO-TRANSICIÓN DE ROOM
-          if (selectedRoom && nextStage === 'floración') {
-              const {data: siblings} = await supabase.from('core_batches').select('stage').eq('location', selectedRoom.id);
+          if (selectedRoom) {
+              const { data: siblings } = await supabase.from('core_batches').select('stage').eq('location', selectedRoom.id);
               if (siblings && siblings.length > 0) {
-                  const allFloro = siblings.every((s: any) => (s.stage || '').toLowerCase() === 'floración' || (s.stage || '').toLowerCase().includes('cosecha'));
-                  if (allFloro && selectedRoom.phase !== 'Floración') {
-                       await supabase.from('core_rooms').update({phase: 'Floración'}).eq('id', selectedRoom.id);
-                       setSelectedRoom({...selectedRoom, phase: 'Floración'});
-                       fetchRooms();
+                  const activeStages = siblings.map((s: any) => (s.stage || '').toLowerCase());
+                  let newPhase = selectedRoom.phase;
+                  
+                  if (activeStages.every(st => st === 'cosecha' || st === 'finalizado')) {
+                      newPhase = 'Cosecha';
+                  } else if (activeStages.some(st => st === 'floración' || st === 'cosecha')) {
+                      newPhase = 'Floración';
+                  } else if (activeStages.every(st => st === 'vegetativo')) {
+                      newPhase = 'Vegetativo';
+                  }
+
+                  if (newPhase && newPhase !== selectedRoom.phase) {
+                      await supabase.from('core_rooms').update({ phase: newPhase }).eq('id', selectedRoom.id);
+                      setSelectedRoom({ ...selectedRoom, phase: newPhase });
+                      fetchRooms();
                   }
               }
           }
@@ -458,12 +468,16 @@ export function CultivoView() {
                   <button onClick={(e)=>removeRoom(room.id, e)} className="absolute top-2 right-2 text-xs text-brand-slate-600 hover:text-red-500 bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded">X</button>
                   <div className="flex justify-between items-start mt-2">
                     <h3 className="text-lg font-bold flex items-center gap-2">
-                      <Tree size={20} className={room.phase === 'Floración' ? 'text-purple-400' : 'text-emerald-500'} />
+                      <Tree size={20} className={room.phase === 'Floración' ? 'text-purple-400' : room.phase === 'Cosecha' ? 'text-orange-400' : 'text-emerald-500'} />
                       {room.name}
                     </h3>
                   </div>
                   <div className="flex flex-col gap-1 mt-3">
-                    <span className={`self-start px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider bg-status-green/10 text-status-green`}>
+                    <span className={`self-start px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${
+                      room.phase === 'Floración' ? 'bg-purple-500/10 text-purple-400' :
+                      room.phase === 'Cosecha' ? 'bg-orange-500/10 text-orange-400' :
+                      'bg-status-green/10 text-status-green'
+                    }`}>
                       {room.phase || 'Vegetativo'}
                     </span>
                   </div>
