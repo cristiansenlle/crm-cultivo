@@ -173,9 +173,7 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
   const totalGrams = partials.reduce((sum: number, p: any) => sum + Number(p.weight_dry || 0), 0);
   const avgCostPerGram = totalGrams > 0 ? (totalCost / totalGrams) : 0;
   
-  const originalPlants = (batch.stage_history && batch.stage_history.length > 0)
-      ? batch.num_plants + partials.reduce((sum: number, p: any) => sum + Number(p.plants_harvested || 0), 0)
-      : batch.num_plants || 1;
+  const originalPlants = batch.num_plants || 1;
 
   const yieldPerPlant = totalGrams > 0 ? (totalGrams / originalPlants) : 0;
 
@@ -456,9 +454,7 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
                     <tr className="border-b border-panel-border/50 text-brand-slate-600">
                       <th className="py-2">Tanda</th>
                       <th className="py-2">Fecha</th>
-                      <th className="py-2 text-right">Plantas</th>
                       <th className="py-2 text-right">Peso Seco</th>
-                      <th className="py-2 text-right">OpEx</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -466,12 +462,10 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
                       <tr key={idx} className="border-b border-panel-border/20">
                         <td className="py-2 font-bold text-foreground">{p.tanda_name}</td>
                         <td className="py-2">{new Date(p.harvest_date).toLocaleDateString()}</td>
-                        <td className="py-2 text-right">{p.plants_harvested}</td>
                         <td className="py-2 text-right text-orange-400 font-bold">{p.weight_dry}g</td>
-                        <td className="py-2 text-right text-status-green">${Number(p.opex_allocated || 0).toFixed(0)}</td>
                       </tr>
                     ))}
-                    {partials.length === 0 && <tr><td colSpan={5} className="py-4 text-center opacity-40">Sin cosechas ingresadas.</td></tr>}
+                    {partials.length === 0 && <tr><td colSpan={3} className="py-4 text-center opacity-40">Sin cosechas ingresadas.</td></tr>}
                   </tbody>
                 </table>
               </div>

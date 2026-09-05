@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 import { GlassCard } from "../../components/ui/GlassCard";
 import { Info, MapPinLine, Tree, Plus, Plant, Coins, AppWindow, FloppyDisk, PencilSimple, Trash, Stack } from "@phosphor-icons/react";
 import { supabase } from "../../lib/supabase";
@@ -11,6 +12,7 @@ import { BatchReportModal } from "./BatchReportModal";
 import { AiHealthChartModal } from "../../components/AiHealthChartModal";
 import { Camera, ShieldCheck, X } from "@phosphor-icons/react";
 import { Activity } from "lucide-react";
+import { ElectrophysiologyWidget } from "../../components/dashboard/ElectrophysiologyWidget";
 
 export function CultivoView() {
   const [rooms, setRooms] = useState<any[]>([]);
@@ -31,7 +33,6 @@ export function CultivoView() {
   const [harvestGrams, setHarvestGrams] = useState("");
   const [partialHarvests, setPartialHarvests] = useState<any[]>([]);
   const [harvestTandaName, setHarvestTandaName] = useState("");
-  const [harvestPlantsCount, setHarvestPlantsCount] = useState("1");
 
   const [chartModal, setChartModal] = useState<{isOpen: boolean, batch: any}>({isOpen: false, batch: null});
   const [healthChartModal, setHealthChartModal] = useState<{isOpen: boolean, batch: any}>({isOpen: false, batch: null});
@@ -234,7 +235,6 @@ export function CultivoView() {
               const { data: allHarvests } = await supabase.from('core_partial_harvests').select('weight_dry').eq('batch_id', batchId);
               const totalDryWeight = (allHarvests || []).reduce((sum: number, h: any) => sum + Number(h.weight_dry || 0), 0);
               updates.weight_dry = totalDryWeight;
-              updates.num_plants = 0; // Al finalizar no quedan plantas activas vivas
           }
       } else {
           updates.stage = nextStage;
@@ -372,7 +372,6 @@ export function CultivoView() {
   const openPartialHarvestModal = (batch: any) => {
       const existing = partialHarvests.filter(ph => ph.batch_id === batch.id);
       setHarvestTandaName(`Tanda ${existing.length + 1}`);
-      setHarvestPlantsCount("1");
       setHarvestGrams("");
       setHarvestModal({ isOpen: true, batch, nextStage: "" });
   };
@@ -381,23 +380,18 @@ export function CultivoView() {
       e.preventDefault();
       const grams = parseFloat(harvestGrams);
       if (isNaN(grams) || grams <= 0) return alert("Ingrese un gramaje válido");
-      
-      const plantsCount = parseFloat(harvestPlantsCount);
-      if (isNaN(plantsCount) || plantsCount < 0) return alert("Ingrese un número de plantas válido");
 
       setHarvestModal(prev => ({...prev, isOpen: false}));
 
       // 1. Registrar la Tanda en la tabla de Cosechas Parciales
       const totalOpex = batchCosts[harvestModal.batch.id] || 0;
-      const totalPlants = harvestModal.batch.num_plants || 1;
-      const proportionalOpex = Math.min(totalOpex, (plantsCount / totalPlants) * totalOpex);
 
       const partialPayload = {
           batch_id: harvestModal.batch.id,
           tanda_name: harvestTandaName || 'Tanda General',
-          plants_harvested: plantsCount,
+          plants_harvested: 0,
           weight_dry: grams,
-          opex_allocated: proportionalOpex,
+          opex_allocated: totalOpex,
           harvest_date: new Date().toISOString().split('T')[0]
       };
 
@@ -419,7 +413,7 @@ export function CultivoView() {
           name: lotName,
           type: (harvestModal.batch.origen || '').toLowerCase() === 'externo' ? 'b2b' : 'cosecha_local',
           qty: grams,
-          price: proportionalOpex / grams, // Costo unitario por gramo real (OpEx unitario)
+          price: totalOpex > 0 ? totalOpex / grams : 0, // Costo unitario por gramo real (OpEx unitario)
           date_added: new Date().toISOString()
       };
       
@@ -428,33 +422,8 @@ export function CultivoView() {
           return alert("Error de Inyección a Inventario POS: " + invError.message);
       }
 
-      // 3. Decrementar población del lote y cerrar si llega a 0
-      const newPlantsCount = Math.max(0, totalPlants - plantsCount);
-      const batchUpdates: any = { num_plants: newPlantsCount };
-
-      if (newPlantsCount === 0) {
-          batchUpdates.stage = 'finalizado';
-          batchUpdates.last_stage_date = new Date().toISOString();
-          
-          const lastDate = harvestModal.batch.last_stage_date ? new Date(harvestModal.batch.last_stage_date) : new Date(harvestModal.batch.start_date || harvestModal.batch.created_at || Date.now());
-          const daysInStage = Math.max(0, Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24)));
-          
-          const currentHistory = harvestModal.batch.stage_history || [];
-          batchUpdates.stage_history = [...currentHistory, { stage: harvestModal.batch.stage || 'cosecha', days: daysInStage }];
-
-          // Calcular la suma de todos los pesos secos parciales de este lote
-          const { data: allHarvests } = await supabase.from('core_partial_harvests').select('weight_dry').eq('batch_id', harvestModal.batch.id);
-          const totalDryWeight = (allHarvests || []).reduce((sum: number, h: any) => sum + Number(h.weight_dry || 0), 0) + grams;
-          batchUpdates.weight_dry = totalDryWeight;
-      }
-
-      const { error: batchError } = await supabase.from('core_batches').update(batchUpdates).eq('id', harvestModal.batch.id);
-      if (!batchError) {
-          alert("Tanda cosechada exitosamente. Stock inyectado en el POS con costo unitario calculado.");
-          fetchBatches();
-      } else {
-          alert("Error de actualización del lote: " + batchError.message);
-      }
+      alert("Tanda cosechada exitosamente. Stock inyectado en el POS.");
+      fetchBatches();
   };
 
   const removeRoom = async (id: string, e: React.MouseEvent) => {
@@ -641,6 +610,35 @@ export function CultivoView() {
         </section>
       )}
 
+      {/* Acceso Rápido al Módulo de Electrofisiología */}
+      {selectedRoom && (
+        <section className="mb-8">
+          <Link href="/electrofisiologia">
+            <GlassCard className="p-4 border border-emerald-500/30 hover:border-emerald-500/60 bg-gradient-to-r from-emerald-950/30 via-black/40 to-black/30 backdrop-blur-md flex items-center justify-between cursor-pointer transition-all group shadow-lg">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 group-hover:scale-110 transition-transform">
+                  <Activity size={20} className="animate-pulse" />
+                </div>
+                <div>
+                  <h4 className="text-sm font-bold text-foreground group-hover:text-emerald-400 transition-colors flex items-center gap-2">
+                    Electrofisiología Vegetal en Vivo
+                    <span className="px-2 py-0.2 text-[9px] font-mono rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 uppercase">
+                      Nuevo Módulo
+                    </span>
+                  </h4>
+                  <p className="text-xs text-foreground/60 font-mono">
+                    Acceder al diagnóstico de biopotenciales, fotosíntesis y nutrición de la planta centinela →
+                  </p>
+                </div>
+              </div>
+              <span className="text-xs font-mono text-emerald-400 group-hover:translate-x-1 transition-transform hidden sm:inline">
+                Abrir Panel Completo →
+              </span>
+            </GlassCard>
+          </Link>
+        </section>
+      )}
+
       {activeBitacora && (
         <BitacoraModal batch={activeBitacora} onClose={() => setActiveBitacora(null)} />
       )}
@@ -679,29 +677,23 @@ export function CultivoView() {
             <GlassCard className="max-w-md w-full p-6 shadow-2xl relative border-t-4 border-t-orange-500">
                 <button onClick={() => setHarvestModal(prev => ({...prev, isOpen: false}))} className="absolute top-4 right-4 text-brand-slate-600 hover:text-foreground transition-colors"><AppWindow size={24}/></button>
                 <h2 className="text-xl font-bold mb-2 flex items-center gap-2 text-orange-500">Carga de Cosecha Seca Parcial</h2>
-                <p className="text-brand-slate-600 dark:text-slate-400 text-sm mb-4">Ingrese los datos para la inyección de stock de esta tanda. El costo se distribuirá proporcionalmente por planta.</p>
+                <p className="text-brand-slate-600 dark:text-slate-400 text-sm mb-4">Ingrese los datos para la inyección de stock de esta tanda. El lote permanecerá activo hasta que haga clic en 'Finalizar'.</p>
                 
                 <div className="bg-orange-500/10 border border-orange-500/20 p-3 rounded-lg mb-6 grid grid-cols-2 gap-2 text-left">
                    <div>
-                       <span className="text-[10px] font-mono text-orange-400 block">OpEx Total Acumulado:</span>
+                       <span className="text-[10px] font-mono text-orange-400 block">OpEx Acumulado:</span>
                        <span className="text-sm font-bold text-foreground">${batchCosts[harvestModal.batch.id] || 0} ARG</span>
                    </div>
                    <div>
-                       <span className="text-[10px] font-mono text-orange-400 block">Plantas Restantes:</span>
-                       <span className="text-sm font-bold text-foreground">{harvestModal.batch.num_plants || 0} vivas</span>
+                       <span className="text-[10px] font-mono text-orange-400 block">Población del Lote:</span>
+                       <span className="text-sm font-bold text-foreground">{harvestModal.batch.num_plants || 0} indivs</span>
                    </div>
                 </div>
 
                 <form onSubmit={handleHarvestSubmit} className="flex flex-col gap-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Identificador Tanda</label>
-                            <input type="text" required placeholder="Ej: Tanda 1" value={harvestTandaName} onChange={e=>setHarvestTandaName(e.target.value)} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 text-sm focus:border-orange-500 outline-none text-foreground font-bold"/>
-                        </div>
-                        <div>
-                            <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Plantas Cosechadas</label>
-                            <input type="number" min="1" max={harvestModal.batch.num_plants || 1} required value={harvestPlantsCount} onChange={e=>setHarvestPlantsCount(e.target.value)} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 text-sm focus:border-orange-500 outline-none text-foreground text-center font-bold"/>
-                        </div>
+                    <div>
+                        <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Identificador Tanda</label>
+                        <input type="text" required placeholder="Ej: Tanda 1" value={harvestTandaName} onChange={e=>setHarvestTandaName(e.target.value)} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 text-sm focus:border-orange-500 outline-none text-foreground font-bold"/>
                     </div>
                     <div>
                         <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Peso Seco Neto (Gramos)</label>
