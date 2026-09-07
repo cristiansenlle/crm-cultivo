@@ -27,19 +27,24 @@ export function BitacoraGlobalModal({ room, batches, onClose, onRefreshBatches }
     if (data) setInventory(data);
   };
 
+  const activeBatches = batches.filter(b => {
+    const st = (b.stage || '').toLowerCase();
+    return st !== 'finalizado' && st !== 'cosecha seca';
+  });
+
   const handleCreateGlobalEvent = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
-    if (batches.length === 0) {
-       alert("No hay lotes activos en esta sala para distribuir la aplicación.");
+    if (activeBatches.length === 0) {
+       alert("No hay lotes activos en esta sala para distribuir la aplicación (los lotes finalizados no reciben insumos).");
        setIsSubmitting(false);
        return;
     }
 
     let finalDescGlobal = desc;
     let finalCostTotal = 0;
-    const splitFactor = batches.length;
+    const splitFactor = activeBatches.length;
     
     let selectedProductIdForEvent: string | null = null;
     
@@ -104,8 +109,8 @@ export function BitacoraGlobalModal({ room, batches, onClose, onRefreshBatches }
     // Dividimos el costo total del producto extraído entre la cantidad de Lotes Activos
     const costPerBatch = finalCostTotal / splitFactor;
 
-    // 2. Crear las Inserciones Distribuidas
-    const eventsToInsert = batches.map(batch => ({
+    // 2. Crear las Inserciones Distribuidas únicamente en lotes activos
+    const eventsToInsert = activeBatches.map(batch => ({
       batch_id: batch.id,
       room_id: room.id,
       event_type: actionType === 'riego' ? 'Riego' : actionType === 'ipm' ? 'IPM' : actionType,
@@ -119,7 +124,7 @@ export function BitacoraGlobalModal({ room, batches, onClose, onRefreshBatches }
     const { error } = await supabase.from('core_agronomic_events').insert(eventsToInsert);
     
     if (!error) {
-       alert(`✅ Aplicación global exitosa. Insumos distribuidos en ${splitFactor} lotes. Costo p/capita: $${costPerBatch.toFixed(2)}`);
+       alert(`✅ Aplicación global exitosa. Insumos distribuidos en ${splitFactor} lotes activos. Costo p/capita: $${costPerBatch.toFixed(2)}`);
        onRefreshBatches();
        onClose();
     } else {
@@ -154,7 +159,12 @@ export function BitacoraGlobalModal({ room, batches, onClose, onRefreshBatches }
            <div className="flex bg-blue-500/10 border border-blue-500/20 p-4 rounded-xl mb-6 items-start gap-3">
                <Info size={24} className="text-blue-500 shrink-0 mt-0.5" />
                <div className="text-xs text-blue-100/80 leading-relaxed font-mono">
-                  Esta operación impactará simultáneamente sus costos e historiales a los <strong className="text-blue-400 text-sm mx-1">{batches.length} lotes</strong> vinculados a este recinto. Indique el volumen total de litros/insumos que utilizó en la labor. El gestor lo dividirá automáticamente.
+                  Esta operación impactará simultáneamente sus costos e historiales a los <strong className="text-blue-400 text-sm mx-1">{activeBatches.length} lotes activos</strong> de esta sala (los lotes finalizados quedan excluidos). Indique el volumen total de insumos que utilizó en la labor. El gestor lo dividirá automáticamente.
+                  {activeBatches.length > 0 && (
+                    <div className="mt-2 text-[11px] text-blue-300">
+                      Lotes receptores: <span className="font-bold text-white">{activeBatches.map(b => b.id).join(', ')}</span>
+                    </div>
+                  )}
                </div>
            </div>
 

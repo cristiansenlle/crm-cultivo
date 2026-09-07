@@ -54,12 +54,42 @@ export function CultivoView() {
   const [finalizePhotos, setFinalizePhotos] = useState<FileList | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
 
+  const calculateRoomPhase = (batchesInRoom: any[]): string => {
+    const active = (batchesInRoom || []).filter((s: any) => {
+      const st = (s.stage || '').toLowerCase();
+      return st !== 'finalizado' && st !== 'cosecha seca';
+    });
+    if (active.length === 0) return 'Vegetativo';
+    const stages = active.map((s: any) => (s.stage || '').toLowerCase());
+    if (stages.every(st => st === 'cosecha')) return 'Cosecha';
+    if (stages.some(st => st === 'floración')) return 'Floración';
+    if (stages.some(st => st === 'cosecha')) return 'Cosecha';
+    return 'Vegetativo';
+  };
+
   const fetchRooms = async () => {
     setLoading(true);
-    const { data, error } = await supabase.from('core_rooms').select('id, name, phase');
-    if (data && !error) {
-      setRooms(data);
-      if (data.length > 0 && !selectedRoom) setSelectedRoom(data[0]);
+    const { data: roomsData, error: roomsError } = await supabase.from('core_rooms').select('id, name, phase');
+    const { data: batchesData } = await supabase.from('core_batches').select('location, stage');
+
+    if (roomsData && !roomsError) {
+      const updatedRooms = await Promise.all(roomsData.map(async (room) => {
+        const inRoom = (batchesData || []).filter((b: any) => b.location === room.id);
+        const correctPhase = calculateRoomPhase(inRoom);
+        if (correctPhase !== room.phase) {
+          await supabase.from('core_rooms').update({ phase: correctPhase }).eq('id', room.id);
+          return { ...room, phase: correctPhase };
+        }
+        return room;
+      }));
+
+      setRooms(updatedRooms);
+      if (updatedRooms.length > 0 && !selectedRoom) {
+        setSelectedRoom(updatedRooms[0]);
+      } else if (selectedRoom) {
+        const currentUpdated = updatedRooms.find(r => r.id === selectedRoom.id);
+        if (currentUpdated) setSelectedRoom(currentUpdated);
+      }
     }
     setLoading(false);
   };
@@ -88,6 +118,7 @@ export function CultivoView() {
           setAddBatchModalOpen(false);
           setNewBatch({ name: "", strain: "", num_plants: 1, origen: "Semilla" });
           fetchBatches();
+          fetchRooms();
       } else {
           alert("Error creando lote: " + error.message);
       }
@@ -109,6 +140,7 @@ export function CultivoView() {
       if (!error) {
           setEditBatchModalOpen(false);
           fetchBatches();
+          fetchRooms();
       } else {
           alert("Error editando lote: " + error.message);
       }
@@ -134,6 +166,7 @@ export function CultivoView() {
           alert("No se pudo eliminar el lote debido a restricciones de integridad (el lote ya cuenta con un historial económico o agrónomo):\n" + error.message);
       } else {
           fetchBatches();
+          fetchRooms();
       }
   };
 
@@ -245,24 +278,14 @@ export function CultivoView() {
           // CHECK AUTO-TRANSICIÓN DE ROOM
           if (selectedRoom) {
               const { data: siblings } = await supabase.from('core_batches').select('stage').eq('location', selectedRoom.id);
-              if (siblings && siblings.length > 0) {
-                  const activeStages = siblings.map((s: any) => (s.stage || '').toLowerCase());
-                  let newPhase = selectedRoom.phase;
-                  
-                  if (activeStages.every(st => st === 'cosecha' || st === 'finalizado')) {
-                      newPhase = 'Cosecha';
-                  } else if (activeStages.some(st => st === 'floración' || st === 'cosecha')) {
-                      newPhase = 'Floración';
-                  } else if (activeStages.every(st => st === 'vegetativo')) {
-                      newPhase = 'Vegetativo';
-                  }
-
-                  if (newPhase && newPhase !== selectedRoom.phase) {
+              if (siblings) {
+                  const newPhase = calculateRoomPhase(siblings);
+                  if (newPhase !== selectedRoom.phase) {
                       await supabase.from('core_rooms').update({ phase: newPhase }).eq('id', selectedRoom.id);
                       setSelectedRoom({ ...selectedRoom, phase: newPhase });
-                      fetchRooms();
                   }
               }
+              await fetchRooms();
           }
           fetchBatches(); 
       } else {
@@ -496,11 +519,11 @@ export function CultivoView() {
                <div>
                   <h2 className="text-2xl font-extrabold flex items-center gap-2">{selectedRoom.name}</h2>
                   <p className="text-brand-slate-600 dark:text-slate-400 text-sm font-mono flex items-center gap-1 mt-1">
-                    <Info size={16} /> {batches.length} Lotes activos vinculados.
+                    <Info size={16} /> {batches.filter(b => (b.stage || '').toLowerCase() !== 'finalizado' && (b.stage || '').toLowerCase() !== 'cosecha seca').length} Lotes activos vinculados.
                   </p>
                </div>
                <div className="flex flex-col sm:flex-row gap-2 items-center">
-                   {batches.length > 0 && (
+                   {batches.filter(b => (b.stage || '').toLowerCase() !== 'finalizado' && (b.stage || '').toLowerCase() !== 'cosecha seca').length > 0 && (
                        <button onClick={() => setActiveGlobalBitacora(true)} className="flex w-full sm:w-auto justify-center items-center gap-2 px-4 py-2 bg-blue-600/20 text-blue-500 hover:bg-blue-600 hover:text-white rounded-lg transition-colors font-bold text-sm border border-blue-500/30">
                           <Stack size={16} weight="bold" /> Aplicación Global
                        </button>
@@ -658,7 +681,12 @@ export function CultivoView() {
       )}
 
       {activeGlobalBitacora && selectedRoom && (
-        <BitacoraGlobalModal room={selectedRoom} batches={batches} onClose={() => setActiveGlobalBitacora(false)} onRefreshBatches={fetchBatches} />
+        <BitacoraGlobalModal 
+          room={selectedRoom} 
+          batches={batches.filter(b => (b.stage || '').toLowerCase() !== 'finalizado' && (b.stage || '').toLowerCase() !== 'cosecha seca')} 
+          onClose={() => setActiveGlobalBitacora(false)} 
+          onRefreshBatches={fetchBatches} 
+        />
       )}
 
       {/* Modal Fotoperiodo */}
