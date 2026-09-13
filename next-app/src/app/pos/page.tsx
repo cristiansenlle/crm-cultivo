@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { GlassCard } from "../../components/ui/GlassCard";
-import { ShoppingCart, Storefront, Receipt, Trash, CheckCircle, Clock, CalendarBlank, HourglassMedium, Scissors } from "@phosphor-icons/react";
+import { ShoppingCart, Storefront, Receipt, Trash, CheckCircle, Clock, CalendarBlank } from "@phosphor-icons/react";
 import { supabase } from "../../lib/supabase";
 
 export function getHarvestDateInfo(dateRaw?: string) {
@@ -241,7 +241,7 @@ export default function POSPage() {
                                         className="p-4 rounded-xl border border-panel-border bg-black/[0.03] dark:bg-black/20 hover:border-emerald-500/50 cursor-pointer hover:bg-black/[0.05] dark:bg-black/30 transition-all group flex flex-col justify-between shadow-sm hover:shadow-md"
                                     >
                                         <div>
-                                            <div className="flex justify-between items-center mb-2 gap-1">
+                                            <div className="flex justify-between items-center mb-2.5 gap-1.5">
                                                 <div className="flex items-center gap-1.5 flex-wrap">
                                                     <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
                                                         {item.type === 'cosecha_local' ? '🌱 Cosecha Propia' : '📦 B2B'}
@@ -257,9 +257,9 @@ export default function POSPage() {
                                                         </span>
                                                     )}
                                                 </div>
-                                                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 font-semibold flex items-center gap-1 shrink-0">
-                                                    <Clock size={12} weight="bold" />
-                                                    {daysElapsed === 0 ? 'Día 0 (Hoy)' : `${daysElapsed} ${daysElapsed === 1 ? 'día' : 'días'}`}
+                                                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 font-semibold flex items-center gap-1 shrink-0" title={`Cosecha seca: ${formattedDate}`}>
+                                                    <CalendarBlank size={12} weight="bold" />
+                                                    {formattedDate} • {daysElapsed === 0 ? 'Hoy' : `${daysElapsed}d`}
                                                 </span>
                                             </div>
 
@@ -267,41 +267,11 @@ export default function POSPage() {
                                                 {item.name}
                                             </h4>
                                             
-                                            <div className="text-[11px] font-mono text-brand-slate-600 mt-1 mb-2.5 flex items-center gap-1.5 flex-wrap">
-                                                <span>Lote: <strong className="text-foreground">{item.batch_id || 'NIcole Punch 2-2026'}</strong></span>
-                                                {item.strain && <span className="opacity-70">• {item.strain}</span>}
-                                            </div>
-
-                                            {/* Info Cosecha Seca, Corte Verde & Curado */}
-                                            <div className="bg-black/10 dark:bg-black/40 rounded-lg p-2.5 border border-panel-border/50 flex flex-col gap-1.5 text-xs font-mono mb-2">
-                                                {item.wet_harvest_date && (
-                                                    <div className="flex items-center justify-between text-[11px] pb-1 border-b border-panel-border/30">
-                                                        <span className="text-brand-slate-500 flex items-center gap-1.5">
-                                                            <Scissors size={13} className="text-orange-400" />
-                                                            Corte Verde (Carpa):
-                                                        </span>
-                                                        <span className="text-orange-400 font-bold">
-                                                            {getHarvestDateInfo(item.wet_harvest_date).formattedDate}
-                                                        </span>
-                                                    </div>
-                                                )}
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-brand-slate-500 flex items-center gap-1.5">
-                                                        <CalendarBlank size={13} className="text-emerald-400" />
-                                                        Cosecha Seca:
-                                                    </span>
-                                                    <strong className="text-foreground">{formattedDate}</strong>
+                                            {item.strain && (
+                                                <div className="text-xs text-brand-slate-500 mt-1 mb-3">
+                                                    Variedad: <span className="text-foreground font-medium">{item.strain}</span>
                                                 </div>
-                                                <div className="flex items-center justify-between">
-                                                    <span className="text-brand-slate-500 flex items-center gap-1.5">
-                                                        <HourglassMedium size={13} className="text-purple-400" />
-                                                        En Inventario:
-                                                    </span>
-                                                    <strong className="text-purple-400 font-bold">
-                                                        {daysElapsed === 0 ? '0 días (Cargado hoy)' : `${daysElapsed} ${daysElapsed === 1 ? 'día de curado' : 'días de curado'}`}
-                                                    </strong>
-                                                </div>
-                                            </div>
+                                            )}
                                         </div>
 
                                         <div className="flex justify-between items-center text-sm font-bold mt-2 pt-2.5 border-t border-panel-border/30">
