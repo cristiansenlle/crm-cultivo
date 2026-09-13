@@ -285,11 +285,11 @@ export default function InsumosPage() {
                                 <span className="text-lg font-bold">{item.qty}g</span>
                                 <span className="text-xs opacity-70 font-normal">Stock Bóveda</span>
                              </span>
-                             {item.price > 0 && (
-                                <span className="text-xs font-mono text-brand-slate-500">
-                                   Costo: ${Number(item.price).toFixed(0)}/g
-                                </span>
-                             )}
+                              {item.price > 0 && (
+                                 <span className="text-xs font-mono text-brand-slate-500" title="Costo unitario de producción agronómica (OpEx acumulado / gramos cosechados)">
+                                    Costo Prod: <strong className="text-foreground">${Number(item.price).toFixed(0)}/g</strong>
+                                 </span>
+                              )}
                           </div>
                        </div>
                     );

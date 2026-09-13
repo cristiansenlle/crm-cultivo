@@ -88,8 +88,14 @@ export default function POSPage() {
             setInventory(enriched);
         }
 
-        // Load Sales History
-        const { data: salesData } = await supabase.from('core_sales').select('*').order('date', { ascending: false }).limit(10);
+        // Load Sales History (Solo ventas reales del POS, excluyendo compras/egresos OPEX de insumos)
+        const { data: salesData } = await supabase
+            .from('core_sales')
+            .select('*')
+            .neq('client', 'proveedor_opex')
+            .gt('revenue', 0)
+            .order('date', { ascending: false })
+            .limit(10);
         if (salesData) setSalesHistory(salesData);
         
         setLoadingInv(false);
