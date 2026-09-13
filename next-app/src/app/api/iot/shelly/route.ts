@@ -55,7 +55,7 @@ export async function POST(req: Request) {
               let State = { triggerTime: 0, triggered: false };
               let KVS_KEY = "passive_timer_" + "${payload.targetDeviceId}";
               Shelly.call("KVS.Get", { key: KVS_KEY }, function(res, err) {
-                if (!err && res && res.value) { State.triggerTime = Number(res.value); }
+                if (!err && res && res.value) { State.triggerTime = JSON.parse(res.value); }
               });
 
               MQTT.subscribe("${payload.targetDeviceId}/events/rpc", function(topic, msg) {
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
                         if (sys.unixtime) { 
                           State.triggerTime = sys.unixtime; 
                           State.triggered = false; 
-                          Shelly.call("KVS.Set", { key: KVS_KEY, value: String(sys.unixtime) });
+                          Shelly.call("KVS.Set", { key: KVS_KEY, value: JSON.stringify(sys.unixtime) });
                         }
                       });
                    } else {

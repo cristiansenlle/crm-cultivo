@@ -23,6 +23,7 @@ if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
 
 const client = mqtt.connect('mqtt://127.0.0.1:1883', { clientId: 'crm-mqtt-logger-fix6-' + Math.random().toString(16).substr(2, 8) });
 const deviceNames = {};
+const lastPhytoSaveTime = {};
 
 async function insertSupabase(table, payload) {
     try {
@@ -125,6 +126,9 @@ client.on('connect', () => {
   client.subscribe('cultivo/soil/esp32/#', (err) => {
     if (!err) console.log("Suscrito a topics ESP32.");
   });
+  client.subscribe('cultivo/electrophysiology/esp32/#', (err) => {
+    if (!err) console.log("Suscrito a topics Electrofisiologia ESP32.");
+  });
   
   client.publish('shellyplus1-8813bf9f8878/rpc', JSON.stringify({id: 999, src: 'logger_rpc', method: 'Shelly.GetDeviceInfo'}));
   client.publish('shellyplus1-8813bf9fc354/rpc', JSON.stringify({id: 999, src: 'logger_rpc', method: 'Shelly.GetDeviceInfo'}));
@@ -188,6 +192,56 @@ client.on('message', async (topic, message) => {
         return;
     }
 
+    // Check ESP32 Plant Electrophysiology Biosensor
+    if (topic.includes('electrophysiology')) {
+        try {
+            console.log(`[${new Date().toISOString()}] 🌿 Phyto Biosensor MAC: ${payload.mac} -> V:${payload.voltage_mv}mV Base:${payload.baseline_mv}mV Stress:${payload.stress_index}% Event:${payload.event} (ADS:${payload.ads_online})`);
+            
+            const now = Date.now();
+            const lastSaved = lastPhytoSaveTime[payload.mac] || 0;
+            const isSignificantEvent = payload.event === 'stress_spike' || payload.event === 'action_potential';
+
+            // Guardar cada 15 segundos o inmediatamente si hay un evento significativo
+            if (now - lastSaved >= 15000 || isSignificantEvent) {
+                lastPhytoSaveTime[payload.mac] = now;
+
+                const record = {
+                    mac: payload.mac || 'ESP32-Phyto',
+                    room_id: payload.room_id || '5a650ff8-9b93-40cc-a7f9-c672bad50014',
+                    plant_tag: payload.plant_tag || 'Carpa2_PlantaCentinela_01',
+                    voltage_mv: Number(payload.voltage_mv) || (payload.ch1 ? Number(payload.ch1.voltage_mv) : 0),
+                    baseline_mv: Number(payload.baseline_mv) || (payload.ch1 ? Number(payload.ch1.baseline_mv) : 1650),
+                    stress_index: Number(payload.stress_index) || (payload.ch1 ? Number(payload.ch1.stress_index) : 0),
+                    event: payload.event || (payload.ch1 ? payload.ch1.event : 'steady'),
+                    ch1: payload.ch1 || {
+                        voltage_mv: Number(payload.voltage_mv) || 0,
+                        baseline_mv: Number(payload.baseline_mv) || 1650,
+                        stress_index: Number(payload.stress_index) || 0,
+                        event: payload.event || 'steady'
+                    },
+                    ch2: payload.ch2 || null,
+                    ads_online: payload.ads_online !== false,
+                    timestamp: new Date().toISOString()
+                };
+
+                const { error } = await insertSupabase('device_logs', {
+                    device_ip: payload.mac || 'ESP32-Phyto',
+                    event: JSON.stringify(record),
+                    source: 'plant_electrophysiology'
+                });
+
+                if (error) console.error("Error guardando telemetría de electrofisiología:", error.message);
+                else {
+                    const ch2Text = record.ch2 ? ` | CH2: ${record.ch2.voltage_mv} mV` : '';
+                    console.log(`[OK] Telemetría bioeléctrica guardada en BD (CH1: ${record.voltage_mv} mV${ch2Text})`);
+                }
+            }
+        } catch(e) {
+            console.error("[Error] en electrophysiology handler:", e.message);
+        }
+        return;
+    }
+
     if (topic === 'logger_rpc/rpc' && payload.id === 999 && payload.result) {
         const name = payload.result.name || (payload.result.device && payload.result.device.name) || (payload.result.sys && payload.result.sys.device && payload.result.sys.device.name);
         const deviceId = payload.src; 
@@ -203,7 +257,7 @@ client.on('message', async (topic, message) => {
             if (payload.deviceId && payload.next_epoch) {
                 console.log(`[DEBUG] Received script_timers for ${payload.deviceId}: ${payload.next_epoch}`);
                 scriptTimers[payload.deviceId] = payload.next_epoch;
-                setTimeout(() => { delete scriptTimers[payload.deviceId]; }, 15000);
+                setTimeout(() => { delete scriptTimers[payload.deviceId]; }, 30000);
             }
         } catch(e) { console.error("Error parsing script_timers payload:", e.message); }
         return;

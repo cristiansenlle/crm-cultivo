@@ -33,6 +33,7 @@ export function Sidebar() {
   const menu = [
     { name: "Panel Principal", path: "/", icon: <SquaresFour size={22} /> },
     { name: "Salas de Cultivo", path: "/cultivo", icon: <Thermometer size={22} /> },
+    { name: "Electrofisiología Vegetal", path: "/electrofisiologia", icon: <Lightning size={22} weight="fill" className="text-emerald-400" /> },
     { name: "Gestor de Tareas", path: "/tareas", icon: <CheckSquare size={22} /> },
     { name: "Bodega e Insumos", path: "/insumos", icon: <Warehouse size={22} /> },
     { name: "Punto de Venta", path: "/pos", icon: <ShoppingCart size={22} /> },
