@@ -416,15 +416,21 @@ export function CultivoView() {
 
       setHarvestModal(prev => ({...prev, isOpen: false}));
 
-      // 1. Registrar la Tanda en la tabla de Cosechas Parciales
-      const totalOpex = batchCosts[harvestModal.batch.id] || 0;
+      // 1. Obtener tandas previas de este lote para calcular costo promedio ponderado acumulado
+      const prevTandas = partialHarvests.filter((ph: any) => ph.batch_id === harvestModal.batch.id);
+      const prevGrams = prevTandas.reduce((sum: number, ph: any) => sum + (Number(ph.weight_dry) || 0), 0);
+      const totalBatchGrams = prevGrams + grams;
 
+      const totalOpex = batchCosts[harvestModal.batch.id] || 0;
+      const reconciledCostPerGram = totalBatchGrams > 0 ? (totalOpex / totalBatchGrams) : 0;
+
+      // 2. Registrar la Tanda en la tabla de Cosechas Parciales
       const partialPayload = {
           batch_id: harvestModal.batch.id,
           tanda_name: harvestTandaName || 'Tanda General',
           plants_harvested: 0,
           weight_dry: grams,
-          opex_allocated: totalOpex,
+          opex_allocated: reconciledCostPerGram * grams,
           harvest_date: new Date().toISOString().split('T')[0]
       };
 
@@ -439,14 +445,14 @@ export function CultivoView() {
 
       const generatedId = partialData[0].id;
 
-      // 2. Inyectar a POS Inventario (Cross-module logic)
+      // 3. Inyectar a POS Inventario (Cross-module logic)
       const lotName = `${harvestModal.batch.id} - ${harvestTandaName || 'Tanda'}`;
       const invPayload = {
           id: generatedId, // UUID único de la tanda
           name: lotName,
           type: (harvestModal.batch.origen || '').toLowerCase() === 'externo' ? 'b2b' : 'cosecha_local',
           qty: grams,
-          price: totalOpex > 0 ? totalOpex / grams : 0, // Costo unitario por gramo real (OpEx unitario)
+          price: reconciledCostPerGram, // Costo unitario ponderado por gramo
           date_added: new Date().toISOString()
       };
       
@@ -455,7 +461,26 @@ export function CultivoView() {
           return alert("Error de Inyección a Inventario POS: " + invError.message);
       }
 
-      alert("Tanda cosechada exitosamente. Stock inyectado en el POS.");
+      // 4. Si existen tandas anteriores del mismo lote, actualizar su costo unitario en inventario y opex asignado
+      if (prevTandas.length > 0) {
+          const prevIds = prevTandas.map((ph: any) => ph.id);
+          // Actualizar costo unitario en la bóveda de inventario
+          await supabase
+              .from('core_inventory_cosechas')
+              .update({ price: reconciledCostPerGram })
+              .in('id', prevIds);
+
+          // Actualizar opex_allocated proporcional en core_partial_harvests
+          for (const ph of prevTandas) {
+              const newAllocated = (Number(ph.weight_dry) || 0) * reconciledCostPerGram;
+              await supabase
+                  .from('core_partial_harvests')
+                  .update({ opex_allocated: newAllocated })
+                  .eq('id', ph.id);
+          }
+      }
+
+      alert("Tanda cosechada exitosamente. Stock inyectado en el POS y costos unificados por lote.");
       fetchBatches();
   };
 
