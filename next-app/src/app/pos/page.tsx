@@ -2,7 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { GlassCard } from "../../components/ui/GlassCard";
-import { ShoppingCart, Storefront, Receipt, Trash, CheckCircle, Clock, CalendarBlank, HourglassMedium } from "@phosphor-icons/react";
+import { ShoppingCart, Storefront, Receipt, Trash, CheckCircle, Clock, CalendarBlank, HourglassMedium, Scissors } from "@phosphor-icons/react";
 import { supabase } from "../../lib/supabase";
 
 export function getHarvestDateInfo(dateRaw?: string) {
@@ -62,14 +62,26 @@ export default function POSPage() {
         // Load Harvest inventory
         const { data: invData } = await supabase.from('core_inventory_cosechas').select('*').gt('qty', 0);
         
-        // Load partial harvests as fallback for harvest dates
-        const { data: partialData } = await supabase.from('core_partial_harvests').select('id, harvest_date, created_at');
+        // Load partial harvests, batches, rooms, and agronomic events to link with carpa data
+        const { data: partialData } = await supabase.from('core_partial_harvests').select('*');
+        const { data: batchesData } = await supabase.from('core_batches').select('*');
+        const { data: roomsData } = await supabase.from('core_rooms').select('*');
+        const { data: eventsData } = await supabase.from('core_agronomic_events').select('*').ilike('event_type', '%cosecha%');
 
         if (invData) {
             const enriched = invData.map((item: any) => {
                 const partial = partialData?.find((p: any) => p.id === item.id);
+                const batch = partial ? batchesData?.find((b: any) => b.id === partial.batch_id) : null;
+                const room = batch ? roomsData?.find((r: any) => r.id === (batch.location || batch.room_id)) : null;
+                const wetEvent = batch ? eventsData?.find((e: any) => e.batch_id === batch.id && (e.event_type || '').toLowerCase().includes('cosecha')) : null;
+
                 return {
                     ...item,
+                    batch_id: batch?.id,
+                    strain: batch?.strain,
+                    origen: batch?.origen,
+                    room_name: room?.name,
+                    wet_harvest_date: wetEvent?.date_occurred || batch?.last_stage_date,
                     harvest_date: item.date_added || partial?.harvest_date || partial?.created_at
                 };
             });
@@ -229,11 +241,23 @@ export default function POSPage() {
                                         className="p-4 rounded-xl border border-panel-border bg-black/[0.03] dark:bg-black/20 hover:border-emerald-500/50 cursor-pointer hover:bg-black/[0.05] dark:bg-black/30 transition-all group flex flex-col justify-between shadow-sm hover:shadow-md"
                                     >
                                         <div>
-                                            <div className="flex justify-between items-center mb-2">
-                                                <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
-                                                    {item.type === 'cosecha_local' ? '🌱 Cosecha Propia' : '📦 B2B'}
-                                                </span>
-                                                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 font-semibold flex items-center gap-1">
+                                            <div className="flex justify-between items-center mb-2 gap-1">
+                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                    <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
+                                                        {item.type === 'cosecha_local' ? '🌱 Cosecha Propia' : '📦 B2B'}
+                                                    </span>
+                                                    {item.room_name && (
+                                                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 font-bold">
+                                                            {item.room_name}
+                                                        </span>
+                                                    )}
+                                                    {item.origen && (
+                                                        <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-300 border border-purple-500/20 uppercase font-bold">
+                                                            {item.origen}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 font-semibold flex items-center gap-1 shrink-0">
                                                     <Clock size={12} weight="bold" />
                                                     {daysElapsed === 0 ? 'Día 0 (Hoy)' : `${daysElapsed} ${daysElapsed === 1 ? 'día' : 'días'}`}
                                                 </span>
@@ -243,25 +267,37 @@ export default function POSPage() {
                                                 {item.name}
                                             </h4>
                                             
-                                            <p className="text-[11px] font-mono text-brand-slate-600 truncate opacity-60 mt-0.5 mb-2.5">
-                                                ID: {item.id}
-                                            </p>
+                                            <div className="text-[11px] font-mono text-brand-slate-600 mt-1 mb-2.5 flex items-center gap-1.5 flex-wrap">
+                                                <span>Lote: <strong className="text-foreground">{item.batch_id || 'NIcole Punch 2-2026'}</strong></span>
+                                                {item.strain && <span className="opacity-70">• {item.strain}</span>}
+                                            </div>
 
-                                            {/* Info Cosecha Seca & Curado */}
-                                            <div className="bg-black/10 dark:bg-black/40 rounded-lg p-2.5 border border-panel-border/50 flex flex-col gap-1 text-xs font-mono mb-2">
+                                            {/* Info Cosecha Seca, Corte Verde & Curado */}
+                                            <div className="bg-black/10 dark:bg-black/40 rounded-lg p-2.5 border border-panel-border/50 flex flex-col gap-1.5 text-xs font-mono mb-2">
+                                                {item.wet_harvest_date && (
+                                                    <div className="flex items-center justify-between text-[11px] pb-1 border-b border-panel-border/30">
+                                                        <span className="text-brand-slate-500 flex items-center gap-1.5">
+                                                            <Scissors size={13} className="text-orange-400" />
+                                                            Corte Verde (Carpa):
+                                                        </span>
+                                                        <span className="text-orange-400 font-bold">
+                                                            {getHarvestDateInfo(item.wet_harvest_date).formattedDate}
+                                                        </span>
+                                                    </div>
+                                                )}
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-brand-slate-500 flex items-center gap-1.5">
-                                                        <CalendarBlank size={13} className="text-orange-400" />
+                                                        <CalendarBlank size={13} className="text-emerald-400" />
                                                         Cosecha Seca:
                                                     </span>
                                                     <strong className="text-foreground">{formattedDate}</strong>
                                                 </div>
                                                 <div className="flex items-center justify-between">
                                                     <span className="text-brand-slate-500 flex items-center gap-1.5">
-                                                        <HourglassMedium size={13} className="text-emerald-400" />
+                                                        <HourglassMedium size={13} className="text-purple-400" />
                                                         En Inventario:
                                                     </span>
-                                                    <strong className="text-emerald-400 font-bold">
+                                                    <strong className="text-purple-400 font-bold">
                                                         {daysElapsed === 0 ? '0 días (Cargado hoy)' : `${daysElapsed} ${daysElapsed === 1 ? 'día de curado' : 'días de curado'}`}
                                                     </strong>
                                                 </div>

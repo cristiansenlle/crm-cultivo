@@ -440,7 +440,7 @@ export function CultivoView() {
       const generatedId = partialData[0].id;
 
       // 2. Inyectar a POS Inventario (Cross-module logic)
-      const lotName = `${harvestModal.batch.strain || harvestModal.batch.id.substring(0,8)} - ${harvestTandaName || 'Tanda'} (Lote ${harvestModal.batch.id.substring(0,4)})`;
+      const lotName = `${harvestModal.batch.id} - ${harvestTandaName || 'Tanda'}`;
       const invPayload = {
           id: generatedId, // UUID único de la tanda
           name: lotName,
