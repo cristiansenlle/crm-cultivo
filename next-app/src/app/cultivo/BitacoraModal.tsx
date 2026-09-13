@@ -9,13 +9,14 @@ export function BitacoraModal({ batch, onClose }: { batch: any, onClose: () => v
   const [inventory, setInventory] = useState<any[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
   
-  const [actionType, setActionType] = useState<"riego" | "ipm" | "poda" | "alerta">("riego");
+  const [actionType, setActionType] = useState<"riego" | "ipm" | "poda" | "alerta" | "cosecha_humeda">("riego");
   
   // States Modal Forms
   const [selectedProduct, setSelectedProduct] = useState("");
   const [amount, setAmount] = useState("");
   const [desc, setDesc] = useState("");
   const [podaType, setPodaType] = useState("Defoliación Baja");
+  const [harvestCutName, setHarvestCutName] = useState("Tanda 1");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Edit States
@@ -48,8 +49,14 @@ export function BitacoraModal({ batch, onClose }: { batch: any, onClose: () => v
   };
 
   const handleEditClick = (ev: any) => {
-    const et = ev.event_type.toLowerCase();
-    setActionType(et === 'riego' || et === 'nutricion' ? 'riego' : et === 'ipm' ? 'ipm' : et === 'alerta' ? 'alerta' : 'poda');
+    const et = (ev.event_type || '').toLowerCase();
+    if (et.includes('cosecha')) {
+      setActionType('cosecha_humeda');
+      const cutMatch = ev.description?.match(/COSECHA HÚMEDA: (.*?)\./);
+      if (cutMatch && cutMatch[1]) setHarvestCutName(cutMatch[1]);
+    } else {
+      setActionType(et === 'riego' || et === 'nutricion' ? 'riego' : et === 'ipm' ? 'ipm' : et === 'alerta' ? 'alerta' : 'poda');
+    }
     setSelectedProduct(ev.product_id || "");
     setAmount(ev.amount_applied ? ev.amount_applied.toString() : "");
     
@@ -58,7 +65,7 @@ export function BitacoraModal({ batch, onClose }: { batch: any, onClose: () => v
     if (rawDesc.includes(". ")) {
       const parts = rawDesc.split(". ");
       // Simple heuristic: if the first part is fully uppercase or looks like a prefix
-      if (parts[0] === parts[0].toUpperCase() || parts[0].includes(":") || parts[0].includes("PODA")) {
+      if (parts[0] === parts[0].toUpperCase() || parts[0].includes(":") || parts[0].includes("PODA") || parts[0].includes("COSECHA")) {
          rawDesc = parts.slice(1).join(". ");
       }
     }
@@ -95,6 +102,7 @@ export function BitacoraModal({ batch, onClose }: { batch: any, onClose: () => v
     setDesc("");
     setAmount("");
     setSelectedProduct("");
+    setHarvestCutName("Tanda 1");
     setActionType("riego");
   };
 
@@ -169,14 +177,16 @@ export function BitacoraModal({ batch, onClose }: { batch: any, onClose: () => v
        finalDesc = `PODA: ${podaType}. ` + desc;
     } else if (actionType === 'alerta') {
        finalDesc = `⚠️ EVENTO/PLAGA: ` + desc;
+    } else if (actionType === 'cosecha_humeda') {
+       finalDesc = `COSECHA HÚMEDA: ${harvestCutName || 'Tanda'}. ` + (desc ? desc : 'Corte en verde registrado previo al secado.');
     }
 
     const payload: any = {
       batch_id: batch.id,
       room_id: batch.location || batch.room_id,
-      event_type: actionType === 'riego' ? 'Riego' : actionType === 'ipm' ? 'IPM' : actionType,
-      amount_applied: amount ? parseFloat(amount) : null,
-      product_id: selectedProductIdForEvent || null,
+      event_type: actionType === 'riego' ? 'Riego' : actionType === 'ipm' ? 'IPM' : actionType === 'cosecha_humeda' ? 'Cosecha Húmeda' : actionType,
+      amount_applied: (actionType === 'riego' || actionType === 'ipm') && amount ? parseFloat(amount) : null,
+      product_id: (actionType === 'riego' || actionType === 'ipm') ? selectedProductIdForEvent : null,
       total_cost: finalCost,
       description: finalDesc,
     };
@@ -253,6 +263,10 @@ export function BitacoraModal({ batch, onClose }: { batch: any, onClose: () => v
                     <Warning size={20} weight={actionType === 'alerta' ? 'fill' : 'regular'} />
                     <span className="text-[10px] font-bold">ALERTA</span>
                  </button>
+                 <button onClick={() => setActionType('cosecha_humeda')} className={`col-span-2 flex items-center justify-center gap-2 p-2 rounded-lg border transition-all ${actionType === 'cosecha_humeda' ? 'bg-orange-500/20 border-orange-500 text-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.15)]' : 'bg-black/[0.03] dark:bg-black/20 border-panel-border text-brand-slate-600 hover:border-orange-500/50'}`}>
+                    <Scissors size={20} weight={actionType === 'cosecha_humeda' ? 'fill' : 'regular'} className="text-orange-400" />
+                    <span className="text-[10px] font-bold tracking-wider">COSECHA HÚMEDA (CORTE EN VERDE)</span>
+                 </button>
                </div>
 
                <form onSubmit={handleCreateEvent} className="flex flex-col gap-4 flex-1">
@@ -314,6 +328,24 @@ export function BitacoraModal({ batch, onClose }: { batch: any, onClose: () => v
                        Registrá la aparición de plagas, hongos o deficiencias detectadas. Este evento será resaltado pero no consumirá inventario a menos que luego apliques un control IPM.
                     </div>
                   )}
+
+                  {actionType === 'cosecha_humeda' && (
+                    <div className="flex flex-col gap-3">
+                      <div className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg text-xs font-mono text-orange-400 leading-relaxed">
+                        🌱 Registrá un corte o tanda en verde antes del secado. No altera stock final ni requiere pesaje húmedo (el peso seco definitivo se ingresará al finalizar el lote).
+                      </div>
+                      <div>
+                        <label className="text-xs uppercase text-brand-slate-600 mb-1 block">Identificador / Tanda Cortada</label>
+                        <input
+                          type="text"
+                          value={harvestCutName}
+                          onChange={(e) => setHarvestCutName(e.target.value)}
+                          placeholder="Ej: Tanda 1 / Puntas principales / Corte parcial"
+                          className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-3 text-sm focus:border-orange-500 outline-none"
+                        />
+                      </div>
+                    </div>
+                  )}
                   
                   <div>
                     <label className="text-xs uppercase text-brand-slate-600 mb-1 block">Notas de la Bitácora {actionType === 'alerta' ? '*' : '(Opcional)'}</label>
@@ -322,7 +354,17 @@ export function BitacoraModal({ batch, onClose }: { batch: any, onClose: () => v
 
                   <div className="flex-1"></div>
 
-                  <button disabled={isSubmitting} type="submit" className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg font-bold transition-all disabled:opacity-50 mt-4 ${actionType === 'riego' ? 'bg-blue-600 hover:bg-blue-500 text-foreground shadow-[0_0_15px_rgba(37,99,235,0.2)]' : actionType === 'ipm' ? 'bg-red-600 hover:bg-red-500 text-foreground shadow-[0_0_15px_rgba(220,38,38,0.2)]' : actionType === 'alerta' ? 'bg-yellow-600 hover:bg-yellow-500 text-foreground shadow-[0_0_15px_rgba(234,179,8,0.2)]' : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.2)]'}`}>
+                  <button disabled={isSubmitting} type="submit" className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg font-bold transition-all disabled:opacity-50 mt-4 ${
+                    actionType === 'riego' 
+                      ? 'bg-blue-600 hover:bg-blue-500 text-foreground shadow-[0_0_15px_rgba(37,99,235,0.2)]' 
+                      : actionType === 'ipm' 
+                      ? 'bg-red-600 hover:bg-red-500 text-foreground shadow-[0_0_15px_rgba(220,38,38,0.2)]' 
+                      : actionType === 'alerta' 
+                      ? 'bg-yellow-600 hover:bg-yellow-500 text-foreground shadow-[0_0_15px_rgba(234,179,8,0.2)]' 
+                      : actionType === 'cosecha_humeda'
+                      ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_15px_rgba(249,115,22,0.2)]'
+                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.2)]'
+                  }`}>
                      {isSubmitting ? 'Verificando BD...' : <><FloppyDisk size={20} /> {editingEventId ? "Guardar Cambios" : "Asentar Bitácora"}</>}
                   </button>
                </form>
@@ -344,12 +386,15 @@ export function BitacoraModal({ batch, onClose }: { batch: any, onClose: () => v
                       events.map(ev => {
                           let evColor = 'text-emerald-500 border-emerald-500/20 bg-emerald-500/5';
                           let EvIcon = Scissors;
-                          if (ev.event_type === 'nutricion' || ev.event_type === 'riego') {
+                          const evType = (ev.event_type || '').toLowerCase();
+                          if (evType === 'nutricion' || evType === 'riego') {
                               evColor = 'text-blue-400 border-blue-500/20 bg-blue-500/5'; EvIcon = Drop;
-                          } else if (ev.event_type === 'ipm') {
+                          } else if (evType === 'ipm') {
                               evColor = 'text-red-400 border-red-500/20 bg-red-500/5'; EvIcon = Bug;
-                          } else if (ev.event_type === 'alerta') {
+                          } else if (evType === 'alerta') {
                               evColor = 'text-yellow-400 border-yellow-500/40 bg-yellow-500/10 shadow-[0_0_15px_rgba(234,179,8,0.1)]'; EvIcon = Warning;
+                          } else if (evType.includes('cosecha')) {
+                              evColor = 'text-orange-400 border-orange-500/40 bg-orange-500/10 shadow-[0_0_15px_rgba(249,115,22,0.1)]'; EvIcon = Scissors;
                           }
 
                           return (
