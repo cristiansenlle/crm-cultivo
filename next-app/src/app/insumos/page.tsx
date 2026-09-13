@@ -2,12 +2,15 @@
 
 import React, { useEffect, useState } from "react";
 import { GlassCard } from "../../components/ui/GlassCard";
-import { Flask, Plus, Warehouse, WarningOctagon, CaretRight, X, FloppyDisk, PencilSimple } from "@phosphor-icons/react";
+import { Flask, Plus, Warehouse, WarningOctagon, CaretRight, X, FloppyDisk, PencilSimple, Storefront, Clock, CalendarBlank, HourglassMedium, Plant } from "@phosphor-icons/react";
 import { supabase } from "../../lib/supabase";
+import { getHarvestDateInfo } from "../pos/page";
 
 export default function InsumosPage() {
   const [quimicos, setQuimicos] = useState<any[]>([]);
+  const [cosechas, setCosechas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingCosechas, setLoadingCosechas] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   
   // Modal form states
@@ -21,6 +24,9 @@ export default function InsumosPage() {
 
   const loadInventory = async () => {
     setLoading(true);
+    setLoadingCosechas(true);
+    
+    // Load Quimicos
     const { data, error } = await supabase.from('core_inventory_quimicos').select('*');
     if (error) {
         console.error("Supabase Error:", error);
@@ -45,6 +51,21 @@ export default function InsumosPage() {
         setQuimicos(grouped);
     }
     setLoading(false);
+
+    // Load Cosechas
+    const { data: invCosechas } = await supabase.from('core_inventory_cosechas').select('*').gt('qty', 0);
+    const { data: partialData } = await supabase.from('core_partial_harvests').select('id, harvest_date, created_at');
+    if (invCosechas) {
+        const enriched = invCosechas.map((item: any) => {
+            const partial = partialData?.find((p: any) => p.id === item.id);
+            return {
+                ...item,
+                harvest_date: item.date_added || partial?.harvest_date || partial?.created_at
+            };
+        });
+        setCosechas(enriched);
+    }
+    setLoadingCosechas(false);
   };
 
   useEffect(() => {
@@ -132,20 +153,114 @@ export default function InsumosPage() {
              <Warehouse size={32} className="text-emerald-500" />
              Bodegas & Inventario B2B
            </h1>
-           <p className="text-brand-slate-600 dark:text-slate-400 font-mono mt-2 flex items-center gap-2">
-             <span>Inventario Químico Activo:</span>
-             <strong className="text-emerald-500">{quimicos.length} Productos</strong>
-           </p>
+           <div className="text-brand-slate-600 dark:text-slate-400 font-mono mt-2 flex flex-wrap items-center gap-4 text-sm">
+             <span className="flex items-center gap-1.5">
+               <span>Insumos Químicos:</span>
+               <strong className="text-purple-400">{quimicos.length} Productos</strong>
+             </span>
+             <span className="text-panel-border">•</span>
+             <span className="flex items-center gap-1.5">
+               <span>Bóveda Cosechas:</span>
+               <strong className="text-emerald-400">{cosechas.length} Lotes ({cosechas.reduce((sum, c) => sum + (c.qty || 0), 0)}g)</strong>
+             </span>
+           </div>
         </div>
         <div className="z-10">
            <button 
              onClick={openNewModal}
              className="flex items-center gap-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-transform hover:scale-105 shadow-[0_0_20px_rgba(16,185,129,0.3)] font-bold uppercase tracking-wider text-sm"
            >
-             <Plus size={18} weight="bold" /> Registrar Ingreso
+             <Plus size={18} weight="bold" /> Registrar Ingreso Insumo
            </button>
         </div>
       </GlassCard>
+
+      {/* Bóveda de Cosechas Secas */}
+      <section>
+        <GlassCard className="w-full border-t border-t-orange-500/50">
+           <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-bold flex items-center gap-2">
+                <Storefront size={24} className="text-orange-400" /> Inventario Cosechas (Bóveda de Flores Secas)
+              </h2>
+              <span className="text-xs font-mono text-orange-400 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 font-bold">
+                {cosechas.reduce((sum, c) => sum + (c.qty || 0), 0)}g Disponibles
+              </span>
+           </div>
+
+           {loadingCosechas ? (
+              <p className="text-sm font-mono opacity-50 py-6 text-center">Consultando Bóveda de Cosechas...</p>
+           ) : cosechas.length === 0 ? (
+              <div className="text-center py-8 opacity-60 font-mono text-sm border border-dashed border-panel-border rounded-xl">
+                 Sin cosechas secas almacenadas en bóveda actualmente.
+              </div>
+           ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                 {cosechas.map((item, idx) => {
+                    const { formattedDate, daysElapsed } = getHarvestDateInfo(item.harvest_date || item.date_added);
+
+                    return (
+                       <div 
+                          key={item.id || idx} 
+                          className="p-4 rounded-xl border border-panel-border bg-black/[0.03] dark:bg-black/20 hover:border-orange-500/50 transition-all flex flex-col justify-between shadow-sm hover:shadow-md"
+                       >
+                          <div>
+                             <div className="flex justify-between items-center mb-2">
+                                <span className="text-[10px] uppercase font-bold text-orange-400 tracking-wider">
+                                   {item.type === 'cosecha_local' ? '🌱 Cosecha Propia' : '📦 B2B'}
+                                </span>
+                                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 font-semibold flex items-center gap-1">
+                                   <Clock size={12} weight="bold" />
+                                   {daysElapsed === 0 ? 'Día 0 (Hoy)' : `${daysElapsed} ${daysElapsed === 1 ? 'día' : 'días'}`}
+                                </span>
+                             </div>
+
+                             <h4 className="font-bold text-foreground text-base leading-snug">
+                                {item.name}
+                             </h4>
+                             
+                             <p className="text-[11px] font-mono text-brand-slate-600 truncate opacity-60 mt-0.5 mb-3">
+                                ID: {item.id}
+                             </p>
+
+                             {/* Info Cosecha Seca & Curado */}
+                             <div className="bg-black/10 dark:bg-black/40 rounded-lg p-2.5 border border-panel-border/50 flex flex-col gap-1 text-xs font-mono mb-2">
+                                <div className="flex items-center justify-between">
+                                   <span className="text-brand-slate-500 flex items-center gap-1.5">
+                                      <CalendarBlank size={13} className="text-orange-400" />
+                                      Cosecha Seca:
+                                   </span>
+                                   <strong className="text-foreground">{formattedDate}</strong>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                   <span className="text-brand-slate-500 flex items-center gap-1.5">
+                                      <HourglassMedium size={13} className="text-emerald-400" />
+                                      En Inventario:
+                                   </span>
+                                   <strong className="text-emerald-400 font-bold">
+                                      {daysElapsed === 0 ? '0 días (Cargado hoy)' : `${daysElapsed} ${daysElapsed === 1 ? 'día de curado' : 'días de curado'}`}
+                                   </strong>
+                                </div>
+                             </div>
+                          </div>
+
+                          <div className="flex justify-between items-center text-sm font-bold mt-2 pt-2.5 border-t border-panel-border/30">
+                             <span className="text-blue-400 font-mono flex items-baseline gap-1">
+                                <span className="text-lg font-bold">{item.qty}g</span>
+                                <span className="text-xs opacity-70 font-normal">Stock Bóveda</span>
+                             </span>
+                             {item.price > 0 && (
+                                <span className="text-xs font-mono text-brand-slate-500">
+                                   Costo: ${Number(item.price).toFixed(0)}/g
+                                </span>
+                             )}
+                          </div>
+                       </div>
+                    );
+                 })}
+              </div>
+           )}
+        </GlassCard>
+      </section>
 
       {/* Stock Alerts */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

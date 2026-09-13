@@ -2,8 +2,43 @@
 
 import React, { useEffect, useState } from "react";
 import { GlassCard } from "../../components/ui/GlassCard";
-import { ShoppingCart, Storefront, Receipt, Trash, CheckCircle } from "@phosphor-icons/react";
+import { ShoppingCart, Storefront, Receipt, Trash, CheckCircle, Clock, CalendarBlank, HourglassMedium } from "@phosphor-icons/react";
 import { supabase } from "../../lib/supabase";
+
+export function getHarvestDateInfo(dateRaw?: string) {
+    if (!dateRaw) return { formattedDate: 'Sin fecha', daysElapsed: 0 };
+    
+    let harvestDate: Date;
+    if (dateRaw.includes('T')) {
+        harvestDate = new Date(dateRaw);
+    } else {
+        const parts = dateRaw.split('-');
+        if (parts.length === 3) {
+            harvestDate = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]));
+        } else {
+            harvestDate = new Date(dateRaw);
+        }
+    }
+
+    if (isNaN(harvestDate.getTime())) {
+        return { formattedDate: 'Sin fecha', daysElapsed: 0 };
+    }
+
+    const formattedDate = harvestDate.toLocaleDateString('es-AR', {
+        day: '2-digit',
+        month: '2-digit',
+        year: 'numeric'
+    });
+
+    const now = new Date();
+    const todayZero = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const harvestZero = new Date(harvestDate.getFullYear(), harvestDate.getMonth(), harvestDate.getDate());
+    
+    const diffMs = todayZero.getTime() - harvestZero.getTime();
+    const daysElapsed = Math.max(0, Math.floor(diffMs / (1000 * 60 * 60 * 24)));
+
+    return { formattedDate, daysElapsed };
+}
 
 export default function POSPage() {
     const [inventory, setInventory] = useState<any[]>([]);
@@ -26,7 +61,20 @@ export default function POSPage() {
         setLoadingInv(true);
         // Load Harvest inventory
         const { data: invData } = await supabase.from('core_inventory_cosechas').select('*').gt('qty', 0);
-        if (invData) setInventory(invData);
+        
+        // Load partial harvests as fallback for harvest dates
+        const { data: partialData } = await supabase.from('core_partial_harvests').select('id, harvest_date, created_at');
+
+        if (invData) {
+            const enriched = invData.map((item: any) => {
+                const partial = partialData?.find((p: any) => p.id === item.id);
+                return {
+                    ...item,
+                    harvest_date: item.date_added || partial?.harvest_date || partial?.created_at
+                };
+            });
+            setInventory(enriched);
+        }
 
         // Load Sales History
         const { data: salesData } = await supabase.from('core_sales').select('*').order('date', { ascending: false }).limit(10);
@@ -166,18 +214,73 @@ export default function POSPage() {
                         </h2>
                         {loadingInv ? <p className="text-sm font-mono opacity-50">Cargando Bóveda...</p> : (
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {inventory.length === 0 ? <p className="col-span-3 text-center opacity-50">Sin stock apto para venta.</p> : 
-                                  inventory.map((item, idx) => (
-                                    <div key={idx} onClick={() => handleAddToCart(item)} className="p-4 rounded-xl border border-panel-border bg-black/[0.03] dark:bg-black/20 hover:border-emerald-500/50 cursor-pointer hover:bg-black/[0.05] dark:bg-black/30 transition-all group">
-                                        <div className="text-[10px] uppercase font-bold text-emerald-400 mb-1">{item.type === 'cosecha_local' ? 'PROPIA' : 'B2B'}</div>
-                                        <h4 className="font-bold text-foreground text-md">{item.name}</h4>
-                                        <p className="text-xs font-mono text-brand-slate-600 truncate opacity-60 mt-1 mb-3">ID: {item.id}</p>
-                                        <div className="flex justify-between items-center text-sm font-bold">
-                                            <span className="text-blue-400">{item.qty}g Disp.</span>
-                                            <span className="text-status-green group-hover:scale-110 transition-transform">+ Add</span>
+                                {inventory.length === 0 ? (
+                                    <p className="col-span-3 text-center opacity-50 py-8 border border-dashed border-panel-border rounded-xl font-mono text-sm">
+                                        Sin stock apto para venta.
+                                    </p>
+                                ) : (
+                                  inventory.map((item, idx) => {
+                                    const { formattedDate, daysElapsed } = getHarvestDateInfo(item.harvest_date || item.date_added);
+
+                                    return (
+                                    <div 
+                                        key={item.id || idx} 
+                                        onClick={() => handleAddToCart(item)} 
+                                        className="p-4 rounded-xl border border-panel-border bg-black/[0.03] dark:bg-black/20 hover:border-emerald-500/50 cursor-pointer hover:bg-black/[0.05] dark:bg-black/30 transition-all group flex flex-col justify-between shadow-sm hover:shadow-md"
+                                    >
+                                        <div>
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
+                                                    {item.type === 'cosecha_local' ? '🌱 Cosecha Propia' : '📦 B2B'}
+                                                </span>
+                                                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 font-semibold flex items-center gap-1">
+                                                    <Clock size={12} weight="bold" />
+                                                    {daysElapsed === 0 ? 'Día 0 (Hoy)' : `${daysElapsed} ${daysElapsed === 1 ? 'día' : 'días'}`}
+                                                </span>
+                                            </div>
+
+                                            <h4 className="font-bold text-foreground text-base leading-snug group-hover:text-emerald-400 transition-colors">
+                                                {item.name}
+                                            </h4>
+                                            
+                                            <p className="text-[11px] font-mono text-brand-slate-600 truncate opacity-60 mt-0.5 mb-2.5">
+                                                ID: {item.id}
+                                            </p>
+
+                                            {/* Info Cosecha Seca & Curado */}
+                                            <div className="bg-black/10 dark:bg-black/40 rounded-lg p-2.5 border border-panel-border/50 flex flex-col gap-1 text-xs font-mono mb-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-brand-slate-500 flex items-center gap-1.5">
+                                                        <CalendarBlank size={13} className="text-orange-400" />
+                                                        Cosecha Seca:
+                                                    </span>
+                                                    <strong className="text-foreground">{formattedDate}</strong>
+                                                </div>
+                                                <div className="flex items-center justify-between">
+                                                    <span className="text-brand-slate-500 flex items-center gap-1.5">
+                                                        <HourglassMedium size={13} className="text-emerald-400" />
+                                                        En Inventario:
+                                                    </span>
+                                                    <strong className="text-emerald-400 font-bold">
+                                                        {daysElapsed === 0 ? '0 días (Cargado hoy)' : `${daysElapsed} ${daysElapsed === 1 ? 'día de curado' : 'días de curado'}`}
+                                                    </strong>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div className="flex justify-between items-center text-sm font-bold mt-2 pt-2.5 border-t border-panel-border/30">
+                                            <span className="text-blue-400 font-mono flex items-baseline gap-1">
+                                                <span className="text-lg font-bold">{item.qty}g</span>
+                                                <span className="text-xs opacity-70 font-normal">Disp.</span>
+                                            </span>
+                                            <span className="text-status-green bg-emerald-500/10 px-2.5 py-1 rounded-lg border border-emerald-500/20 group-hover:bg-emerald-500 group-hover:text-white transition-all text-xs flex items-center gap-1 font-bold">
+                                                + Vender
+                                            </span>
                                         </div>
                                     </div>
-                                ))}
+                                    );
+                                  })
+                                )}
                             </div>
                         )}
                     </GlassCard>
