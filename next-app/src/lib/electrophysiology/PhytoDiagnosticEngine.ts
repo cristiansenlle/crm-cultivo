@@ -524,11 +524,11 @@ export function analyzePhytoElectrophysiology(params: {
   const recommendedProtocols: PhytoDiagnosisResult['recommended_protocols'] = [];
   
   if (stateAssessment.code === 'WATER_STRESS') {
-    const p = protocols.find(pr => pr.title.toLowerCase().includes('riego') || pr.topic?.toLowerCase().includes('riego'));
+    const p = protocols.find(pr => pr.title.toLowerCase().includes('riego') || (pr as any).topic?.toLowerCase().includes('riego'));
     if (p) recommendedProtocols.push({ id: p.id, title: p.title, relevance_reason: 'Protocolo de manejo de riego y recuperación hídrica.' });
   }
   if (detectedNutriTrend === 'posible_deficit') {
-    const p = protocols.find(pr => pr.title.toLowerCase().includes('nutri') || pr.topic?.toLowerCase().includes('nutri') || pr.stage?.toLowerCase() === batchContext?.stage.toLowerCase());
+    const p = protocols.find(pr => pr.title.toLowerCase().includes('nutri') || (pr as any).topic?.toLowerCase().includes('nutri') || pr.stage?.toLowerCase() === batchContext?.stage.toLowerCase());
     if (p) recommendedProtocols.push({ id: p.id, title: p.title, relevance_reason: 'Protocolo nutricional recomendado para la fase actual.' });
   }
   if (stateAssessment.code === 'LIGHT_POLLUTION_NIGHT_STRESS') {

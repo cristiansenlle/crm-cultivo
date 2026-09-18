@@ -18,6 +18,8 @@ export function Topbar() {
     switch (pathname) {
       case "/": return "Operaciones de Cultivo en Vivo";
       case "/cultivo": return "Gestión de Salas y Lotes";
+      case "/vision": return "Centro de Visión IA & Monitoreo Cenital";
+      case "/electrofisiologia": return "Electrofisiología Vegetal";
       case "/insumos": return "Bodega e Inventario";
       case "/tareas": return "Gestor Operativo";
       default: return "Command Center";

@@ -19,7 +19,7 @@ export function AiHealthChartModal({ batch, onClose }: { batch: any; onClose: ()
                 
             if (data) {
                 // Format data for chart
-                const formatted = data.map(d => ({
+                const formatted = data.map((d: any) => ({
                     ...d,
                     dateLabel: new Date(d.created_at).toLocaleDateString('es-AR', { day: '2-digit', month: 'short' }),
                     fullDate: new Date(d.created_at).toLocaleString('es-AR')

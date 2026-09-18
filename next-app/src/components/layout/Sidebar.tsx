@@ -16,11 +16,28 @@ import {
   X,
   Lightning
 } from "@phosphor-icons/react";
+import { Camera, ChevronDown, ChevronRight, Video, History, Sparkles, Sliders } from "lucide-react";
 import { cn } from "../ui/GlassCard"; // quick reuse of cn
+
+interface SubMenuItem {
+  name: string;
+  path: string;
+  icon?: React.ReactNode;
+}
+
+interface MenuItem {
+  name: string;
+  path: string;
+  icon: React.ReactNode;
+  subItems?: SubMenuItem[];
+}
 
 export function Sidebar() {
   const pathname = usePathname() || "/";
   const [isOpen, setIsOpen] = useState(false);
+  const [openSubmenus, setOpenSubmenus] = useState<Record<string, boolean>>({
+    '/vision': true
+  });
 
   useEffect(() => {
     const handleToggle = () => setIsOpen(p => !p);
@@ -30,9 +47,26 @@ export function Sidebar() {
 
   useEffect(() => { setIsOpen(false); }, [pathname]);
 
-  const menu = [
+  const toggleSubmenu = (path: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setOpenSubmenus(prev => ({ ...prev, [path]: !prev[path] }));
+  };
+
+  const menu: MenuItem[] = [
     { name: "Panel Principal", path: "/", icon: <SquaresFour size={22} /> },
     { name: "Salas de Cultivo", path: "/cultivo", icon: <Thermometer size={22} /> },
+    { 
+      name: "Centro de Visión IA", 
+      path: "/vision", 
+      icon: <Camera className="w-[22px] h-[22px] text-emerald-400" />,
+      subItems: [
+        { name: "Cámara en Vivo", path: "/vision?tab=live", icon: <Video className="w-3.5 h-3.5 text-red-400" /> },
+        { name: "Timelapse & Galería", path: "/vision?tab=timelapse", icon: <History className="w-3.5 h-3.5 text-cyan-400" /> },
+        { name: "Diagnósticos IA", path: "/vision?tab=diagnostics", icon: <Sparkles className="w-3.5 h-3.5 text-amber-400" /> },
+        { name: "Configuración Centinela", path: "/vision?tab=settings", icon: <Sliders className="w-3.5 h-3.5 text-purple-400" /> },
+      ]
+    },
     { name: "Electrofisiología Vegetal", path: "/electrofisiologia", icon: <Lightning size={22} weight="fill" className="text-emerald-400" /> },
     { name: "Gestor de Tareas", path: "/tareas", icon: <CheckSquare size={22} /> },
     { name: "Bodega e Insumos", path: "/insumos", icon: <Warehouse size={22} /> },
@@ -65,25 +99,61 @@ export function Sidebar() {
         <span className="font-bold text-xl tracking-tight uppercase">CORE 360</span>
       </div>
 
-      <nav className="flex flex-col gap-2 flex-grow">
+      <nav className="flex flex-col gap-1.5 flex-grow">
         {menu.map((item) => {
           const isActive = pathname === item.path;
+          const hasSubItems = item.subItems && item.subItems.length > 0;
+          const isSubmenuOpen = openSubmenus[item.path] ?? pathname.startsWith(item.path);
+
           return (
-            <Link 
-              key={item.path} 
-              href={item.path}
-              className={cn(
-                "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 font-semibold text-sm",
-                isActive 
-                  ? "bg-black/10 dark:bg-white/10 text-foreground border-l-4 border-status-green" 
-                  : "text-brand-slate-600 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground"
-              )}
-            >
-              <div className={isActive ? "text-status-green" : "opacity-80"}>
-                {item.icon}
+            <div key={item.path} className="flex flex-col">
+              <div className="flex items-center w-full">
+                <Link 
+                  href={item.path}
+                  className={cn(
+                    "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 font-semibold text-sm flex-1",
+                    isActive 
+                      ? "bg-black/10 dark:bg-white/10 text-foreground border-l-4 border-status-green" 
+                      : "text-brand-slate-600 dark:text-slate-400 hover:bg-black/5 dark:hover:bg-black/5 dark:hover:bg-white/5 hover:text-foreground"
+                  )}
+                >
+                  <div className={isActive ? "text-status-green" : "opacity-80"}>
+                    {item.icon}
+                  </div>
+                  <span className="flex-1 truncate">{item.name}</span>
+                </Link>
+
+                {hasSubItems && (
+                  <button
+                    onClick={(e) => toggleSubmenu(item.path, e)}
+                    className="p-2 text-zinc-400 hover:text-zinc-100 hover:bg-white/5 rounded-lg transition-colors ml-0.5"
+                    title="Alternar submenú"
+                  >
+                    {isSubmenuOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                  </button>
+                )}
               </div>
-              {item.name}
-            </Link>
+
+              {hasSubItems && isSubmenuOpen && (
+                <div className="ml-6 pl-3 border-l-2 border-emerald-500/25 flex flex-col gap-1 mt-1 mb-1.5">
+                  {item.subItems!.map((sub) => {
+                    return (
+                      <Link
+                        key={sub.path}
+                        href={sub.path}
+                        className={cn(
+                          "flex items-center gap-2.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors",
+                          "text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10"
+                        )}
+                      >
+                        {sub.icon}
+                        <span>{sub.name}</span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
           );
         })}
       </nav>

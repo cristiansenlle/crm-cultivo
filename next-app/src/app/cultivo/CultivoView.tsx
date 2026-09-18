@@ -73,7 +73,7 @@ export function CultivoView() {
     const { data: batchesData } = await supabase.from('core_batches').select('location, stage');
 
     if (roomsData && !roomsError) {
-      const updatedRooms = await Promise.all(roomsData.map(async (room) => {
+      const updatedRooms = await Promise.all(roomsData.map(async (room: any) => {
         const inRoom = (batchesData || []).filter((b: any) => b.location === room.id);
         const correctPhase = calculateRoomPhase(inRoom);
         if (correctPhase !== room.phase) {
@@ -534,6 +534,8 @@ export function CultivoView() {
             </div>
         )}
       </section>
+
+
 
       {selectedRoom && (
         <section>

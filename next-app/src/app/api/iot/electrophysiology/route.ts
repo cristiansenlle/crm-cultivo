@@ -2,13 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { analyzePhytoElectrophysiology, BioelectricRecord } from '../../../../lib/electrophysiology/PhytoDiagnosticEngine';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://opnjrzixsrizdnphbjnq.supabase.co';
-const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wbmpyeml4c3JpemRucGhiam5xIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjU3NzY1MCwiZXhwIjoyMDg4MTUzNjUwfQ.8X-hxKbCkjxZ5dBXa9_ZefQW0QpIe1RZSp0kNVfst5Y';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
 
 export async function GET(req: NextRequest) {
   try {
+    if (!supabase) {
+      return NextResponse.json(
+        { success: false, error: 'Credenciales de Supabase no configuradas en variables de entorno' },
+        { status: 500 }
+      );
+    }
     const { searchParams } = new URL(req.url);
     const roomId = searchParams.get('room_id') || '5a650ff8-9b93-40cc-a7f9-c672bad50014'; // Default Carpa 2
     const batchId = searchParams.get('batch_id');

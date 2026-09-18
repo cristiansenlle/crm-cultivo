@@ -40,7 +40,7 @@ export default function AiAnalyzerModal({ onClose }: { onClose: () => void }) {
 
     useEffect(() => {
         if (selectedRoomId) {
-            supabase.from('core_batches').select('id, strain, stage').eq('location', selectedRoomId).then(({data, error}) => {
+            supabase.from('core_batches').select('id, strain, stage').eq('location', selectedRoomId).then(({data, error}: any) => {
                 if (error) console.error("Error fetching batches:", error);
                 if (data) setBatches(data);
             });
