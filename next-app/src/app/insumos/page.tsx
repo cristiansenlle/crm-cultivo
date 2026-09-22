@@ -59,25 +59,60 @@ export default function InsumosPage() {
     const { data: roomsData } = await supabase.from('core_rooms').select('*');
     const { data: eventsData } = await supabase.from('core_agronomic_events').select('*').ilike('event_type', '%cosecha%');
 
-    if (invCosechas) {
-        const enriched = invCosechas.map((item: any) => {
-            const partial = partialData?.find((p: any) => p.id === item.id);
-            const batch = partial ? batchesData?.find((b: any) => b.id === partial.batch_id) : null;
-            const room = batch ? roomsData?.find((r: any) => r.id === (batch.location || batch.room_id)) : null;
-            const wetEvent = batch ? eventsData?.find((e: any) => e.batch_id === batch.id && (e.event_type || '').toLowerCase().includes('cosecha')) : null;
+        if (invCosechas) {
+            const enriched = invCosechas.map((item: any) => {
+                const partial = partialData?.find((p: any) => p.id === item.id);
+                const batch = partial ? batchesData?.find((b: any) => b.id === partial.batch_id) : null;
+                const room = batch ? roomsData?.find((r: any) => r.id === (batch.location || batch.room_id)) : null;
 
-            return {
-                ...item,
-                batch_id: batch?.id,
-                strain: batch?.strain,
-                origen: batch?.origen,
-                room_name: room?.name,
-                wet_harvest_date: wetEvent?.date_occurred || batch?.last_stage_date,
-                harvest_date: item.date_added || partial?.harvest_date || partial?.created_at
-            };
-        });
-        setCosechas(enriched);
-    }
+                // Buscar evento de cosecha húmeda específico para esta tanda
+                const batchWetEvents = eventsData?.filter((e: any) => 
+                    e.batch_id === batch?.id && 
+                    (e.event_type || '').toLowerCase().includes('cosecha')
+                ) || [];
+
+                const tandaLabel = (partial?.tanda_name || item.name || '').toLowerCase();
+                const tandaMatch = tandaLabel.match(/tanda\s*(\d+)/i);
+                const tandaNum = tandaMatch ? tandaMatch[1] : null;
+
+                let wetEvent: any = null;
+                if (tandaNum) {
+                    const regex = new RegExp(`tanda\\s*${tandaNum}\\b`, 'i');
+                    wetEvent = batchWetEvents.find((e: any) => regex.test(e.description || ''));
+                }
+
+                if (!wetEvent && partial?.tanda_name) {
+                    wetEvent = batchWetEvents.find((e: any) => 
+                        (e.description || '').toLowerCase().includes(partial.tanda_name.toLowerCase())
+                    );
+                }
+
+                // Fallback: si no coincide por texto, usar orden cronológico por número de tanda
+                if (!wetEvent && tandaNum) {
+                    const idx = parseInt(tandaNum, 10) - 1;
+                    const sortedEvents = [...batchWetEvents].sort((a, b) => new Date(a.date_occurred).getTime() - new Date(b.date_occurred).getTime());
+                    if (idx >= 0 && idx < sortedEvents.length) {
+                        wetEvent = sortedEvents[idx];
+                    }
+                }
+
+                // Último fallback: primer evento de cosecha o fecha de última etapa
+                if (!wetEvent && batchWetEvents.length > 0) {
+                    wetEvent = batchWetEvents[0];
+                }
+
+                return {
+                    ...item,
+                    batch_id: batch?.id,
+                    strain: batch?.strain,
+                    origen: batch?.origen,
+                    room_name: room?.name,
+                    wet_harvest_date: wetEvent?.date_occurred || batch?.last_stage_date,
+                    harvest_date: item.date_added || partial?.harvest_date || partial?.created_at
+                };
+            });
+            setCosechas(enriched);
+        }
     setLoadingCosechas(false);
   };
 
