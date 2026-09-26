@@ -5,6 +5,7 @@ import { GlassCard } from "../../components/ui/GlassCard";
 import { Flask, Plus, Warehouse, WarningOctagon, CaretRight, X, FloppyDisk, PencilSimple, Storefront, Clock, CalendarBlank, HourglassMedium, Plant, Scissors } from "@phosphor-icons/react";
 import { supabase } from "../../lib/supabase";
 import { getHarvestDateInfo } from "../pos/page";
+import { ManageTandasModal } from "../../components/ManageTandasModal";
 
 export default function InsumosPage() {
   const [quimicos, setQuimicos] = useState<any[]>([]);
@@ -12,6 +13,7 @@ export default function InsumosPage() {
   const [loading, setLoading] = useState(true);
   const [loadingCosechas, setLoadingCosechas] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [manageTandasModal, setManageTandasModal] = useState<{ isOpen: boolean; batchId?: string }>({ isOpen: false });
   
   // Modal form states
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -226,13 +228,33 @@ export default function InsumosPage() {
       {/* Bóveda de Cosechas Secas */}
       <section>
         <GlassCard className="w-full border-t border-t-orange-500/50">
-           <div className="flex justify-between items-center mb-6">
+           <div className="flex flex-wrap justify-between items-center mb-6 gap-3">
               <h2 className="text-xl font-bold flex items-center gap-2">
                 <Storefront size={24} className="text-orange-400" /> Inventario Cosechas (Bóveda de Flores Secas)
               </h2>
-              <span className="text-xs font-mono text-orange-400 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 font-bold">
-                {cosechas.reduce((sum, c) => sum + (c.qty || 0), 0)}g Disponibles
-              </span>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                 {cosechas.length > 0 && (
+                    <>
+                       <button 
+                          onClick={() => setManageTandasModal({ isOpen: true, batchId: cosechas[0]?.batch_id })} 
+                          className="btn-glow-purple px-2.5 py-1.5 border border-purple-500/30 text-purple-400 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer hover:bg-purple-500/20"
+                          title="Abrir gestor de tandas de cosecha"
+                       >
+                          📋 Tandas ({cosechas.length})
+                       </button>
+                       <button 
+                          onClick={() => setManageTandasModal({ isOpen: true, batchId: cosechas[0]?.batch_id })} 
+                          className="text-xs font-mono text-emerald-400 hover:text-emerald-300 underline flex items-center gap-1 cursor-pointer"
+                          title="Gestionar, editar, fusionar o eliminar tandas de cosecha"
+                       >
+                          ⚙️ Gestionar Tandas
+                       </button>
+                    </>
+                 )}
+                 <span className="text-xs font-mono text-orange-400 bg-orange-500/10 px-3 py-1 rounded-full border border-orange-500/20 font-bold">
+                   {cosechas.reduce((sum, c) => sum + (c.qty || 0), 0)}g Disponibles
+                 </span>
+              </div>
            </div>
 
            {loadingCosechas ? (
@@ -313,6 +335,26 @@ export default function InsumosPage() {
                                    </strong>
                                 </div>
                              </div>
+                          </div>
+
+                          {/* Botones de Gestión de Tandas en la Card */}
+                          <div className="flex items-center justify-between mt-2 pt-2 border-t border-panel-border/30">
+                             <button
+                                type="button"
+                                onClick={() => setManageTandasModal({ isOpen: true, batchId: item.batch_id })}
+                                className="text-[11px] font-mono text-emerald-400 hover:text-emerald-300 underline flex items-center gap-1 cursor-pointer"
+                                title="Gestionar y corregir tandas de este lote"
+                             >
+                                ⚙️ Gestionar Tandas
+                             </button>
+                             <button
+                                type="button"
+                                onClick={() => setManageTandasModal({ isOpen: true, batchId: item.batch_id })}
+                                className="btn-glow-purple px-2 py-0.5 border border-purple-500/30 text-purple-400 rounded text-[10px] font-bold uppercase tracking-wider cursor-pointer hover:bg-purple-500/10 transition-all"
+                                title="Ver y administrar tandas de este lote"
+                             >
+                                📋 Tandas
+                             </button>
                           </div>
 
                           <div className="flex justify-between items-center text-sm font-bold mt-2 pt-2.5 border-t border-panel-border/30">
@@ -527,6 +569,14 @@ export default function InsumosPage() {
           </GlassCard>
         </div>
       )}
+
+      {/* Modal Gestor Integral de Tandas */}
+      <ManageTandasModal
+         isOpen={manageTandasModal.isOpen}
+         onClose={() => setManageTandasModal({ isOpen: false })}
+         batchId={manageTandasModal.batchId}
+         onUpdated={loadInventory}
+      />
 
     </div>
   );
