@@ -33,6 +33,12 @@ export function CultivoView() {
   const [harvestGrams, setHarvestGrams] = useState("");
   const [partialHarvests, setPartialHarvests] = useState<any[]>([]);
   const [harvestTandaName, setHarvestTandaName] = useState("");
+  const [harvestMode, setHarvestMode] = useState<'new' | 'add_existing'>('new');
+  const [selectedExistingTandaId, setSelectedExistingTandaId] = useState<string>("");
+
+  // Manage Tandas Modal State
+  const [manageTandasModal, setManageTandasModal] = useState<{isOpen: boolean, batch: any}>({isOpen: false, batch: null});
+  const [mergeModal, setMergeModal] = useState<{isOpen: boolean, sourcePh: any, targetId: string}>({isOpen: false, sourcePh: null, targetId: ""});
 
   const [chartModal, setChartModal] = useState<{isOpen: boolean, batch: any}>({isOpen: false, batch: null});
   const [healthChartModal, setHealthChartModal] = useState<{isOpen: boolean, batch: any}>({isOpen: false, batch: null});
@@ -406,7 +412,36 @@ export function CultivoView() {
       const existing = partialHarvests.filter(ph => ph.batch_id === batch.id);
       setHarvestTandaName(`Tanda ${existing.length + 1}`);
       setHarvestGrams("");
+      setHarvestMode("new");
+      if (existing.length > 0) {
+          setSelectedExistingTandaId(existing[existing.length - 1].id);
+      } else {
+          setSelectedExistingTandaId("");
+      }
       setHarvestModal({ isOpen: true, batch, nextStage: "" });
+  };
+
+  const reconcileBatchHarvests = async (batchId: string) => {
+      const { data: partials } = await supabase.from('core_partial_harvests').select('*').eq('batch_id', batchId);
+      if (!partials) return;
+
+      const totalDryGrams = partials.reduce((sum, p) => sum + (Number(p.weight_dry) || 0), 0);
+      const totalOpex = batchCosts[batchId] || 0;
+      const reconciledCostPerGram = totalDryGrams > 0 ? (totalOpex / totalDryGrams) : 0;
+
+      // Actualizar opex_allocated proporcional en core_partial_harvests
+      for (const p of partials) {
+          const allocated = (Number(p.weight_dry) || 0) * reconciledCostPerGram;
+          await supabase.from('core_partial_harvests').update({ opex_allocated: allocated }).eq('id', p.id);
+      }
+
+      // Actualizar costo unitario ponderado en inventario de cosechas
+      const partialIds = partials.map(p => p.id);
+      if (partialIds.length > 0) {
+          await supabase.from('core_inventory_cosechas').update({ price: reconciledCostPerGram }).in('id', partialIds);
+      }
+
+      await fetchBatches();
   };
 
   const handleHarvestSubmit = async (e: React.FormEvent) => {
@@ -414,19 +449,59 @@ export function CultivoView() {
       const grams = parseFloat(harvestGrams);
       if (isNaN(grams) || grams <= 0) return alert("Ingrese un gramaje válido");
 
+      const batch = harvestModal.batch;
+      if (!batch) return;
+
+      if (harvestMode === 'add_existing') {
+          const targetPh = partialHarvests.find(p => p.id === selectedExistingTandaId);
+          if (!targetPh) return alert("Seleccione una tanda existente válida.");
+
+          const confirmAdd = confirm(`¿Confirmas sumar ${grams}g a "${targetPh.tanda_name}"?\n\nActualmente tiene ${targetPh.weight_dry}g y pasará a ${(Number(targetPh.weight_dry) + grams).toFixed(1)}g.`);
+          if (!confirmAdd) return;
+
+          setHarvestModal(prev => ({...prev, isOpen: false}));
+
+          const newDryWeight = Number(targetPh.weight_dry) + grams;
+
+          // 1. Actualizar peso seco en core_partial_harvests
+          const { error: updPhErr } = await supabase
+              .from('core_partial_harvests')
+              .update({ weight_dry: newDryWeight })
+              .eq('id', targetPh.id);
+
+          if (updPhErr) return alert("Error actualizando tanda: " + updPhErr.message);
+
+          // 2. Actualizar stock en core_inventory_cosechas
+          const { data: invItem } = await supabase.from('core_inventory_cosechas').select('qty').eq('id', targetPh.id).single();
+          if (invItem) {
+              const newInvQty = (Number(invItem.qty) || 0) + grams;
+              await supabase.from('core_inventory_cosechas').update({ qty: newInvQty }).eq('id', targetPh.id);
+          }
+
+          // 3. Reconciliar costos ponderados
+          await reconcileBatchHarvests(batch.id);
+
+          alert(`¡${grams}g sumados con éxito a ${targetPh.tanda_name}! Total tanda: ${newDryWeight}g.`);
+          return;
+      }
+
+      // Modo nueva tanda
+      const confirmNew = confirm(`¿Confirmas registrar una nueva tanda "${harvestTandaName || 'Tanda'}" con ${grams}g secos para el lote "${batch.id}"?`);
+      if (!confirmNew) return;
+
       setHarvestModal(prev => ({...prev, isOpen: false}));
 
       // 1. Obtener tandas previas de este lote para calcular costo promedio ponderado acumulado
-      const prevTandas = partialHarvests.filter((ph: any) => ph.batch_id === harvestModal.batch.id);
+      const prevTandas = partialHarvests.filter((ph: any) => ph.batch_id === batch.id);
       const prevGrams = prevTandas.reduce((sum: number, ph: any) => sum + (Number(ph.weight_dry) || 0), 0);
       const totalBatchGrams = prevGrams + grams;
 
-      const totalOpex = batchCosts[harvestModal.batch.id] || 0;
+      const totalOpex = batchCosts[batch.id] || 0;
       const reconciledCostPerGram = totalBatchGrams > 0 ? (totalOpex / totalBatchGrams) : 0;
 
       // 2. Registrar la Tanda en la tabla de Cosechas Parciales
       const partialPayload = {
-          batch_id: harvestModal.batch.id,
+          batch_id: batch.id,
           tanda_name: harvestTandaName || 'Tanda General',
           plants_harvested: 0,
           weight_dry: grams,
@@ -446,11 +521,11 @@ export function CultivoView() {
       const generatedId = partialData[0].id;
 
       // 3. Inyectar a POS Inventario (Cross-module logic)
-      const lotName = `${harvestModal.batch.id} - ${harvestTandaName || 'Tanda'}`;
+      const lotName = `${batch.id} - ${harvestTandaName || 'Tanda'}`;
       const invPayload = {
           id: generatedId, // UUID único de la tanda
           name: lotName,
-          type: (harvestModal.batch.origen || '').toLowerCase() === 'externo' ? 'b2b' : 'cosecha_local',
+          type: (batch.origen || '').toLowerCase() === 'externo' ? 'b2b' : 'cosecha_local',
           qty: grams,
           price: reconciledCostPerGram, // Costo unitario ponderado por gramo
           date_added: new Date().toISOString()
@@ -461,27 +536,83 @@ export function CultivoView() {
           return alert("Error de Inyección a Inventario POS: " + invError.message);
       }
 
-      // 4. Si existen tandas anteriores del mismo lote, actualizar su costo unitario en inventario y opex asignado
+      // 4. Si existen tandas anteriores del mismo lote, actualizar sus costos
       if (prevTandas.length > 0) {
-          const prevIds = prevTandas.map((ph: any) => ph.id);
-          // Actualizar costo unitario en la bóveda de inventario
-          await supabase
-              .from('core_inventory_cosechas')
-              .update({ price: reconciledCostPerGram })
-              .in('id', prevIds);
-
-          // Actualizar opex_allocated proporcional en core_partial_harvests
-          for (const ph of prevTandas) {
-              const newAllocated = (Number(ph.weight_dry) || 0) * reconciledCostPerGram;
-              await supabase
-                  .from('core_partial_harvests')
-                  .update({ opex_allocated: newAllocated })
-                  .eq('id', ph.id);
-          }
+          await reconcileBatchHarvests(batch.id);
+      } else {
+          fetchBatches();
       }
 
       alert("Tanda cosechada exitosamente. Stock inyectado en el POS y costos unificados por lote.");
-      fetchBatches();
+  };
+
+  const handleEditTandaGrams = async (tandaId: string, currentGrams: number, tandaName: string) => {
+      const val = prompt(`Modificar gramos secos para ${tandaName}:\n(Valor actual: ${currentGrams}g)`, String(currentGrams));
+      if (!val) return;
+      const newGrams = parseFloat(val);
+      if (isNaN(newGrams) || newGrams <= 0) return alert("Ingrese un valor numérico válido mayor a 0.");
+
+      const delta = newGrams - currentGrams;
+
+      // 1. Actualizar core_partial_harvests
+      await supabase.from('core_partial_harvests').update({ weight_dry: newGrams }).eq('id', tandaId);
+
+      // 2. Actualizar core_inventory_cosechas
+      const { data: invItem } = await supabase.from('core_inventory_cosechas').select('qty').eq('id', tandaId).single();
+      if (invItem) {
+          const newQty = Math.max(0, (Number(invItem.qty) || 0) + delta);
+          await supabase.from('core_inventory_cosechas').update({ qty: newQty }).eq('id', tandaId);
+      }
+
+      if (manageTandasModal.batch) {
+          await reconcileBatchHarvests(manageTandasModal.batch.id);
+      }
+      alert(`Gramos de ${tandaName} corregidos a ${newGrams}g con éxito.`);
+  };
+
+  const handleDeleteTanda = async (tandaId: string, tandaName: string) => {
+      if (!confirm(`¿Eliminar permanentemente "${tandaName}"?\nSe retirará su stock de la bóveda de inventario y se recalcularán los costos del lote.`)) {
+          return;
+      }
+
+      await supabase.from('core_partial_harvests').delete().eq('id', tandaId);
+      await supabase.from('core_inventory_cosechas').delete().eq('id', tandaId);
+
+      if (manageTandasModal.batch) {
+          await reconcileBatchHarvests(manageTandasModal.batch.id);
+      }
+      alert(`Tanda "${tandaName}" eliminada con éxito.`);
+  };
+
+  const handleMergeTandas = async (sourceId: string, targetId: string) => {
+      const sourcePh = partialHarvests.find(p => p.id === sourceId);
+      const targetPh = partialHarvests.find(p => p.id === targetId);
+      if (!sourcePh || !targetPh || sourceId === targetId) return;
+
+      const combinedGrams = Number(targetPh.weight_dry) + Number(sourcePh.weight_dry);
+      if (!confirm(`¿Confirmas fusionar "${sourcePh.tanda_name}" (${sourcePh.weight_dry}g) dentro de "${targetPh.tanda_name}" (${targetPh.weight_dry}g)?\n\nEl nuevo total de "${targetPh.tanda_name}" será ${combinedGrams.toFixed(1)}g y "${sourcePh.tanda_name}" se eliminará.`)) {
+          return;
+      }
+
+      // Actualizar tanda destino
+      await supabase.from('core_partial_harvests').update({ weight_dry: combinedGrams }).eq('id', targetId);
+      
+      const { data: targetInv } = await supabase.from('core_inventory_cosechas').select('qty').eq('id', targetId).single();
+      const { data: sourceInv } = await supabase.from('core_inventory_cosechas').select('qty').eq('id', sourceId).single();
+      if (targetInv) {
+          const combinedInvQty = (Number(targetInv.qty) || 0) + (Number(sourceInv?.qty) || 0);
+          await supabase.from('core_inventory_cosechas').update({ qty: combinedInvQty }).eq('id', targetId);
+      }
+
+      // Eliminar tanda origen
+      await supabase.from('core_partial_harvests').delete().eq('id', sourceId);
+      await supabase.from('core_inventory_cosechas').delete().eq('id', sourceId);
+
+      setMergeModal({ isOpen: false, sourcePh: null, targetId: "" });
+      if (manageTandasModal.batch) {
+          await reconcileBatchHarvests(manageTandasModal.batch.id);
+      }
+      alert(`¡Tandas fusionadas exitosamente en ${targetPh.tanda_name}! Total resultante: ${combinedGrams.toFixed(1)}g.`);
   };
 
   const removeRoom = async (id: string, e: React.MouseEvent) => {
@@ -614,6 +745,15 @@ export function CultivoView() {
                                             {ph.tanda_name}: {ph.weight_dry}g
                                         </span>
                                     ))}
+                                    {partialHarvests.filter(ph => ph.batch_id === b.id).length > 0 && (
+                                        <button
+                                            type="button"
+                                            onClick={() => setManageTandasModal({ isOpen: true, batch: b })}
+                                            className="text-[9px] font-mono text-emerald-400 hover:text-emerald-300 underline mt-0.5 flex items-center gap-1 cursor-pointer"
+                                        >
+                                            ⚙️ Gestionar Tandas
+                                        </button>
+                                    )}
                                 </div>
                             )}
                         </td>
@@ -636,6 +776,11 @@ export function CultivoView() {
                            {b.stage === 'cosecha' && (
                               <button onClick={() => openPartialHarvestModal(b)} className="btn-glow-emerald px-2 py-1 border border-emerald-500/30 text-emerald-500 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
                                  + Cosechar
+                              </button>
+                           )}
+                           {partialHarvests.filter(ph => ph.batch_id === b.id).length > 0 && (
+                              <button onClick={() => setManageTandasModal({ isOpen: true, batch: b })} className="btn-glow-purple px-2 py-1 border border-purple-500/30 text-purple-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all" title="Gestionar y corregir tandas de cosecha">
+                                 📋 Tandas ({partialHarvests.filter(ph => ph.batch_id === b.id).length})
                               </button>
                            )}
                            {isSecado ? (
@@ -740,36 +885,368 @@ export function CultivoView() {
         </div>
       )}
 
-      {/* Modal Cosecha Balance (Tanda Cosecha Seca Parcial) */}
+      {/* Modal Cosecha Balance (Tanda Cosecha Seca Parcial / Sumar a Tanda Existente) */}
       {harvestModal.isOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
-            <GlassCard className="max-w-md w-full p-6 shadow-2xl relative border-t-4 border-t-orange-500">
+            <GlassCard className="max-w-lg w-full p-6 shadow-2xl relative border-t-4 border-t-orange-500">
                 <button onClick={() => setHarvestModal(prev => ({...prev, isOpen: false}))} className="absolute top-4 right-4 text-brand-slate-600 hover:text-foreground transition-colors"><AppWindow size={24}/></button>
-                <h2 className="text-xl font-bold mb-2 flex items-center gap-2 text-orange-500">Carga de Cosecha Seca Parcial</h2>
-                <p className="text-brand-slate-600 dark:text-slate-400 text-sm mb-4">Ingrese los datos para la inyección de stock de esta tanda. El lote permanecerá activo hasta que haga clic en 'Finalizar'.</p>
+                <h2 className="text-xl font-bold mb-1 flex items-center gap-2 text-orange-500">Carga de Cosecha Seca</h2>
+                <p className="text-brand-slate-600 dark:text-slate-400 text-xs mb-4">Inyección y costeo ponderado de stock. Puedes crear una nueva tanda o sumar a una existente para corregir cargas.</p>
                 
-                <div className="bg-orange-500/10 border border-orange-500/20 p-3 rounded-lg mb-6 grid grid-cols-2 gap-2 text-left">
+                <div className="bg-orange-500/10 border border-orange-500/20 p-3 rounded-lg mb-4 grid grid-cols-2 gap-2 text-left">
                    <div>
-                       <span className="text-[10px] font-mono text-orange-400 block">OpEx Acumulado:</span>
-                       <span className="text-sm font-bold text-foreground">${batchCosts[harvestModal.batch.id] || 0} ARG</span>
+                       <span className="text-[10px] font-mono text-orange-400 block">Lote:</span>
+                       <span className="text-xs font-bold text-foreground truncate block">{harvestModal.batch.id}</span>
                    </div>
                    <div>
-                       <span className="text-[10px] font-mono text-orange-400 block">Población del Lote:</span>
-                       <span className="text-sm font-bold text-foreground">{harvestModal.batch.num_plants || 0} indivs</span>
+                       <span className="text-[10px] font-mono text-orange-400 block">OpEx Total Acumulado:</span>
+                       <span className="text-xs font-bold text-foreground">${batchCosts[harvestModal.batch.id] || 0} ARG</span>
                    </div>
                 </div>
 
+                {/* Selector Modo: Nueva Tanda vs Sumar a Existente */}
+                {partialHarvests.filter((ph: any) => ph.batch_id === harvestModal.batch.id).length > 0 && (
+                    <div className="grid grid-cols-2 gap-2 p-1 bg-black/30 border border-panel-border rounded-lg mb-4">
+                        <button
+                            type="button"
+                            onClick={() => setHarvestMode('new')}
+                            className={`py-2 text-xs font-bold rounded-md transition-all ${harvestMode === 'new' ? 'bg-orange-600 text-white shadow-md' : 'text-slate-400 hover:text-foreground'}`}
+                        >
+                            ➕ Nueva Tanda
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setHarvestMode('add_existing')}
+                            className={`py-2 text-xs font-bold rounded-md transition-all ${harvestMode === 'add_existing' ? 'bg-amber-600 text-white shadow-md' : 'text-slate-400 hover:text-foreground'}`}
+                        >
+                            ➕ Sumar a Existente
+                        </button>
+                    </div>
+                )}
+
                 <form onSubmit={handleHarvestSubmit} className="flex flex-col gap-4">
+                    {harvestMode === 'new' ? (
+                        <div>
+                            <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Nombre / Identificador Tanda</label>
+                            <input 
+                                type="text" 
+                                required 
+                                placeholder="Ej: Tanda 1" 
+                                value={harvestTandaName} 
+                                onChange={e=>setHarvestTandaName(e.target.value)} 
+                                className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 text-sm focus:border-orange-500 outline-none text-foreground font-bold"
+                            />
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-3">
+                            <div>
+                                <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Seleccionar Tanda Destino</label>
+                                <select
+                                    value={selectedExistingTandaId}
+                                    onChange={e => setSelectedExistingTandaId(e.target.value)}
+                                    className="w-full bg-black/[0.03] dark:bg-black/40 border border-panel-border rounded p-3 text-sm focus:border-amber-500 outline-none text-foreground font-bold"
+                                >
+                                    {partialHarvests
+                                        .filter((ph: any) => ph.batch_id === harvestModal.batch.id)
+                                        .map((ph: any) => (
+                                            <option key={ph.id} value={ph.id} className="bg-slate-900 text-white">
+                                                {ph.tanda_name} — Actualmente: {ph.weight_dry}g
+                                            </option>
+                                        ))
+                                    }
+                                </select>
+                            </div>
+
+                            {/* Previsualización del cálculo en vivo */}
+                            {(() => {
+                                const target = partialHarvests.find(p => p.id === selectedExistingTandaId);
+                                const current = Number(target?.weight_dry) || 0;
+                                const adding = parseFloat(harvestGrams) || 0;
+                                const total = current + adding;
+                                return (
+                                    <div className="bg-amber-500/10 border border-amber-500/20 p-2.5 rounded-lg text-xs space-y-1">
+                                        <div className="flex justify-between text-slate-300">
+                                            <span>Stock actual en {target?.tanda_name || 'tanda'}:</span>
+                                            <span className="font-mono font-bold">{current.toFixed(1)}g</span>
+                                        </div>
+                                        <div className="flex justify-between text-amber-400">
+                                            <span>Gramos adicionales a sumar:</span>
+                                            <span className="font-mono font-bold">+{adding.toFixed(1)}g</span>
+                                        </div>
+                                        <div className="pt-1 border-t border-amber-500/20 flex justify-between font-bold text-foreground">
+                                            <span>Nuevo total de la tanda:</span>
+                                            <span className="font-mono text-amber-400 text-sm">{total.toFixed(1)}g</span>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                    )}
+
                     <div>
-                        <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Identificador Tanda</label>
-                        <input type="text" required placeholder="Ej: Tanda 1" value={harvestTandaName} onChange={e=>setHarvestTandaName(e.target.value)} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-3 text-sm focus:border-orange-500 outline-none text-foreground font-bold"/>
+                        <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">
+                            {harvestMode === 'new' ? 'Peso Seco Neto (Gramos)' : 'Gramos Adicionales a Sumar'}
+                        </label>
+                        <input 
+                            type="number" 
+                            step="0.01" 
+                            required 
+                            placeholder="Ej: 85.5" 
+                            value={harvestGrams} 
+                            onChange={e=>setHarvestGrams(e.target.value)} 
+                            className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-4 text-2xl font-black text-right focus:border-orange-500 outline-none text-foreground"
+                        />
                     </div>
-                    <div>
-                        <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Peso Seco Neto (Gramos)</label>
-                        <input type="number" step="0.01" required placeholder="Ej: 85.5" value={harvestGrams} onChange={e=>setHarvestGrams(e.target.value)} className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded p-4 text-2xl font-black text-right focus:border-orange-500 outline-none text-foreground"/>
-                    </div>
-                    <button type="submit" className="mt-2 w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-3 rounded-lg shadow-lg">INYECTAR TANDA A INVENTARIO POS</button>
+
+                    <button 
+                        type="submit" 
+                        className={`mt-2 w-full text-white font-bold py-3 rounded-lg shadow-lg transition-all ${
+                            harvestMode === 'new' 
+                                ? 'bg-orange-600 hover:bg-orange-500' 
+                                : 'bg-amber-600 hover:bg-amber-500'
+                        }`}
+                    >
+                        {harvestMode === 'new' ? 'INYECTAR NUEVA TANDA A INVENTARIO' : 'SUMAR GRAMOS A TANDA EXISTENTE'}
+                    </button>
                 </form>
+
+                {partialHarvests.filter((ph: any) => ph.batch_id === harvestModal.batch.id).length > 0 && (
+                    <div className="mt-4 pt-3 border-t border-panel-border text-center">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                const currentBatch = harvestModal.batch;
+                                setHarvestModal(prev => ({...prev, isOpen: false}));
+                                setManageTandasModal({ isOpen: true, batch: currentBatch });
+                            }}
+                            className="text-xs text-orange-400 hover:text-orange-300 underline font-mono flex items-center justify-center gap-1 mx-auto"
+                        >
+                            ⚙️ Abrir Gestor de Tandas (Editar, Fusionar o Eliminar)
+                        </button>
+                    </div>
+                )}
+            </GlassCard>
+        </div>
+      )}
+
+      {/* Modal Gestor Integral de Tandas */}
+      {manageTandasModal.isOpen && manageTandasModal.batch && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4">
+            <GlassCard className="max-w-2xl w-full p-6 shadow-2xl relative border-t-4 border-t-purple-500 max-h-[90vh] flex flex-col">
+                <button 
+                    onClick={() => setManageTandasModal({ isOpen: false, batch: null })} 
+                    className="absolute top-4 right-4 text-brand-slate-600 hover:text-foreground transition-colors"
+                >
+                    <X size={24}/>
+                </button>
+                <div className="mb-4">
+                    <h2 className="text-xl font-bold flex items-center gap-2 text-purple-400">
+                        📋 Gestor de Tandas de Cosecha
+                    </h2>
+                    <p className="text-xs text-brand-slate-600 dark:text-slate-400 mt-0.5">
+                        Lote: <span className="font-bold text-foreground">{manageTandasModal.batch.id}</span>
+                    </p>
+                </div>
+
+                {(() => {
+                    const batchTandas = partialHarvests.filter((ph: any) => ph.batch_id === manageTandasModal.batch.id);
+                    const totalBatchGrams = batchTandas.reduce((s: number, p: any) => s + (Number(p.weight_dry) || 0), 0);
+                    const totalOpex = batchCosts[manageTandasModal.batch.id] || 0;
+                    const costPerGram = totalBatchGrams > 0 ? (totalOpex / totalBatchGrams) : 0;
+
+                    return (
+                        <>
+                            {/* Resumen Lote */}
+                            <div className="grid grid-cols-3 gap-2 p-3 bg-purple-500/10 border border-purple-500/20 rounded-lg mb-4 text-center">
+                                <div>
+                                    <span className="text-[10px] font-mono text-purple-300 block">Total Seco Cosechado:</span>
+                                    <span className="text-sm font-bold text-foreground">{totalBatchGrams.toFixed(1)}g</span>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-mono text-purple-300 block">Tandas Registradas:</span>
+                                    <span className="text-sm font-bold text-foreground">{batchTandas.length}</span>
+                                </div>
+                                <div>
+                                    <span className="text-[10px] font-mono text-purple-300 block">Costo Ponderado / g:</span>
+                                    <span className="text-sm font-bold text-emerald-400">${costPerGram.toFixed(2)}</span>
+                                </div>
+                            </div>
+
+                            {/* Tabla de Tandas */}
+                            <div className="overflow-y-auto flex-1 pr-1 space-y-2">
+                                {batchTandas.length === 0 ? (
+                                    <p className="text-center text-sm text-slate-500 py-8">No hay tandas registradas para este lote.</p>
+                                ) : (
+                                    batchTandas.map((ph: any) => (
+                                        <div 
+                                            key={ph.id} 
+                                            className="p-3 bg-black/20 border border-panel-border rounded-lg flex flex-wrap items-center justify-between gap-3 hover:border-purple-500/40 transition-colors"
+                                        >
+                                            <div className="flex flex-col">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold text-foreground text-sm">{ph.tanda_name}</span>
+                                                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-purple-500/20 text-purple-300">
+                                                        {ph.harvest_date || 'Sin fecha'}
+                                                    </span>
+                                                </div>
+                                                <div className="text-xs text-brand-slate-600 dark:text-slate-400 font-mono mt-1 flex gap-3">
+                                                    <span>Peso: <strong className="text-foreground">{ph.weight_dry}g</strong></span>
+                                                    <span>OpEx: <strong className="text-emerald-400">${Math.round(Number(ph.opex_allocated) || 0)}</strong></span>
+                                                </div>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleEditTandaGrams(ph.id, Number(ph.weight_dry), ph.tanda_name)}
+                                                    className="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-400 border border-blue-500/30 rounded text-xs font-semibold flex items-center gap-1 transition-all"
+                                                    title="Modificar peso seco de esta tanda"
+                                                >
+                                                    <PencilSimple size={14}/> Editar g
+                                                </button>
+
+                                                {batchTandas.length > 1 && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const otherTandas = batchTandas.filter((t: any) => t.id !== ph.id);
+                                                            setMergeModal({
+                                                                isOpen: true,
+                                                                sourcePh: ph,
+                                                                targetId: otherTandas[0]?.id || ""
+                                                            });
+                                                        }}
+                                                        className="px-2.5 py-1.5 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 border border-amber-500/30 rounded text-xs font-semibold flex items-center gap-1 transition-all"
+                                                        title="Fusionar y sumar los gramos de esta tanda en otra tanda del lote"
+                                                    >
+                                                        🔗 Fusionar
+                                                    </button>
+                                                )}
+
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleDeleteTanda(ph.id, ph.tanda_name)}
+                                                    className="p-1.5 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-500/30 rounded transition-all"
+                                                    title="Eliminar esta tanda y descontar stock"
+                                                >
+                                                    <Trash size={14}/>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+
+                            <div className="mt-4 pt-3 border-t border-panel-border flex justify-between items-center">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        const currentBatch = manageTandasModal.batch;
+                                        setManageTandasModal({ isOpen: false, batch: null });
+                                        openPartialHarvestModal(currentBatch);
+                                    }}
+                                    className="px-3 py-1.5 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 border border-orange-500/30 rounded-lg text-xs font-bold flex items-center gap-1 transition-all"
+                                >
+                                    <Plus size={14}/> + Cosechar Otra Tanda
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setManageTandasModal({ isOpen: false, batch: null })}
+                                    className="px-4 py-1.5 bg-panel-border hover:bg-panel-border/80 text-foreground rounded-lg text-xs font-bold"
+                                >
+                                    Cerrar
+                                </button>
+                            </div>
+                        </>
+                    );
+                })()}
+            </GlassCard>
+        </div>
+      )}
+
+      {/* Modal Fusión de Tandas */}
+      {mergeModal.isOpen && mergeModal.sourcePh && manageTandasModal.batch && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
+            <GlassCard className="max-w-md w-full p-6 shadow-2xl relative border-t-4 border-t-amber-500">
+                <button 
+                    onClick={() => setMergeModal({ isOpen: false, sourcePh: null, targetId: "" })} 
+                    className="absolute top-4 right-4 text-brand-slate-600 hover:text-foreground transition-colors"
+                >
+                    <X size={20}/>
+                </button>
+                <h3 className="text-lg font-bold text-amber-400 mb-1 flex items-center gap-2">
+                    🔗 Fusionar Tandas
+                </h3>
+                <p className="text-xs text-brand-slate-600 dark:text-slate-400 mb-4">
+                    Une el gramaje de una tanda errónea dentro de otra tanda existente del mismo lote.
+                </p>
+
+                <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-lg mb-4 space-y-1 text-xs">
+                    <div>
+                        <span className="text-slate-400">Tanda a transferir (se eliminará):</span>
+                        <strong className="block text-foreground text-sm">{mergeModal.sourcePh.tanda_name} ({mergeModal.sourcePh.weight_dry}g)</strong>
+                    </div>
+                </div>
+
+                <div className="mb-4">
+                    <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Tanda Destino (donde se sumará el peso)</label>
+                    <select
+                        value={mergeModal.targetId}
+                        onChange={e => setMergeModal(prev => ({ ...prev, targetId: e.target.value }))}
+                        className="w-full bg-black/[0.03] dark:bg-black/40 border border-panel-border rounded p-3 text-sm focus:border-amber-500 outline-none text-foreground font-bold"
+                    >
+                        {partialHarvests
+                            .filter((ph: any) => ph.batch_id === manageTandasModal.batch.id && ph.id !== mergeModal.sourcePh.id)
+                            .map((ph: any) => (
+                                <option key={ph.id} value={ph.id} className="bg-slate-900 text-white">
+                                    {ph.tanda_name} — Actualmente: {ph.weight_dry}g
+                                </option>
+                            ))
+                        }
+                    </select>
+                </div>
+
+                {/* Previsualización del total tras fusionar */}
+                {(() => {
+                    const targetPh = partialHarvests.find((ph: any) => ph.id === mergeModal.targetId);
+                    const sourceGrams = Number(mergeModal.sourcePh.weight_dry) || 0;
+                    const targetGrams = Number(targetPh?.weight_dry) || 0;
+                    const combined = sourceGrams + targetGrams;
+
+                    return (
+                        <div className="bg-black/30 border border-panel-border p-3 rounded-lg mb-4 text-xs space-y-1.5">
+                            <div className="flex justify-between text-slate-300">
+                                <span>{targetPh?.tanda_name || 'Destino'} actual:</span>
+                                <span className="font-mono font-bold">{targetGrams.toFixed(1)}g</span>
+                            </div>
+                            <div className="flex justify-between text-amber-400">
+                                <span>+ {mergeModal.sourcePh.tanda_name}:</span>
+                                <span className="font-mono font-bold">+{sourceGrams.toFixed(1)}g</span>
+                            </div>
+                            <div className="pt-1 border-t border-panel-border flex justify-between font-bold text-foreground">
+                                <span>Nuevo total {targetPh?.tanda_name}:</span>
+                                <span className="font-mono text-amber-400 text-sm">{combined.toFixed(1)}g</span>
+                            </div>
+                        </div>
+                    );
+                })()}
+
+                <div className="flex gap-2">
+                    <button
+                        type="button"
+                        onClick={() => setMergeModal({ isOpen: false, sourcePh: null, targetId: "" })}
+                        className="flex-1 py-2.5 bg-panel-border hover:bg-panel-border/80 text-foreground font-bold rounded-lg text-xs"
+                    >
+                        Cancelar
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => handleMergeTandas(mergeModal.sourcePh.id, mergeModal.targetId)}
+                        className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs shadow-lg transition-all"
+                    >
+                        Confirmar Fusión
+                    </button>
+                </div>
             </GlassCard>
         </div>
       )}
