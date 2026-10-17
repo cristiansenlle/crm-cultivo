@@ -13,8 +13,10 @@ import { AiHealthChartModal } from "../../components/AiHealthChartModal";
 import { Camera, ShieldCheck, X } from "@phosphor-icons/react";
 import { Activity } from "lucide-react";
 import { ElectrophysiologyWidget } from "../../components/dashboard/ElectrophysiologyWidget";
+import { useRoom } from "../../context/RoomContext";
 
 export function CultivoView() {
+  const { selectedRoom: globalSelectedRoom, setSelectedRoom: setGlobalSelectedRoom, refreshRooms: refreshGlobalRooms } = useRoom();
   const [rooms, setRooms] = useState<any[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<any | null>(null);
   const [batches, setBatches] = useState<any[]>([]);
@@ -65,7 +67,7 @@ export function CultivoView() {
       const st = (s.stage || '').toLowerCase();
       return st !== 'finalizado' && st !== 'cosecha seca';
     });
-    if (active.length === 0) return 'Vegetativo';
+    if (active.length === 0) return 'Disponible';
     const stages = active.map((s: any) => (s.stage || '').toLowerCase());
     if (stages.every(st => st === 'cosecha')) return 'Cosecha';
     if (stages.some(st => st === 'floración')) return 'Floración';
@@ -75,23 +77,41 @@ export function CultivoView() {
 
   const fetchRooms = async () => {
     setLoading(true);
-    const { data: roomsData, error: roomsError } = await supabase.from('core_rooms').select('id, name, phase');
-    const { data: batchesData } = await supabase.from('core_batches').select('location, stage');
+    const { data: roomsData, error: roomsError } = await supabase.from('core_rooms').select('id, name, phase').order('name');
+    const { data: batchesData } = await supabase.from('core_batches').select('location, stage, num_plants');
 
     if (roomsData && !roomsError) {
+      let anyPhaseUpdated = false;
       const updatedRooms = await Promise.all(roomsData.map(async (room: any) => {
         const inRoom = (batchesData || []).filter((b: any) => b.location === room.id);
+        const activeInRoom = inRoom.filter((b: any) => {
+          const st = (b.stage || '').toLowerCase();
+          return st !== 'finalizado' && st !== 'cosecha seca';
+        });
+        const finishedCount = inRoom.length - activeInRoom.length;
+        const activePlants = activeInRoom.reduce((sum: number, b: any) => sum + (Number(b.num_plants) || 0), 0);
         const correctPhase = calculateRoomPhase(inRoom);
         if (correctPhase !== room.phase) {
           await supabase.from('core_rooms').update({ phase: correctPhase }).eq('id', room.id);
-          return { ...room, phase: correctPhase };
+          anyPhaseUpdated = true;
         }
-        return room;
+        return {
+          ...room,
+          phase: correctPhase,
+          activeCount: activeInRoom.length,
+          finishedCount,
+          activePlants
+        };
       }));
+
+      if (anyPhaseUpdated) {
+        refreshGlobalRooms();
+      }
 
       setRooms(updatedRooms);
       if (updatedRooms.length > 0 && !selectedRoom) {
-        setSelectedRoom(updatedRooms[0]);
+        const initial = (globalSelectedRoom && updatedRooms.find(r => r.id === globalSelectedRoom.id)) || updatedRooms[0];
+        setSelectedRoom(initial);
       } else if (selectedRoom) {
         const currentUpdated = updatedRooms.find(r => r.id === selectedRoom.id);
         if (currentUpdated) setSelectedRoom(currentUpdated);
@@ -103,6 +123,13 @@ export function CultivoView() {
   useEffect(() => {
     fetchRooms();
   }, []);
+
+  useEffect(() => {
+    if (globalSelectedRoom && rooms.length > 0 && (!selectedRoom || selectedRoom.id !== globalSelectedRoom.id)) {
+      const matched = rooms.find(r => r.id === globalSelectedRoom.id);
+      if (matched) setSelectedRoom(matched);
+    }
+  }, [globalSelectedRoom]);
 
   const handleCreateBatch = async (e: React.FormEvent) => {
       e.preventDefault();
@@ -425,7 +452,7 @@ export function CultivoView() {
       const { data: partials } = await supabase.from('core_partial_harvests').select('*').eq('batch_id', batchId);
       if (!partials) return;
 
-      const totalDryGrams = partials.reduce((sum, p) => sum + (Number(p.weight_dry) || 0), 0);
+      const totalDryGrams = partials.reduce((sum: number, p: any) => sum + (Number(p.weight_dry) || 0), 0);
       const totalOpex = batchCosts[batchId] || 0;
       const reconciledCostPerGram = totalDryGrams > 0 ? (totalOpex / totalDryGrams) : 0;
 
@@ -436,7 +463,7 @@ export function CultivoView() {
       }
 
       // Actualizar costo unitario ponderado en inventario de cosechas
-      const partialIds = partials.map(p => p.id);
+      const partialIds = partials.map((p: any) => p.id);
       if (partialIds.length > 0) {
           await supabase.from('core_inventory_cosechas').update({ price: reconciledCostPerGram }).in('id', partialIds);
       }
@@ -623,6 +650,195 @@ export function CultivoView() {
       if(selectedRoom?.id === id) setSelectedRoom(null);
   };
 
+  const activeBatches = batches.filter(b => {
+    const st = (b.stage || '').toLowerCase();
+    return st !== 'finalizado' && st !== 'cosecha seca';
+  });
+
+  const finishedBatches = batches.filter(b => {
+    const st = (b.stage || '').toLowerCase();
+    return st === 'finalizado' || st === 'cosecha seca';
+  });
+
+  const renderBatchRow = (b: any) => {
+    const isSecado = (b.stage || '').toLowerCase() === 'finalizado' || (b.stage || '').toLowerCase() === 'cosecha seca';
+    const lastDateStr = b.last_stage_date || b.start_date || b.created_at;
+    const days = Math.max(0, Math.floor((Date.now() - new Date(lastDateStr).getTime()) / (1000 * 60 * 60 * 24)));
+    const cost = batchCosts[b.id] || 0;
+    const stageStr = (b.stage || 'vegetativo').toLowerCase();
+    const stageColor = stageStr.includes('floración')
+      ? 'text-purple-400'
+      : stageStr.includes('cosecha')
+      ? 'text-orange-400'
+      : stageStr.includes('finalizado')
+      ? 'text-purple-300'
+      : 'text-emerald-400';
+
+    const batchTandas = partialHarvests.filter(ph => ph.batch_id === b.id);
+    const totalTandasGrams = batchTandas.reduce((sum, ph) => sum + (Number(ph.weight_dry) || 0), 0);
+    const totalDryGrams = totalTandasGrams > 0 ? totalTandasGrams : (Number(b.weight_dry) || 0);
+    const historyDays = (b.stage_history || []).reduce((acc: number, sh: any) => acc + (Number(sh.days) || 0), 0);
+    const totalCycleDays = historyDays > 0
+      ? historyDays
+      : (b.start_date && b.last_stage_date
+          ? Math.max(0, Math.floor((new Date(b.last_stage_date).getTime() - new Date(b.start_date).getTime()) / (1000 * 60 * 60 * 24)))
+          : days);
+    const closedDateFormatted = isSecado && b.last_stage_date
+      ? new Date(b.last_stage_date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : null;
+
+    return (
+      <tr key={b.id} className="border-b border-panel-border/20 transition-colors group hover:bg-black/5 dark:hover:bg-white/5">
+        <td className={`py-3.5 px-2.5 border-l-2 ${isSecado ? 'border-purple-500' : 'border-emerald-500'}`}>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="font-bold text-base text-foreground">{b.id}</span>
+            {isSecado && (
+              <span className="px-2 py-0.5 text-[10px] font-mono font-bold uppercase rounded bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                ✓ Finalizado
+              </span>
+            )}
+          </div>
+          <div className="text-xs font-mono text-brand-slate-600 dark:text-slate-400 flex items-center gap-1">
+            <Info size={12} /> {b.strain || 'S/N'} <span className="uppercase text-emerald-500/80 ml-1">({b.origen || 'Clon'})</span>
+          </div>
+          {closedDateFormatted && (
+            <div className="text-[10px] font-mono text-slate-400 mt-1">
+              Cerrado el {closedDateFormatted}
+            </div>
+          )}
+        </td>
+        <td className="py-3.5 px-2.5">
+          <span className="flex items-center gap-1 font-bold text-foreground bg-panel-border/30 px-2.5 py-1 rounded-lg w-max">
+            <Plant size={16} className={isSecado ? "text-purple-400" : "text-emerald-500"} /> {b.num_plants || '0'} indivs
+          </span>
+        </td>
+        <td className="py-3.5 px-2.5 text-center">
+          {b.stage_history && b.stage_history.length > 0 && (
+            <div className="text-[11px] font-mono mb-1.5 flex flex-col items-center gap-1 leading-tight">
+              {b.stage_history.map((sh: any, idx: number) => {
+                const stName = (sh.stage || '').toLowerCase();
+                const badgeClass = stName.includes('flor')
+                  ? 'bg-purple-500/10 text-purple-300 border-purple-500/25'
+                  : stName.includes('cos')
+                  ? 'bg-orange-500/10 text-orange-300 border-orange-500/25'
+                  : 'bg-emerald-500/10 text-emerald-300 border-emerald-500/25';
+                return (
+                  <span key={idx} className={`capitalize px-2 py-0.5 rounded border font-semibold w-full max-w-[150px] flex justify-between gap-2 ${badgeClass}`}>
+                    <span>{sh.stage}:</span>
+                    <strong>{sh.days} días</strong>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+          {isSecado ? (
+            <div className="inline-flex flex-col items-center w-full max-w-[150px]">
+              <span className="text-xs font-mono font-bold text-foreground bg-white/5 border border-panel-border px-2 py-0.5 rounded w-full flex justify-between gap-2">
+                <span>Ciclo Total:</span>
+                <span className="text-purple-300">{totalCycleDays} días</span>
+              </span>
+            </div>
+          ) : (
+            <>
+              <div className={`text-sm font-bold capitalize ${stageColor}`}>{b.stage || 'Vegetativo'}</div>
+              <div className="text-xs font-mono text-emerald-500/80 mt-0.5">Día {days} Activo</div>
+            </>
+          )}
+
+          {(b.stage === 'cosecha' || isSecado) && (
+            <div className="mt-2 flex flex-col gap-1 items-center max-w-[170px] mx-auto">
+              {totalDryGrams > 0 && (
+                <span className="px-2 py-0.5 bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 rounded text-[10px] font-mono font-bold block w-full text-center">
+                  ⚖️ Total: {Number(totalDryGrams.toFixed(1))}g
+                  {Number(b.num_plants) > 0 ? ` (${(totalDryGrams / Number(b.num_plants)).toFixed(1)}g/pl)` : ''}
+                </span>
+              )}
+              {batchTandas.map((ph, idx) => (
+                <span key={idx} className="px-1.5 py-0.5 bg-orange-500/10 text-orange-400 rounded text-[9px] font-mono block w-full text-center truncate" title={`${ph.tanda_name}: ${ph.weight_dry}g`}>
+                  {ph.tanda_name}: {ph.weight_dry}g
+                </span>
+              ))}
+              {batchTandas.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setManageTandasModal({ isOpen: true, batch: b })}
+                  className="text-[9px] font-mono text-emerald-400 hover:text-emerald-300 underline mt-0.5 flex items-center gap-1 cursor-pointer"
+                >
+                  ⚙️ Gestionar Tandas
+                </button>
+              )}
+            </div>
+          )}
+        </td>
+        <td className="py-3.5 px-2.5 text-center">
+          {b.light_hours || b.dark_hours ? (
+            <div className="text-[11px] font-mono bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded text-foreground flex gap-1 justify-center">
+              <span className="text-yellow-400">{b.light_hours || '-'}L</span> / <span className="text-blue-400">{b.dark_hours || '-'}O</span>
+            </div>
+          ) : (
+            <div className="text-[10px] font-mono text-slate-400 bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded">
+              {isSecado ? 'Ciclo Cerrado' : 'Sin definir'}
+            </div>
+          )}
+          <div className="flex items-center justify-center gap-1 mt-2">
+            {!isSecado && (
+              <button onClick={() => { setFotoLuz(b.light_hours || "18"); setFotoOsc(b.dark_hours || "6"); setFotoModal({isOpen:true, batch:b, nextStage: b.stage}); }} className="btn-glow-emerald py-0.5 px-1.5 border border-panel-border text-[9px] uppercase font-bold text-brand-slate-600 dark:text-slate-300 rounded transition-all">Editar</button>
+            )}
+            <button onClick={() => setChartModal({isOpen: true, batch: b})} className="btn-glow-purple py-0.5 px-1.5 border border-panel-border text-[9px] uppercase font-bold text-brand-slate-600 dark:text-slate-300 rounded transition-all">Chart</button>
+          </div>
+        </td>
+        <td className="py-3.5 px-2.5 text-right">
+          <div className={`inline-flex items-center gap-1 font-mono font-bold text-base ${cost > 0 ? 'text-status-yellow' : 'text-brand-slate-600'}`}>
+            <Coins size={16} /> {cost > 0 ? `$${cost.toFixed(2)}` : 'N/A'}
+          </div>
+          {cost > 0 && totalDryGrams > 0 && (
+            <div className="text-[10px] font-mono text-emerald-400 mt-0.5">
+              ${(cost / totalDryGrams).toFixed(2)} / g seco
+            </div>
+          )}
+        </td>
+        <td className="py-3.5 px-2.5 align-middle">
+          <div className="flex items-center justify-end gap-1.5 flex-wrap">
+            {b.stage === 'cosecha' && (
+              <button onClick={() => openPartialHarvestModal(b)} className="btn-glow-emerald px-2 py-1 border border-emerald-500/30 text-emerald-500 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
+                + Cosechar
+              </button>
+            )}
+            {batchTandas.length > 0 && (
+              <button onClick={() => setManageTandasModal({ isOpen: true, batch: b })} className="btn-glow-purple px-2 py-1 border border-purple-500/30 text-purple-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all" title="Gestionar y corregir tandas de cosecha">
+                📋 Tandas ({batchTandas.length})
+              </button>
+            )}
+            {isSecado ? (
+              <div className="inline-flex gap-1.5">
+                <button onClick={() => setActiveReportBatch(b)} className="btn-glow-purple px-2 py-1 border border-purple-500/30 text-purple-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
+                  📊 Reporte
+                </button>
+                <button onClick={() => { setFinalizeNotes(b.harvest_notes || ""); setFinalizePhotos(null); setFinalizeModal({ isOpen: true, batch: b }); }} className="btn-glow-yellow px-2 py-1 border border-yellow-500/30 text-yellow-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1">
+                  📷 Fotos
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => advanceStageIndicator(b)} className="btn-glow-purple px-2 py-1 border border-panel-border text-brand-slate-600 dark:text-slate-300 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg">
+                &#10148; {b.stage === 'cosecha' ? 'Finalizar' : 'Ciclar'}
+              </button>
+            )}
+            <button onClick={() => setHealthChartModal({isOpen: true, batch: b})} className="btn-glow-purple px-2 py-1 border border-panel-border text-brand-slate-600 dark:text-slate-300 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1"><Activity size={12}/> IA</button>
+            <button onClick={() => setActiveBitacora(b)} className="btn-glow-emerald px-2 py-1 border border-panel-border text-brand-slate-600 dark:text-slate-300 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
+              Bitácora
+            </button>
+            <button onClick={() => { setEditBatch(b as any); setEditBatchModalOpen(true); }} className="btn-glow-yellow px-2 py-1 border border-panel-border text-brand-slate-600 dark:text-slate-300 rounded-lg transition-all" title="Editar">
+              <PencilSimple size={14} weight="bold" />
+            </button>
+            <button onClick={() => handleDeleteBatch(b.id)} className="btn-glow-red px-2 py-1 border border-panel-border text-brand-slate-600 dark:text-slate-300 rounded-lg transition-all" title="Eliminar">
+              <Trash size={14} weight="bold" />
+            </button>
+          </div>
+        </td>
+      </tr>
+    );
+  };
+
   return (
     <>
       <section className="mb-8">
@@ -637,51 +853,82 @@ export function CultivoView() {
             <div className="text-brand-slate-600 font-mono">Cargando Salas...</div>
         ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {rooms.map((room) => (
-                <GlassCard 
-                  key={room.id} 
-                  glowColor={selectedRoom?.id === room.id ? "emerald" : "none"} 
-                  className={`cursor-pointer hover:-translate-y-1 transition-transform duration-300 relative \${selectedRoom?.id === room.id ? 'border-emerald-500' : ''}`}
-                  onClick={() => setSelectedRoom(room)}
-                >
-                  <button onClick={(e)=>removeRoom(room.id, e)} className="absolute top-2 right-2 text-xs text-brand-slate-600 hover:text-red-500 bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded">X</button>
-                  <div className="flex justify-between items-start mt-2">
-                    <h3 className="text-lg font-bold flex items-center gap-2">
-                      <Tree size={20} className={room.phase === 'Floración' ? 'text-purple-400' : room.phase === 'Cosecha' ? 'text-orange-400' : 'text-emerald-500'} />
-                      {room.name}
-                    </h3>
-                  </div>
-                  <div className="flex flex-col gap-1 mt-3">
-                    <span className={`self-start px-2 py-0.5 rounded text-xs font-bold uppercase tracking-wider ${
-                      room.phase === 'Floración' ? 'bg-purple-500/10 text-purple-400' :
-                      room.phase === 'Cosecha' ? 'bg-orange-500/10 text-orange-400' :
-                      'bg-status-green/10 text-status-green'
-                    }`}>
-                      {room.phase || 'Vegetativo'}
-                    </span>
-                  </div>
-                </GlassCard>
-              ))}
+              {rooms.map((room) => {
+                const isDisponible = !room.phase || room.phase === 'Disponible' || room.phase === 'Inactiva';
+                return (
+                  <GlassCard 
+                    key={room.id} 
+                    glowColor={selectedRoom?.id === room.id ? "emerald" : "none"} 
+                    className={`cursor-pointer hover:-translate-y-1 transition-transform duration-300 relative ${selectedRoom?.id === room.id ? 'border-emerald-500' : ''}`}
+                    onClick={() => {
+                      setSelectedRoom(room);
+                      setGlobalSelectedRoom(room);
+                    }}
+                  >
+                    <button onClick={(e)=>removeRoom(room.id, e)} className="absolute top-2 right-2 text-xs text-brand-slate-600 hover:text-red-500 bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded">X</button>
+                    <div className="flex justify-between items-start mt-2">
+                      <h3 className="text-lg font-bold flex items-center gap-2">
+                        <Tree size={20} className={
+                          room.phase === 'Floración' ? 'text-purple-400' :
+                          room.phase === 'Cosecha' ? 'text-orange-400' :
+                          isDisponible ? 'text-slate-400' :
+                          'text-emerald-500'
+                        } />
+                        {room.name}
+                      </h3>
+                    </div>
+                    <div className="flex flex-wrap items-center justify-between gap-2 mt-3">
+                      <span className={`px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider border ${
+                        room.phase === 'Floración' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' :
+                        room.phase === 'Cosecha' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
+                        isDisponible ? 'bg-slate-500/15 text-slate-400 border-slate-500/30' :
+                        'bg-status-green/10 text-status-green border-emerald-500/20'
+                      }`}>
+                        {isDisponible ? 'Disponible · Sin Cultivo' : room.phase}
+                      </span>
+
+                      <span className="text-[11px] font-mono text-brand-slate-600 dark:text-slate-400">
+                        {room.activeCount > 0
+                          ? `${room.activeCount} lote${room.activeCount > 1 ? 's' : ''} · ${room.activePlants || 0} pl.`
+                          : room.finishedCount > 0
+                          ? `${room.finishedCount} finalizado${room.finishedCount > 1 ? 's' : ''}`
+                          : 'Sala vacía'}
+                      </span>
+                    </div>
+                  </GlassCard>
+                );
+              })}
             </div>
         )}
       </section>
 
-
-
       {selectedRoom && (
-        <section>
+        <section className="flex flex-col gap-6 mb-8">
           <GlassCard className="w-full border-t border-t-emerald-500 relative overflow-hidden">
              <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/4 pointer-events-none"></div>
              
              <div className="flex flex-col md:flex-row justify-between md:items-center gap-4 mb-6 border-b border-panel-border pb-4">
                <div>
-                  <h2 className="text-2xl font-extrabold flex items-center gap-2">{selectedRoom.name}</h2>
+                  <div className="flex items-center gap-3">
+                    <h2 className="text-2xl font-extrabold">{selectedRoom.name}</h2>
+                    <span className={`px-2.5 py-0.5 rounded text-xs font-bold uppercase tracking-wider border ${
+                      selectedRoom.phase === 'Floración' ? 'bg-purple-500/10 text-purple-400 border-purple-500/20' :
+                      selectedRoom.phase === 'Cosecha' ? 'bg-orange-500/10 text-orange-400 border-orange-500/20' :
+                      (!selectedRoom.phase || selectedRoom.phase === 'Disponible') ? 'bg-slate-500/15 text-slate-400 border-slate-500/30' :
+                      'bg-status-green/10 text-status-green border-emerald-500/20'
+                    }`}>
+                      {(!selectedRoom.phase || selectedRoom.phase === 'Disponible') ? 'Disponible · Sin Cultivo Activo' : selectedRoom.phase}
+                    </span>
+                  </div>
                   <p className="text-brand-slate-600 dark:text-slate-400 text-sm font-mono flex items-center gap-1 mt-1">
-                    <Info size={16} /> {batches.filter(b => (b.stage || '').toLowerCase() !== 'finalizado' && (b.stage || '').toLowerCase() !== 'cosecha seca').length} Lotes activos vinculados.
+                    <Info size={16} />
+                    {activeBatches.length > 0
+                      ? `${activeBatches.length} ${activeBatches.length === 1 ? 'Lote activo en producción' : 'Lotes activos en producción'}.`
+                      : `0 Lotes en producción actualmente — Carpa libre para nuevo ciclo.`}
                   </p>
                </div>
                <div className="flex flex-col sm:flex-row gap-2 items-center">
-                   {batches.filter(b => (b.stage || '').toLowerCase() !== 'finalizado' && (b.stage || '').toLowerCase() !== 'cosecha seca').length > 0 && (
+                   {activeBatches.length > 0 && (
                        <button onClick={() => setActiveGlobalBitacora(true)} className="flex w-full sm:w-auto justify-center items-center gap-2 px-4 py-2 bg-blue-600/20 text-blue-500 hover:bg-blue-600 hover:text-white rounded-lg transition-colors font-bold text-sm border border-blue-500/30">
                           <Stack size={16} weight="bold" /> Aplicación Global
                        </button>
@@ -692,129 +939,68 @@ export function CultivoView() {
                </div>
              </div>
 
-             <div className="overflow-x-auto">
-               <table className="w-full text-left text-sm whitespace-nowrap">
-                 <thead>
-                   <tr className="border-b border-panel-border/50 text-brand-slate-600 font-mono text-xs uppercase tracking-wider">
-                     <th className="py-3 px-2.5 font-normal">Identidad / Genética</th>
-                     <th className="py-3 px-2.5 font-normal">Población</th>
-                     <th className="py-3 px-2.5 font-normal text-center">Fase de Ciclo</th>
-                     <th className="py-3 px-2.5 text-center">Fotoperiodo</th>
-                     <th className="py-3 px-2.5 font-normal text-right">Inversión Recurrente</th>
-                     <th className="py-3 px-2.5 text-right">Operaciones Máquina</th>
-                   </tr>
-                 </thead>
-                 <tbody className="font-sans">
-                   {batches.length === 0 && (
-                       <tr><td colSpan={6} className="py-8 px-2.5 text-center text-brand-slate-600 italic">Sala sin lotes asignados.</td></tr>
-                   )}
-                   {batches.map(b => {
-                      const isSecado = (b.stage || '').toLowerCase() === 'finalizado' || (b.stage || '').toLowerCase() === 'cosecha seca';
-                      const lastDateStr = b.last_stage_date || b.start_date || b.created_at;
-                      const days = Math.max(0, Math.floor((Date.now() - new Date(lastDateStr).getTime()) / (1000 * 60 * 60 * 24)));
-                      const cost = batchCosts[b.id] || 0;
-                      const stageStr = (b.stage || 'vegetativo').toLowerCase();
-                      const stageColor = stageStr.includes('floración') ? 'text-purple-400' : stageStr.includes('cosecha') ? 'text-orange-400' : stageStr.includes('finalizado') ? 'text-brand-slate-500 line-through' : 'text-foreground';
-                      
-                      return (
-                      <tr key={b.id} className={`border-b border-panel-border/20 transition-colors group ${isSecado ? 'opacity-40 hover:opacity-100' : 'hover:bg-black/5 dark:hover:bg-black/5 dark:hover:bg-white/5'}`}>
-                        <td className={`py-3 px-2.5 border-l-2 ${isSecado ? 'border-orange-500' : 'border-emerald-500'}`}>
-                          <div className={`font-bold text-base mb-1 ${isSecado ? 'line-through text-brand-slate-600' : 'text-foreground'}`}>{b.id}</div>
-                          <div className="text-xs font-mono text-brand-slate-600 flex items-center gap-1"><Info size={12}/> {b.strain || 'S/N'} <span className="uppercase text-emerald-500/80 ml-1">({b.origen || 'Clon'})</span></div>
-                        </td>
-                        <td className="py-3 px-2.5">
-                            <span className="flex items-center gap-1 font-bold text-foreground bg-panel-border/30 px-2.5 py-1 rounded-lg w-max">
-                               <Plant size={16} className={isSecado ? "text-orange-500" : "text-emerald-500"} /> {b.num_plants || '0'} indivs
-                            </span>
-                        </td>
-                        <td className="py-3 px-2.5 text-center">
-                            {b.stage_history && b.stage_history.length > 0 && (
-                                <div className="text-[10px] font-mono text-brand-slate-500 mb-1 flex flex-col items-center leading-tight">
-                                    {b.stage_history.map((sh: any, idx: number) => (
-                                        <span key={idx} className="capitalize">{sh.stage}: {sh.days}d</span>
-                                    ))}
-                                </div>
-                            )}
-                            <div className={`text-sm font-bold capitalize ${stageColor}`}>{b.stage || 'Vegetativo'}</div>
-                            <div className="text-xs font-mono text-emerald-500/80 mt-0.5">Día {days} Activo</div>
-                            
-                            {(b.stage === 'cosecha' || b.stage === 'finalizado' || b.stage === 'cosecha seca') && (
-                                <div className="mt-2 flex flex-col gap-1 items-center max-w-[150px] mx-auto">
-                                    {partialHarvests.filter(ph => ph.batch_id === b.id).map((ph, idx) => (
-                                        <span key={idx} className="px-1.5 py-0.5 bg-orange-500/10 text-orange-400 rounded text-[9px] font-mono block w-full text-center truncate" title={`${ph.tanda_name}: ${ph.weight_dry}g`}>
-                                            {ph.tanda_name}: {ph.weight_dry}g
-                                        </span>
-                                    ))}
-                                    {partialHarvests.filter(ph => ph.batch_id === b.id).length > 0 && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setManageTandasModal({ isOpen: true, batch: b })}
-                                            className="text-[9px] font-mono text-emerald-400 hover:text-emerald-300 underline mt-0.5 flex items-center gap-1 cursor-pointer"
-                                        >
-                                            ⚙️ Gestionar Tandas
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                        </td>
-                        <td className="py-3 px-2.5 text-center">
-                            <div className="text-[11px] font-mono bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded text-foreground flex gap-1 justify-center">
-                              <span className="text-yellow-400">{b.light_hours || '-'}L</span> / <span className="text-blue-400">{b.dark_hours || '-'}O</span>
-                            </div>
-                            <div className="flex items-center justify-center gap-1 mt-2">
-                              <button onClick={() => { setFotoLuz(b.light_hours); setFotoOsc(b.dark_hours); setFotoModal({isOpen:true, batch:b, nextStage: b.stage}); }} className="btn-glow-emerald py-0.5 px-1.5 border border-panel-border text-[9px] uppercase font-bold text-brand-slate-600 rounded transition-all">Editar</button>
-                              <button onClick={() => setChartModal({isOpen: true, batch: b})} className="btn-glow-purple py-0.5 px-1.5 border border-panel-border text-[9px] uppercase font-bold text-brand-slate-600 rounded transition-all">Chart</button>
-                            </div>
-                        </td>
-                        <td className="py-3 px-2.5 text-right">
-                            <div className={`inline-flex items-center gap-1 font-mono font-bold text-base ${cost > 0 ? 'text-status-yellow' : 'text-brand-slate-600'}`}>
-                               <Coins size={16} /> {cost > 0 ? `$${cost.toFixed(2)}` : 'N/A'}
-                            </div>
-                        </td>
-                        <td className="py-3 px-2.5 align-middle">
-                           <div className="flex items-center justify-end gap-1.5 flex-wrap">
-                           {b.stage === 'cosecha' && (
-                              <button onClick={() => openPartialHarvestModal(b)} className="btn-glow-emerald px-2 py-1 border border-emerald-500/30 text-emerald-500 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
-                                 + Cosechar
-                              </button>
-                           )}
-                           {partialHarvests.filter(ph => ph.batch_id === b.id).length > 0 && (
-                              <button onClick={() => setManageTandasModal({ isOpen: true, batch: b })} className="btn-glow-purple px-2 py-1 border border-purple-500/30 text-purple-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all" title="Gestionar y corregir tandas de cosecha">
-                                 📋 Tandas ({partialHarvests.filter(ph => ph.batch_id === b.id).length})
-                              </button>
-                           )}
-                           {isSecado ? (
-                                <div className="inline-flex gap-1.5">
-                                    <button onClick={() => setActiveReportBatch(b)} className="btn-glow-purple px-1.5 py-1 border border-purple-500/30 text-purple-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
-                                       📊 Reporte
-                                    </button>
-                                   <button onClick={() => { setFinalizeNotes(b.harvest_notes || ""); setFinalizePhotos(null); setFinalizeModal({ isOpen: true, batch: b }); }} className="btn-glow-yellow px-1.5 py-1 border border-yellow-500/30 text-yellow-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1">
-                                      📷 Fotos
-                                   </button>
-                               </div>
-                            ) : (
-                               <button onClick={() => advanceStageIndicator(b)} className="btn-glow-purple px-2 py-1 border border-panel-border text-brand-slate-600 text-[10px] font-bold uppercase tracking-wider transition-all rounded-lg">
-                                  &#10148; {b.stage === 'cosecha' ? 'Finalizar' : 'Ciclar'}
-                               </button>
-                            )}
-                           <button onClick={() => setHealthChartModal({isOpen: true, batch: b})} className="btn-glow-purple px-2 py-1 border border-panel-border text-brand-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1"><Activity size={12}/> IA</button>
-                           <button onClick={() => setActiveBitacora(b)} className="btn-glow-emerald px-2 py-1 border border-panel-border text-brand-slate-600 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
-                              Bitácora
-                           </button>
-                           <button onClick={() => { setEditBatch(b as any); setEditBatchModalOpen(true); }} className="btn-glow-yellow px-2 py-1 border border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Editar">
-                              <PencilSimple size={14} weight="bold" />
-                           </button>
-                            <button onClick={() => handleDeleteBatch(b.id)} className="btn-glow-red px-2 py-1 border border-panel-border text-brand-slate-600 rounded-lg transition-all" title="Eliminar">
-                               <Trash size={14} weight="bold" />
-                            </button>
-                           </div>
-                        </td>
-                      </tr>
-                      )
-                    })}
-                 </tbody>
-               </table>
-             </div>
+             {/* Lotes Activos en Producción */}
+             {activeBatches.length === 0 ? (
+               <div className="py-8 px-4 rounded-xl border border-dashed border-panel-border bg-black/[0.02] dark:bg-white/[0.02] text-center flex flex-col items-center gap-2">
+                 <Plant size={32} className="text-slate-400 mb-1" />
+                 <h3 className="text-base font-bold text-foreground">
+                   No hay lotes en producción en {selectedRoom.name}
+                 </h3>
+                 <p className="text-xs font-mono text-brand-slate-600 dark:text-slate-400 max-w-md">
+                   Esta carpa se encuentra actualmente disponible. Puedes sembrar un nuevo lote activo cuando inicies el próximo cultivo.
+                 </p>
+               </div>
+             ) : (
+               <div className="overflow-x-auto">
+                 <table className="w-full text-left text-sm whitespace-nowrap">
+                   <thead>
+                     <tr className="border-b border-panel-border/50 text-brand-slate-600 font-mono text-xs uppercase tracking-wider">
+                       <th className="py-3 px-2.5 font-normal">Identidad / Genética</th>
+                       <th className="py-3 px-2.5 font-normal">Población</th>
+                       <th className="py-3 px-2.5 font-normal text-center">Fase de Ciclo</th>
+                       <th className="py-3 px-2.5 text-center">Fotoperiodo</th>
+                       <th className="py-3 px-2.5 font-normal text-right">Inversión Recurrente</th>
+                       <th className="py-3 px-2.5 text-right">Operaciones Máquina</th>
+                     </tr>
+                   </thead>
+                   <tbody className="font-sans">
+                     {activeBatches.map(b => renderBatchRow(b))}
+                   </tbody>
+                 </table>
+               </div>
+             )}
+
+             {/* Historial de Lotes Finalizados en esta Sala */}
+             {finishedBatches.length > 0 && (
+               <div className="mt-8 pt-6 border-t border-panel-border">
+                 <div className="flex items-center justify-between mb-4">
+                   <h3 className="text-sm font-bold font-mono uppercase tracking-wider text-purple-400 flex items-center gap-2">
+                     <ShieldCheck size={18} />
+                     Historial de Cultivos Finalizados en {selectedRoom.name} ({finishedBatches.length})
+                   </h3>
+                   <span className="text-xs font-mono text-slate-400">
+                     Ciclos cerrados y archivados
+                   </span>
+                 </div>
+                 <div className="overflow-x-auto">
+                   <table className="w-full text-left text-sm whitespace-nowrap">
+                     <thead>
+                       <tr className="border-b border-panel-border/50 text-brand-slate-600 font-mono text-xs uppercase tracking-wider">
+                         <th className="py-3 px-2.5 font-normal">Identidad / Genética</th>
+                         <th className="py-3 px-2.5 font-normal">Población</th>
+                         <th className="py-3 px-2.5 font-normal text-center">Duración / Cosecha</th>
+                         <th className="py-3 px-2.5 text-center">Fotoperiodo</th>
+                         <th className="py-3 px-2.5 font-normal text-right">Inversión / Costo por g</th>
+                         <th className="py-3 px-2.5 text-right">Reportes y Archivo</th>
+                       </tr>
+                     </thead>
+                     <tbody className="font-sans">
+                       {finishedBatches.map(b => renderBatchRow(b))}
+                     </tbody>
+                   </table>
+                 </div>
+               </div>
+             )}
           </GlassCard>
         </section>
       )}

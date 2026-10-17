@@ -27,17 +27,45 @@ export function RoomProvider({ children }: { children: React.ReactNode }) {
   const [sensors, setSensors] = useState<Sensor[]>([]);
   const [activeSensor, setActiveSensor] = useState<Sensor | null>(null);
 
+  const calculateRoomPhase = (batchesInRoom: any[]): string => {
+    const active = (batchesInRoom || []).filter((s: any) => {
+      const st = (s.stage || '').toLowerCase();
+      return st !== 'finalizado' && st !== 'cosecha seca';
+    });
+    if (active.length === 0) return 'Disponible';
+    const stages = active.map((s: any) => (s.stage || '').toLowerCase());
+    if (stages.every(st => st === 'cosecha')) return 'Cosecha';
+    if (stages.some(st => st === 'floración')) return 'Floración';
+    if (stages.some(st => st === 'cosecha')) return 'Cosecha';
+    return 'Vegetativo';
+  };
+
   const fetchRooms = async () => {
     if (!supabase) return; // Fail gracefully if no keys
     try {
-      const { data, error } = await supabase.from('core_rooms').select('*').order('name');
+      const [{ data, error }, { data: batchesData }] = await Promise.all([
+        supabase.from('core_rooms').select('*').order('name'),
+        supabase.from('core_batches').select('location, stage')
+      ]);
       if (error) {
           console.error("Supabase fetchRooms error:", error);
       }
       if (data && !error) {
-        setRooms(data);
-        if (data.length > 0 && !selectedRoom) {
-          setSelectedRoom(data[0]);
+        const syncedRooms = await Promise.all(data.map(async (room: any) => {
+          const inRoom = (batchesData || []).filter((b: any) => b.location === room.id);
+          const correctPhase = calculateRoomPhase(inRoom);
+          if (correctPhase !== room.phase) {
+            await supabase.from('core_rooms').update({ phase: correctPhase }).eq('id', room.id);
+            return { ...room, phase: correctPhase };
+          }
+          return room;
+        }));
+        setRooms(syncedRooms);
+        if (syncedRooms.length > 0 && !selectedRoom) {
+          setSelectedRoom(syncedRooms[0]);
+        } else if (selectedRoom) {
+          const updatedSelected = syncedRooms.find((r: any) => r.id === selectedRoom.id);
+          if (updatedSelected) setSelectedRoom(updatedSelected);
         }
       }
     } catch(e) {

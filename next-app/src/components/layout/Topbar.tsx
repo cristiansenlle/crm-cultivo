@@ -11,7 +11,7 @@ export function Topbar() {
   const { rooms, selectedRoom, setSelectedRoom, refreshRooms } = useRoom();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [newRoomName, setNewRoomName] = useState("");
-  const [newRoomPhase, setNewRoomPhase] = useState("Vegetativo");
+  const [newRoomPhase, setNewRoomPhase] = useState("Disponible");
   const [isSubmitting, setIsSubmitting] = useState(false);
   
   const getRouteTitle = () => {
@@ -137,6 +137,7 @@ export function Topbar() {
                     <div>
                         <label className="text-xs font-mono text-brand-slate-600 block mb-2 uppercase">Fase Agronómica Actual</label>
                         <select required value={newRoomPhase} onChange={e => setNewRoomPhase(e.target.value)} className="w-full bg-black/[0.05] dark:bg-black/30 border border-panel-border rounded-lg p-3 text-sm focus:border-emerald-500 focus:outline-none transition-all font-mono appearance-none">
+                            <option value="Disponible">Disponible (Sin Cultivo)</option>
                             <option value="Vegetativo">Vegetativo</option>
                             <option value="Floración">Floración</option>
                             <option value="Secado">Secado</option>

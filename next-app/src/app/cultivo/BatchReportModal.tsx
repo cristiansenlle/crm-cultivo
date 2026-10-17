@@ -33,8 +33,6 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
   const startDate = batch.start_date || batch.created_at;
   const endDate = batch.last_stage_date || new Date().toISOString();
   
-  const totalDays = Math.max(1, Math.floor((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)));
-  
   // Calcular días por etapa del historial
   const stageStats = useMemo(() => {
     const stats: Record<string, number> = { vegetativo: 0, floración: 0, cosecha: 0 };
@@ -56,6 +54,11 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
 
     return stats;
   }, [batch, startDate]);
+
+  const sumStageDays = stageStats.vegetativo + stageStats.floración + stageStats.cosecha;
+  const totalDays = sumStageDays > 0
+    ? sumStageDays
+    : Math.max(1, Math.floor((new Date(endDate).getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24)));
 
   const loadReportData = async () => {
       setLoading(true);
