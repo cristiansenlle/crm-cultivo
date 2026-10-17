@@ -71,7 +71,7 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
               .select('harvest_photos')
               .eq('id', batch.id)
               .single()
-              .then(({ data }) => {
+              .then(({ data }: { data: any }) => {
                   if (data?.harvest_photos) setHarvestPhotos(data.harvest_photos);
                   setLoadingPhotos(false);
               });
