@@ -15,11 +15,14 @@ import { Activity } from "lucide-react";
 import { ElectrophysiologyWidget } from "../../components/dashboard/ElectrophysiologyWidget";
 import { useRoom } from "../../context/RoomContext";
 
+const BATCH_COLS = 'id, strain, start_date, stage, origen, madre, location, flower_days, sync_gcal, timestamp, weight_dry, weight_wet, light_hours, dark_hours, room_id, num_plants, last_stage_date, stage_history, harvest_notes';
+
 export function CultivoView() {
   const { selectedRoom: globalSelectedRoom, setSelectedRoom: setGlobalSelectedRoom, refreshRooms: refreshGlobalRooms } = useRoom();
   const [rooms, setRooms] = useState<any[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<any | null>(null);
-  const [batches, setBatches] = useState<any[]>([]);
+  const [allBatches, setAllBatches] = useState<any[]>([]);
+  const batches = allBatches.filter((b: any) => b.location === selectedRoom?.id);
   const [batchCosts, setBatchCosts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   
@@ -204,42 +207,37 @@ export function CultivoView() {
   };
 
   const fetchBatches = async () => {
-    if(!selectedRoom) return;
-    const { data, error } = await supabase.from('core_batches').select('*').eq('location', selectedRoom.id);
+    const [
+      { data, error },
+      { data: eventsData },
+      { data: harvestsData }
+    ] = await Promise.all([
+      supabase.from('core_batches').select(BATCH_COLS),
+      supabase.from('core_agronomic_events').select('batch_id, total_cost'),
+      supabase.from('core_partial_harvests').select('*')
+    ]);
+
     if (data && !error) {
-      setBatches(data);
-      const batchIds = data.map((b: any) => b.id);
-      if (batchIds.length > 0) {
-          // Fetch costs
-          const { data: eventsData } = await supabase.from('core_agronomic_events').select('batch_id, total_cost').in('batch_id', batchIds);
-          if (eventsData) {
-              const costsMap: Record<string, number> = {};
-              eventsData.forEach((ev: any) => {
-                  if (ev.total_cost) {
-                      costsMap[ev.batch_id] = (costsMap[ev.batch_id] || 0) + ev.total_cost;
-                  }
-              });
-              setBatchCosts(costsMap);
+      setAllBatches(data);
+      if (eventsData) {
+        const costsMap: Record<string, number> = {};
+        eventsData.forEach((ev: any) => {
+          if (ev.total_cost) {
+            costsMap[ev.batch_id] = (costsMap[ev.batch_id] || 0) + ev.total_cost;
           }
-          // Fetch partial harvests
-          const { data: harvestsData } = await supabase.from('core_partial_harvests').select('*').in('batch_id', batchIds);
-          if (harvestsData) {
-              setPartialHarvests(harvestsData);
-          } else {
-              setPartialHarvests([]);
-          }
-      } else {
-          setPartialHarvests([]);
+        });
+        setBatchCosts(costsMap);
       }
+      setPartialHarvests(harvestsData || []);
     } else {
-      setBatches([]);
+      setAllBatches([]);
       setPartialHarvests([]);
     }
   };
 
   useEffect(() => {
     fetchBatches();
-  }, [selectedRoom]);
+  }, []);
 
   const advanceStageIndicator = (batch: any) => {
       const stages = ['vegetativo', 'floración', 'cosecha', 'finalizado'];
@@ -284,17 +282,22 @@ export function CultivoView() {
   };
 
   const commitStage = async (batchId: string, nextStage: string, updates: any = {}) => {
-      const batch = batches.find(b => b.id === batchId);
+      const batch = allBatches.find(b => b.id === batchId);
       if (batch) {
-          const lastDate = batch.last_stage_date ? new Date(batch.last_stage_date) : new Date(batch.start_date || batch.created_at || Date.now());
-          const daysInStage = Math.max(0, Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24)));
-          
-          const currentHistory = batch.stage_history || [];
-          const newHistory = [...currentHistory, { stage: batch.stage || 'vegetativo', days: daysInStage }];
-          
-          updates.stage = nextStage;
-          updates.last_stage_date = new Date().toISOString();
-          updates.stage_history = newHistory;
+          const isAlreadyFinalized = (batch.stage || '').toLowerCase() === 'finalizado' && nextStage === 'finalizado';
+          if (!isAlreadyFinalized) {
+              const lastDate = batch.last_stage_date ? new Date(batch.last_stage_date) : new Date(batch.start_date || batch.created_at || Date.now());
+              const daysInStage = Math.max(0, Math.floor((Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24)));
+              
+              const currentHistory = batch.stage_history || [];
+              const newHistory = [...currentHistory, { stage: batch.stage || 'vegetativo', days: daysInStage }];
+              
+              updates.stage = nextStage;
+              updates.last_stage_date = new Date().toISOString();
+              updates.stage_history = newHistory;
+          } else {
+              updates.stage = nextStage;
+          }
 
           // Si se finaliza el lote, calcular el total cosechado acumulado
           if (nextStage === 'finalizado') {
@@ -330,7 +333,35 @@ export function CultivoView() {
       return new Promise((resolve, reject) => {
           const reader = new FileReader();
           reader.readAsDataURL(file);
-          reader.onload = () => resolve(reader.result as string);
+          reader.onload = () => {
+              const img = new Image();
+              img.onload = () => {
+                  const MAX_DIM = 1280;
+                  let width = img.width;
+                  let height = img.height;
+                  if (width > MAX_DIM || height > MAX_DIM) {
+                      if (width > height) {
+                          height = Math.round((height * MAX_DIM) / width);
+                          width = MAX_DIM;
+                      } else {
+                          width = Math.round((width * MAX_DIM) / height);
+                          height = MAX_DIM;
+                      }
+                  }
+                  const canvas = document.createElement("canvas");
+                  canvas.width = width;
+                  canvas.height = height;
+                  const ctx = canvas.getContext("2d");
+                  if (ctx) {
+                      ctx.drawImage(img, 0, 0, width, height);
+                      resolve(canvas.toDataURL("image/jpeg", 0.78));
+                  } else {
+                      resolve(reader.result as string);
+                  }
+              };
+              img.onerror = () => resolve(reader.result as string);
+              img.src = reader.result as string;
+          };
           reader.onerror = error => reject(error);
       });
   };
@@ -375,15 +406,12 @@ export function CultivoView() {
       setIsFinalizing(true);
       
       try {
-          let photoUrls: string[] = [];
-          if (finalizePhotos && finalizePhotos.length > 0) {
-              photoUrls = await uploadPhotos(finalizeModal.batch.id, finalizePhotos);
-          }
-          
           const updates: any = {
-              harvest_notes: finalizeNotes,
-              harvest_photos: photoUrls
+              harvest_notes: finalizeNotes
           };
+          if (finalizePhotos && finalizePhotos.length > 0) {
+              updates.harvest_photos = await uploadPhotos(finalizeModal.batch.id, finalizePhotos);
+          }
           
           const batchId = finalizeModal.batch.id;
           

@@ -55,11 +55,19 @@ export default function InsumosPage() {
     setLoading(false);
 
     // Load Cosechas enriched with batch, room and agronomic events
-    const { data: invCosechas } = await supabase.from('core_inventory_cosechas').select('*').gt('qty', 0);
-    const { data: partialData } = await supabase.from('core_partial_harvests').select('*');
-    const { data: batchesData } = await supabase.from('core_batches').select('*');
-    const { data: roomsData } = await supabase.from('core_rooms').select('*');
-    const { data: eventsData } = await supabase.from('core_agronomic_events').select('*').ilike('event_type', '%cosecha%');
+    const [
+      { data: invCosechas },
+      { data: partialData },
+      { data: batchesData },
+      { data: roomsData },
+      { data: eventsData }
+    ] = await Promise.all([
+      supabase.from('core_inventory_cosechas').select('*').gt('qty', 0),
+      supabase.from('core_partial_harvests').select('*'),
+      supabase.from('core_batches').select('id, strain, start_date, stage, origen, location, room_id, num_plants, last_stage_date, stage_history'),
+      supabase.from('core_rooms').select('*'),
+      supabase.from('core_agronomic_events').select('*').ilike('event_type', '%cosecha%')
+    ]);
 
         if (invCosechas) {
             const enriched = invCosechas.map((item: any) => {

@@ -27,6 +27,8 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
   const [events, setEvents] = useState<any[]>([]);
   const [partials, setPartials] = useState<any[]>([]);
   const [photoperiod, setPhotoperiod] = useState<any[]>([]);
+  const [harvestPhotos, setHarvestPhotos] = useState<string[]>(batch.harvest_photos || []);
+  const [loadingPhotos, setLoadingPhotos] = useState(!batch.harvest_photos);
   const [activeTab, setActiveTab] = useState<"clima" | "vpd" | "suelo" | "insumos">("clima");
 
   // Fechas del Ciclo
@@ -62,6 +64,18 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
 
   const loadReportData = async () => {
       setLoading(true);
+      if (!batch.harvest_photos) {
+          setLoadingPhotos(true);
+          supabase
+              .from('core_batches')
+              .select('harvest_photos')
+              .eq('id', batch.id)
+              .single()
+              .then(({ data }) => {
+                  if (data?.harvest_photos) setHarvestPhotos(data.harvest_photos);
+                  setLoadingPhotos(false);
+              });
+      }
       try {
           const startIso = new Date(startDate).toISOString();
           const endIso = new Date(endDate).toISOString();
@@ -270,16 +284,21 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
             <h3 className="text-lg font-bold text-orange-400 flex items-center gap-2 mb-4">
               <ShieldCheck size={22}/> Bitácora de Cosecha & Fotos Finales
             </h3>
-            {batch.harvest_notes || (batch.harvest_photos && batch.harvest_photos.length > 0) ? (
+            {batch.harvest_notes || harvestPhotos.length > 0 || loadingPhotos ? (
               <>
                 {batch.harvest_notes && (
                   <p className="text-sm italic text-brand-slate-700 dark:text-slate-300 font-sans mb-4 whitespace-pre-wrap">
                     "{batch.harvest_notes}"
                   </p>
                 )}
-                {batch.harvest_photos && batch.harvest_photos.length > 0 && (
+                {loadingPhotos && harvestPhotos.length === 0 && (
+                  <div className="py-6 text-center text-xs font-mono text-slate-400 animate-pulse print:hidden">
+                    Cargando galería fotográfica de la cosecha...
+                  </div>
+                )}
+                {harvestPhotos.length > 0 && (
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 mt-2">
-                    {batch.harvest_photos.map((url: string, index: number) => (
+                    {harvestPhotos.map((url: string, index: number) => (
                       <div key={index} className="aspect-square rounded-xl overflow-hidden border border-panel-border/50 relative group bg-black/10">
                         <img src={url} alt={`Cosecha ${index + 1}`} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"/>
                       </div>
