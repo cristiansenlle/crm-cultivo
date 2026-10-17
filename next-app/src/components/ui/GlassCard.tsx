@@ -30,7 +30,7 @@ export function GlassCard({ children, className, glowColor = "none", ...props }:
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
       className={cn(
-        "bg-panel-base backdrop-blur-xl border border-panel-border rounded-xl p-5 overflow-hidden flex flex-col gap-4 shadow-xl",
+        "bg-panel-base backdrop-blur-xl border border-panel-border rounded-xl p-5 overflow-hidden flex flex-col gap-4 shadow-xl shrink-0",
         glowMap[glowColor],
         className
       )}

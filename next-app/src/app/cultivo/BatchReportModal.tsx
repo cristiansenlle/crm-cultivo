@@ -69,7 +69,7 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
           // 1. Fetch Daily Telemetry (Clima de la Sala)
           const { data: rawClimate } = await supabase
               .from('daily_telemetry')
-              .select('created_at, temperature_c, humidity_percent, vpd_ambient_kpa, vpd_leaf_kpa')
+              .select('created_at, temperature_c, humidity_percent, vpd_kpa, vpd_ambient_kpa, vpd_leaf_kpa')
               .eq('room_id', batch.location)
               .gte('created_at', startIso)
               .lte('created_at', endIso)
@@ -209,7 +209,7 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
         </div>
 
         {/* Scrollable Body */}
-        <div className="flex-1 overflow-y-auto p-6 flex flex-col gap-6 print:p-0 print:overflow-visible">
+        <div className="flex-1 overflow-y-auto p-6 space-y-6 print:p-0 print:overflow-visible">
           
           {/* Printable Header */}
           <div className="hidden print:flex flex-col gap-2 border-b-2 border-slate-300 pb-4 mb-6">
@@ -305,7 +305,7 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
           {/* Gráficos de Telemetría */}
           <GlassCard className="p-6 print:break-inside-avoid">
             {/* Tabs (No imprimibles) */}
-            <div className="flex gap-2 border-b border-panel-border/50 pb-3 mb-6 print:hidden">
+            <div className="flex flex-wrap gap-2 border-b border-panel-border/50 pb-3 mb-6 print:hidden">
               <button 
                 onClick={() => setActiveTab("clima")}
                 className={`px-4 py-2 text-xs font-bold uppercase rounded-lg transition-colors flex items-center gap-1.5 ${activeTab === 'clima' ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-500/30' : 'text-brand-slate-600 hover:bg-white/5'}`}
