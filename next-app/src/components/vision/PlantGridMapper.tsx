@@ -15,7 +15,12 @@ import {
     RefreshCw,
     Eye
 } from 'lucide-react';
-import { PlantGridLayout, PlantZoneConfig, PerPlantAnalysis } from '@/lib/vision/PlantGridStore';
+import type {
+    PlantGridLayout,
+    PlantZoneConfig,
+    PerPlantAnalysis,
+    SoilSensorOption
+} from '@/lib/vision/PlantGridStore';
 
 interface PlantGridMapperProps {
     latestImageUrl?: string | null;
@@ -24,6 +29,7 @@ interface PlantGridMapperProps {
 
 export default function PlantGridMapper({ latestImageUrl, cropDetected = false }: PlantGridMapperProps) {
     const [grid, setGrid] = useState<PlantGridLayout | null>(null);
+    const [soilSensors, setSoilSensors] = useState<SoilSensorOption[]>([]);
     const [availableStrains, setAvailableStrains] = useState<string[]>([]);
     const [perPlantResults, setPerPlantResults] = useState<PerPlantAnalysis[]>([]);
     const [selectedZoneId, setSelectedZoneId] = useState<string>('A1');
@@ -38,7 +44,35 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
             const res = await fetch('/api/vision/grid');
             if (res.ok) {
                 const data = await res.json();
-                setGrid(data.grid);
+                const sensorsList: SoilSensorOption[] = Array.isArray(data.soil_sensors)
+                    ? data.soil_sensors
+                    : [];
+                setSoilSensors(sensorsList);
+
+                // Migrar etiquetas antiguas si alguna zona tenía 'Pin 1 (Suelo CH1)' o 'Pin 2 (Suelo CH2)'
+                if (data.grid?.zones) {
+                    const normalizedZones = data.grid.zones.map((z: PlantZoneConfig, idx: number) => {
+                        if (
+                            z.soil_sensor_pin === 'Pin 1 (Suelo CH1)' ||
+                            z.soil_sensor_pin === 'Pin 2 (Suelo CH2)' ||
+                            z.soil_sensor_pin === 'Monitoreo Visual'
+                        ) {
+                            const mappedSensor = sensorsList[idx];
+                            if (mappedSensor) {
+                                return {
+                                    ...z,
+                                    soil_sensor_id: mappedSensor.id,
+                                    soil_sensor_pin: mappedSensor.label
+                                };
+                            }
+                        }
+                        return z;
+                    });
+                    setGrid({ ...data.grid, zones: normalizedZones });
+                } else {
+                    setGrid(data.grid);
+                }
+
                 setAvailableStrains(data.available_strains || []);
                 setPerPlantResults(data.latest_per_plant || []);
                 if (data.grid?.zones?.length > 0 && !selectedZoneId) {
@@ -247,6 +281,9 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                             {grid.zones.map(zone => {
                                 const isSelected = zone.zone_id === selectedZone?.zone_id;
                                 const plantDiag = perPlantResults.find(p => p.zone_id === zone.zone_id);
+                                const assignedSensor = soilSensors.find(
+                                    s => s.id === zone.soil_sensor_id || s.label === zone.soil_sensor_pin
+                                );
 
                                 return (
                                     <div
@@ -296,11 +333,24 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                                     <span className="text-[10px] font-mono text-emerald-300 truncate">
                                                         🌿 {zone.strain}
                                                     </span>
-                                                    {zone.bio_channel !== 'NONE' && (
-                                                        <span className="text-[9px] font-mono px-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                                                            ⚡ {zone.bio_channel}
-                                                        </span>
-                                                    )}
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                        {assignedSensor && (
+                                                            <span
+                                                                className="text-[9px] font-mono px-1 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
+                                                                title={assignedSensor.label}
+                                                            >
+                                                                💧 Pin {assignedSensor.pin_index}
+                                                                {assignedSensor.latest_moisture_pct !== null && assignedSensor.latest_moisture_pct !== undefined
+                                                                    ? ` (${assignedSensor.latest_moisture_pct}%)`
+                                                                    : ''}
+                                                            </span>
+                                                        )}
+                                                        {zone.bio_channel !== 'NONE' && (
+                                                            <span className="text-[9px] font-mono px-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                                                                ⚡ {zone.bio_channel}
+                                                            </span>
+                                                        )}
+                                                    </div>
                                                 </div>
 
                                                 {cropDetected && plantDiag && (
@@ -464,18 +514,52 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="flex flex-col gap-1">
-                                        <label className="text-zinc-400 font-medium flex items-center gap-1">
-                                            <Droplets className="w-3.5 h-3.5 text-cyan-400" />
-                                            <span>Sensor de Suelo en Maceta</span>
+                                        <label className="text-zinc-400 font-medium flex items-center justify-between">
+                                            <span className="flex items-center gap-1">
+                                                <Droplets className="w-3.5 h-3.5 text-cyan-400" />
+                                                <span>Sensor de Suelo en Maceta (2 ESP32 × 5)</span>
+                                            </span>
+                                            <span className="text-[10px] font-mono text-cyan-400">
+                                                {soilSensors.length} sensores
+                                            </span>
                                         </label>
                                         <select
                                             value={selectedZone.soil_sensor_pin}
-                                            onChange={e => updateSelectedZone({ soil_sensor_pin: e.target.value })}
+                                            onChange={e => {
+                                                const val = e.target.value;
+                                                const matched = soilSensors.find(s => s.label === val);
+                                                updateSelectedZone({
+                                                    soil_sensor_pin: val,
+                                                    soil_sensor_id: matched ? matched.id : undefined
+                                                });
+                                            }}
                                             className="px-3 py-2 rounded-xl bg-zinc-950 border border-zinc-800 text-zinc-200 outline-none"
                                         >
-                                            <option value="Pin 1 (Suelo CH1)">Pin 1 (Suelo Centinela 1)</option>
-                                            <option value="Pin 2 (Suelo CH2)">Pin 2 (Suelo Centinela 2)</option>
-                                            <option value="Monitoreo Visual">Monitoreo Visual por IA</option>
+                                            {Array.from(new Set(soilSensors.map(s => s.board_name))).map(boardName => {
+                                                const boardSensors = soilSensors.filter(s => s.board_name === boardName);
+                                                const mac = boardSensors[0]?.board_mac || '';
+                                                return (
+                                                    <optgroup
+                                                        key={boardName}
+                                                        label={`📡 ${boardName}${mac ? ` [${mac}]` : ''} (${boardSensors.length} sensores)`}
+                                                    >
+                                                        {boardSensors.map(sensor => (
+                                                            <option key={sensor.id} value={sensor.label}>
+                                                                {sensor.label}
+                                                                {sensor.latest_moisture_pct !== null &&
+                                                                sensor.latest_moisture_pct !== undefined
+                                                                    ? ` — 💧 ${sensor.latest_moisture_pct}%`
+                                                                    : ''}
+                                                            </option>
+                                                        ))}
+                                                    </optgroup>
+                                                );
+                                            })}
+                                            <optgroup label="👁️ Sin Sonda Física en Maceta">
+                                                <option value="Monitoreo Visual por IA">
+                                                    Monitoreo Visual por IA (Sin aguja en esta maceta)
+                                                </option>
+                                            </optgroup>
                                         </select>
                                     </div>
 

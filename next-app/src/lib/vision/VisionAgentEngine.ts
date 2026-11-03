@@ -143,11 +143,22 @@ export class VisionAgentEngine {
         }
 
         try {
-            const { data: soil } = await adminSupabase.from('core_soil_sensors')
-                .select('soil_moisture_percent, ec_us_cm, soil_temp_c, last_read_at')
-                .order('last_read_at', { ascending: false })
-                .limit(2);
-            if (soil && soil.length > 0) recentSoil = soil;
+            const [{ data: soilSensors }, { data: soilTele }] = await Promise.all([
+                adminSupabase.from('core_soil_sensors').select('id, board_id, pin_index, name').order('pin_index', { ascending: true }),
+                adminSupabase.from('soil_telemetry').select('sensor_id, moisture_pct, created_at').order('created_at', { ascending: false }).limit(30)
+            ]);
+            if (soilSensors && soilSensors.length > 0) {
+                recentSoil = soilSensors.map((s: any) => {
+                    const latestRead = (soilTele || []).find((t: any) => t.sensor_id === s.id);
+                    return {
+                        sensor_id: s.id,
+                        pin_index: s.pin_index,
+                        name: s.name,
+                        moisture_pct: latestRead?.moisture_pct ?? null,
+                        last_read_at: latestRead?.created_at ?? null
+                    };
+                });
+            }
         } catch (e) {
             console.warn('No se pudo obtener registro de suelo:', e);
         }

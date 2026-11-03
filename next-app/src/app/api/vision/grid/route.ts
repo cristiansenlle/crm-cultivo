@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { loadPlantGrid, savePlantGrid, getDefaultGridLayout, PlantGridLayout } from '@/lib/vision/PlantGridStore';
+import {
+    loadPlantGrid,
+    savePlantGrid,
+    getDefaultGridLayout,
+    PlantGridLayout,
+    DEFAULT_SOIL_SENSORS,
+    SoilSensorOption
+} from '@/lib/vision/PlantGridStore';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -10,13 +17,52 @@ export async function GET() {
     try {
         const grid = loadPlantGrid();
 
-        // Consultar variedades registradas en core_batches y último análisis por planta
-        let availableStrains: string[] = ['Nicole Punch', 'Tropicanna WFC', 'Gorilla Glue #4', 'Amnesia Haze', 'OG Kush'];
+        let availableStrains: string[] = ['Nicole Punch', 'Tropicanna WFC', 'Red Hot Cookies', 'Gorilla Glue #4', 'Amnesia Haze', 'OG Kush'];
         let latestPerPlant: any[] = [];
         let cropDetected = false;
+        let soilSensors: SoilSensorOption[] = [...DEFAULT_SOIL_SENSORS];
 
         if (adminSupabase) {
             try {
+                // 1. Consultar placas ESP32 y los 10 sensores de humedad reales desde Supabase
+                const [{ data: boardsData }, { data: sensorsData }, { data: telemetryData }] = await Promise.all([
+                    adminSupabase.from('core_soil_boards').select('*').order('created_at', { ascending: true }),
+                    adminSupabase.from('core_soil_sensors').select('*').order('pin_index', { ascending: true }),
+                    adminSupabase.from('soil_telemetry').select('sensor_id, moisture_pct, created_at').order('created_at', { ascending: false }).limit(50)
+                ]);
+
+                if (sensorsData && sensorsData.length > 0) {
+                    const boardMap = new Map<string, any>();
+                    (boardsData || []).forEach((b: any) => boardMap.set(b.id, b));
+
+                    const latestMoistureMap = new Map<string, number>();
+                    (telemetryData || []).forEach((t: any) => {
+                        if (!latestMoistureMap.has(t.sensor_id) && t.moisture_pct !== null && t.moisture_pct !== undefined) {
+                            latestMoistureMap.set(t.sensor_id, Number(t.moisture_pct));
+                        }
+                    });
+
+                    soilSensors = sensorsData.map((s: any) => {
+                        const board = boardMap.get(s.board_id);
+                        const boardName = board?.name || 'ESP32 Suelo';
+                        const boardMac = board?.mac_address || '';
+                        const shortMac = boardMac ? boardMac.slice(-5) : '';
+                        const moisture = latestMoistureMap.get(s.id) ?? null;
+
+                        return {
+                            id: s.id,
+                            board_id: s.board_id,
+                            board_name: boardName,
+                            board_mac: boardMac,
+                            pin_index: s.pin_index,
+                            name: s.name,
+                            label: `${boardName}${shortMac && !boardName.includes(shortMac) ? ` (${shortMac})` : ''} • Pin ${s.pin_index} — ${s.name}`,
+                            latest_moisture_pct: moisture
+                        };
+                    });
+                }
+
+                // 2. Consultar variedades de lotes
                 const { data: batches } = await adminSupabase
                     .from('core_batches')
                     .select('id, strain, stage')
@@ -30,6 +76,7 @@ export async function GET() {
                     availableStrains = Array.from(new Set([...batchStrains, ...availableStrains]));
                 }
 
+                // 3. Consultar último análisis por planta
                 const { data: analyses } = await adminSupabase
                     .from('core_image_analyses')
                     .select('id, created_at, health_score, context_snapshot, image_urls')
@@ -53,6 +100,7 @@ export async function GET() {
 
         return NextResponse.json({
             grid,
+            soil_sensors: soilSensors,
             available_strains: availableStrains,
             latest_per_plant: latestPerPlant,
             crop_detected: cropDetected
@@ -66,14 +114,12 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
 
-        // Si solicita redimensionar la grilla (ej. 2x2, 2x3, 3x3)
         if (body.action === 'resize') {
             const rows = Math.min(4, Math.max(1, Number(body.rows) || 2));
             const cols = Math.min(4, Math.max(1, Number(body.cols) || 3));
             const current = loadPlantGrid();
             const fresh = getDefaultGridLayout(rows, cols);
 
-            // Conservar configuraciones previas de zonas que coincidan en zone_id
             const mergedZones = fresh.zones.map(newZone => {
                 const existing = current.zones.find(z => z.zone_id === newZone.zone_id);
                 if (existing) {
@@ -96,7 +142,6 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: true, grid: updated });
         }
 
-        // Guardado directo del layout completo
         if (body.grid) {
             const layout: PlantGridLayout = body.grid;
             const saved = savePlantGrid(layout);
