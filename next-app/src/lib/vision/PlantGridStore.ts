@@ -212,23 +212,36 @@ export function getDefaultGridLayout(rows = 2, cols = 3, activeCount?: number): 
 
 function normalizeLegacySensors(layout: PlantGridLayout): PlantGridLayout {
     if (!layout?.zones) return layout;
+    const seenSensorIds = new Set<string>();
+    const seenBioChannels = new Set<string>();
+
     const zones = layout.zones.map((z, idx) => {
+        let updated = { ...z };
         if (
-            z.soil_sensor_pin === 'Pin 1 (Suelo CH1)' ||
-            z.soil_sensor_pin === 'Pin 2 (Suelo CH2)' ||
-            z.soil_sensor_pin === 'Monitoreo Visual' ||
-            !z.soil_sensor_id
+            updated.soil_sensor_pin === 'Pin 1 (Suelo CH1)' ||
+            updated.soil_sensor_pin === 'Pin 2 (Suelo CH2)' ||
+            updated.soil_sensor_pin === 'Monitoreo Visual' ||
+            (!updated.soil_sensor_id && updated.soil_sensor_pin !== 'Monitoreo Visual por IA') ||
+            (updated.soil_sensor_id && seenSensorIds.has(updated.soil_sensor_id))
         ) {
             const sensorOption = DEFAULT_SOIL_SENSORS[idx];
-            if (sensorOption && z.soil_sensor_pin !== 'Monitoreo Visual por IA') {
-                return {
-                    ...z,
-                    soil_sensor_id: sensorOption.id,
-                    soil_sensor_pin: sensorOption.label
-                };
+            if (sensorOption && updated.soil_sensor_pin !== 'Monitoreo Visual por IA') {
+                updated.soil_sensor_id = sensorOption.id;
+                updated.soil_sensor_pin = sensorOption.label;
             }
         }
-        return z;
+        if (updated.soil_sensor_id) {
+            seenSensorIds.add(updated.soil_sensor_id);
+        }
+
+        if (updated.bio_channel && updated.bio_channel !== 'NONE') {
+            if (seenBioChannels.has(updated.bio_channel)) {
+                updated.bio_channel = 'NONE';
+            } else {
+                seenBioChannels.add(updated.bio_channel);
+            }
+        }
+        return updated;
     });
     return { ...layout, zones };
 }

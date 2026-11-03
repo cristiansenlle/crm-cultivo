@@ -126,16 +126,35 @@ export async function POST(req: NextRequest) {
             const current = loadPlantGrid();
             const fresh = getDefaultGridLayout(rows, cols, activeCount);
 
+            const usedSensorIds = new Set<string>();
+            const usedBioChannels = new Set<string>();
+
             const mergedZones = fresh.zones.map((newZone, idx) => {
                 const existing = current.zones.find(z => z.zone_id === newZone.zone_id);
                 if (existing) {
+                    const sensorId = existing.soil_sensor_id || '';
+                    const isDuplicateSensor = sensorId && usedSensorIds.has(sensorId);
+                    const finalSensorId = isDuplicateSensor ? newZone.soil_sensor_id : existing.soil_sensor_id;
+                    const finalSensorPin = isDuplicateSensor ? newZone.soil_sensor_pin : existing.soil_sensor_pin;
+                    if (finalSensorId) usedSensorIds.add(finalSensorId);
+
+                    const bioCh = existing.bio_channel || 'NONE';
+                    const isDuplicateBio = bioCh !== 'NONE' && usedBioChannels.has(bioCh);
+                    const finalBio = isDuplicateBio ? 'NONE' : bioCh;
+                    if (finalBio !== 'NONE') usedBioChannels.add(finalBio);
+
                     return {
                         ...existing,
                         row: newZone.row,
                         col: newZone.col,
+                        soil_sensor_id: finalSensorId,
+                        soil_sensor_pin: finalSensorPin,
+                        bio_channel: finalBio,
                         active: activeCount !== undefined ? idx < activeCount : existing.active
                     };
                 }
+                if (newZone.soil_sensor_id) usedSensorIds.add(newZone.soil_sensor_id);
+                if (newZone.bio_channel !== 'NONE') usedBioChannels.add(newZone.bio_channel);
                 return newZone;
             });
 

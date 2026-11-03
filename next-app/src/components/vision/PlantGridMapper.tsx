@@ -431,91 +431,126 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                 const assignedSensor = soilSensors.find(
                                     s => s.id === zone.soil_sensor_id || s.label === zone.soil_sensor_pin
                                 );
+                                const isCompact = grid.grid_cols >= 4;
 
                                 return (
                                     <div
                                         key={zone.zone_id}
                                         onClick={() => setSelectedZoneId(zone.zone_id)}
-                                        className={`relative border transition-all cursor-pointer flex flex-col justify-between p-2.5 select-none ${
+                                        className={`relative border transition-all cursor-pointer flex flex-col justify-between overflow-hidden min-w-0 select-none ${
+                                            isCompact ? 'p-1.5' : 'p-2.5'
+                                        } ${
                                             isSelected
                                                 ? 'border-2 border-emerald-400 bg-emerald-500/15 shadow-[inset_0_0_25px_rgba(16,185,129,0.25)]'
                                                 : zone.active
-                                                ? 'border-white/25 bg-black/25 hover:bg-emerald-950/30 hover:border-emerald-400/60'
+                                                ? 'border-white/20 bg-black/20 hover:bg-emerald-950/30 hover:border-emerald-400/60'
                                                 : 'border-white/10 bg-black/60 opacity-50'
                                         }`}
                                     >
-                                        {/* Cabecera del Cuadrante */}
-                                        <div className="flex items-start justify-between gap-1">
-                                            <div className="flex items-center gap-1.5">
+                                        {/* Cabecera del Cuadrante: Zona + Nombre de Planta + Indicadores */}
+                                        <div className="flex items-center justify-between gap-1 bg-zinc-950/85 backdrop-blur-md border border-white/10 rounded-lg px-1.5 py-1 min-w-0 shadow-sm">
+                                            <div className="flex items-center gap-1.5 min-w-0 flex-1">
                                                 <span
-                                                    className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-black ${
+                                                    className={`shrink-0 px-1.5 py-0.5 rounded text-[10px] font-mono font-black leading-none ${
                                                         isSelected
                                                             ? 'bg-emerald-400 text-zinc-950'
-                                                            : 'bg-black/75 text-emerald-400 border border-emerald-500/40'
+                                                            : 'bg-emerald-950/90 text-emerald-400 border border-emerald-500/40'
                                                     }`}
                                                 >
                                                     {zone.zone_id}
                                                 </span>
                                                 {zone.active && showOverlayMetrics && (
-                                                    <span className="px-2 py-0.5 rounded bg-black/75 backdrop-blur-md text-[11px] font-bold text-white truncate max-w-[130px]">
+                                                    <span
+                                                        className="text-[10px] sm:text-[11px] font-bold text-zinc-100 truncate min-w-0"
+                                                        title={zone.plant_name}
+                                                    >
                                                         {zone.plant_name}
                                                     </span>
                                                 )}
                                             </div>
 
-                                            {zone.active && zone.natural_anthocyanins && showOverlayMetrics && (
-                                                <span
-                                                    className="px-1.5 py-0.5 rounded bg-purple-950/90 border border-purple-500/40 text-purple-300 text-[9px] font-mono"
-                                                    title="Genética con antocianinas naturales (tonos púrpura normales en flora)"
-                                                >
-                                                    💜 Antocianina
-                                                </span>
+                                            {zone.active && showOverlayMetrics && (
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    {zone.natural_anthocyanins && (
+                                                        <span
+                                                            className="px-1 py-0.5 rounded bg-purple-950/90 border border-purple-500/40 text-purple-300 text-[9px] font-mono leading-none"
+                                                            title="Genética con antocianinas naturales (tonos púrpura normales en flora)"
+                                                        >
+                                                            {isCompact ? '💜' : '💜 Antocianina'}
+                                                        </span>
+                                                    )}
+                                                    {zone.bio_channel !== 'NONE' && (
+                                                        <span
+                                                            className="px-1 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] font-mono font-bold leading-none"
+                                                            title={`Canal Bioeléctrico ${zone.bio_channel}`}
+                                                        >
+                                                            ⚡{zone.bio_channel}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             )}
                                         </div>
 
-                                        {/* Pie del Cuadrante: Genética + Telemetría Individual */}
+                                        {/* Pie del Cuadrante: Genética Completa + Suelo / Telemetría en Filas Separadas */}
                                         {zone.active && showOverlayMetrics ? (
-                                            <div className="flex flex-col gap-1 mt-auto">
-                                                <div className="flex items-center justify-between gap-1 bg-black/80 backdrop-blur-md px-2 py-1 rounded-lg border border-white/10">
-                                                    <span className="text-[10px] font-mono text-emerald-300 truncate">
-                                                        🌿 {zone.strain}
-                                                    </span>
-                                                    <div className="flex items-center gap-1 shrink-0">
-                                                        {assignedSensor && (
-                                                            <span
-                                                                className="text-[9px] font-mono px-1 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30"
-                                                                title={assignedSensor.label}
-                                                            >
-                                                                💧 Pin {assignedSensor.pin_index}
-                                                                {assignedSensor.latest_moisture_pct !== null && assignedSensor.latest_moisture_pct !== undefined
-                                                                    ? ` (${assignedSensor.latest_moisture_pct}%)`
-                                                                    : ''}
-                                                            </span>
-                                                        )}
-                                                        {zone.bio_channel !== 'NONE' && (
-                                                            <span className="text-[9px] font-mono px-1 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
-                                                                ⚡ {zone.bio_channel}
+                                            <div className="flex flex-col gap-1 mt-auto min-w-0">
+                                                <div className="flex flex-col gap-1 bg-zinc-950/85 backdrop-blur-md px-2 py-1.5 rounded-lg border border-white/10 min-w-0 shadow-md">
+                                                    {/* Fila 1: Genética completa sin truncamiento agresivo */}
+                                                    <div className="flex items-center justify-between gap-1 min-w-0">
+                                                        <span
+                                                            className="text-[10px] font-mono font-semibold text-emerald-300 truncate min-w-0"
+                                                            title={`Genética: ${zone.strain}`}
+                                                        >
+                                                            🌿 {zone.strain}
+                                                        </span>
+                                                    </div>
+
+                                                    {/* Fila 2: Sensor de Suelo + Porcentaje de Humedad */}
+                                                    <div className="flex items-center justify-between gap-1 pt-0.5 border-t border-white/10 min-w-0">
+                                                        {assignedSensor ? (
+                                                            <>
+                                                                <span
+                                                                    className="text-[9px] font-mono text-cyan-300 truncate min-w-0"
+                                                                    title={assignedSensor.label}
+                                                                >
+                                                                    💧 Pin {assignedSensor.pin_index}
+                                                                    {!isCompact ? ` • ${assignedSensor.board_name}` : ''}
+                                                                </span>
+                                                                {assignedSensor.latest_moisture_pct !== null &&
+                                                                assignedSensor.latest_moisture_pct !== undefined ? (
+                                                                    <span className="shrink-0 text-[9px] font-mono font-bold px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-200 border border-cyan-500/30 leading-none">
+                                                                        {assignedSensor.latest_moisture_pct}%
+                                                                    </span>
+                                                                ) : (
+                                                                    <span className="shrink-0 text-[9px] font-mono text-zinc-500">
+                                                                        S/D
+                                                                    </span>
+                                                                )}
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-[9px] font-mono text-zinc-400 truncate">
+                                                                👁️ Monitoreo Visual IA
                                                             </span>
                                                         )}
                                                     </div>
                                                 </div>
 
                                                 {cropDetected && plantDiag && (
-                                                    <div className="flex items-center justify-between gap-1 bg-emerald-950/90 px-2 py-1 rounded-lg border border-emerald-500/30 text-[10px] font-mono">
-                                                        <span className="text-emerald-300 font-bold">
-                                                            ♥ {plantDiag.health_score}/100
+                                                    <div className="flex items-center justify-between gap-1 bg-emerald-950/90 px-2 py-1 rounded-lg border border-emerald-500/30 text-[9px] font-mono min-w-0">
+                                                        <span className="text-emerald-300 font-bold truncate">
+                                                            ♥ {plantDiag.health_score}%
                                                         </span>
-                                                        <span className="text-cyan-300">
-                                                            🌸 {plantDiag.bud_count} colas
+                                                        <span className="text-cyan-300 shrink-0">
+                                                            🌸 {plantDiag.bud_count}
                                                         </span>
-                                                        <span className="text-amber-300">
+                                                        <span className="text-amber-300 shrink-0">
                                                             ⏳ {plantDiag.maturity_pct}%
                                                         </span>
                                                     </div>
                                                 )}
                                             </div>
                                         ) : !zone.active ? (
-                                            <div className="m-auto text-[10px] font-mono text-zinc-500 bg-black/70 px-2 py-1 rounded">
+                                            <div className="m-auto text-[10px] font-mono text-zinc-400 bg-zinc-950/80 border border-zinc-800 px-2 py-1 rounded-lg truncate max-w-full">
                                                 Cuadrante Vacío
                                             </div>
                                         ) : null}
