@@ -3,39 +3,46 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import VisionWidget from '@/components/vision/VisionWidget';
-import { 
-    Video, 
-    History, 
-    Sparkles, 
-    Sliders, 
-    Camera, 
-    CheckCircle2, 
-    Download, 
-    RefreshCw, 
-    Cpu, 
-    Server, 
+import PlantGridMapper from '@/components/vision/PlantGridMapper';
+import {
+    Video,
+    History,
+    Sparkles,
+    Sliders,
+    Camera,
+    CheckCircle2,
+    Download,
+    RefreshCw,
+    Cpu,
+    Server,
     X,
     ChevronLeft,
-    ChevronRight
+    ChevronRight,
+    Grid,
+    Play,
+    Pause,
+    TrendingUp
 } from 'lucide-react';
+
+type VisionTab = 'live' | 'plants' | 'timelapse' | 'diagnostics' | 'settings';
 
 function VisionCenterContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
 
     const currentTab = searchParams.get('tab') || 'live';
-    const [activeTab, setActiveTab] = useState<'live' | 'timelapse' | 'diagnostics' | 'settings'>(
-        (currentTab as any) || 'live'
+    const [activeTab, setActiveTab] = useState<VisionTab>(
+        (['live', 'plants', 'timelapse', 'diagnostics', 'settings'].includes(currentTab) ? currentTab : 'live') as VisionTab
     );
 
     useEffect(() => {
         const tab = searchParams.get('tab');
-        if (tab && ['live', 'timelapse', 'diagnostics', 'settings'].includes(tab)) {
-            setActiveTab(tab as any);
+        if (tab && ['live', 'plants', 'timelapse', 'diagnostics', 'settings'].includes(tab)) {
+            setActiveTab(tab as VisionTab);
         }
     }, [searchParams]);
 
-    const handleTabChange = (tab: 'live' | 'timelapse' | 'diagnostics' | 'settings') => {
+    const handleTabChange = (tab: VisionTab) => {
         setActiveTab(tab);
         router.push(`/vision?tab=${tab}`, { scroll: false });
     };
@@ -45,7 +52,12 @@ function VisionCenterContent() {
     const [modalImageIndex, setModalImageIndex] = useState<number | null>(null);
 
     const [diagnostics, setDiagnostics] = useState<any[]>([]);
+    const [latestAnalysis, setLatestAnalysis] = useState<any>(null);
     const [loadingDiag, setLoadingDiag] = useState(true);
+
+    // Reproductor de Timelapse interactivo
+    const [isPlayingTimelapse, setIsPlayingTimelapse] = useState(false);
+    const [timelapseFrameIdx, setTimelapseFrameIdx] = useState(0);
 
     const loadCaptures = () => {
         setLoadingCaptures(true);
@@ -65,8 +77,11 @@ function VisionCenterContent() {
         fetch('/api/vision/status')
             .then(res => res.json())
             .then(data => {
+                if (data.latest_analysis) {
+                    setLatestAnalysis(data.latest_analysis);
+                }
                 if (data.timeline) {
-                    setDiagnostics(data.timeline);
+                    setDiagnostics([...data.timeline].reverse());
                 }
             })
             .catch(err => console.error('Error fetching diagnostics:', err))
@@ -77,6 +92,14 @@ function VisionCenterContent() {
         loadCaptures();
         loadDiagnostics();
     }, []);
+
+    useEffect(() => {
+        if (!isPlayingTimelapse || captures.length <= 1) return;
+        const timer = setInterval(() => {
+            setTimelapseFrameIdx(prev => (prev + 1) % captures.length);
+        }, 750);
+        return () => clearInterval(timer);
+    }, [isPlayingTimelapse, captures.length]);
 
     const nextImage = () => {
         if (modalImageIndex !== null && modalImageIndex < captures.length - 1) {
@@ -90,19 +113,22 @@ function VisionCenterContent() {
         }
     };
 
+    const orderedCapturesForPlayer = [...captures].reverse();
+    const currentTimelapseFrame = orderedCapturesForPlayer[timelapseFrameIdx] || captures[0];
+
     return (
         <div className="flex flex-col gap-6 max-w-7xl mx-auto w-full">
             {/* Header del Centro de Visión */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-panel-border pb-5">
                 <div>
-                    <h1 className="text-2xl sm:text-3xl font-black text-foreground flex items-center gap-3">
-                        <span>Centro de Visión IA & Streaming</span>
+                    <h1 className="text-2xl sm:text-3xl font-black text-foreground flex items-center gap-3 flex-wrap">
+                        <span>Centro de Visión IA v2.0</span>
                         <span className="text-xs px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono font-medium">
-                            Sony IMX708 • 120° Cenital
+                            Sony IMX708 • 120° Cenital • Multigenética
                         </span>
                     </h1>
                     <p className="text-xs text-brand-slate-600 dark:text-slate-400 mt-1">
-                        Monitoreo continuo de dosel vegetal, detección fenotípica automatizada y transmisión WebRTC en ultra-baja latencia.
+                        Seguimiento de ciclo completo, mapeo individual de plantas por cuadrícula, diferenciación fenotípica y streaming WebRTC.
                     </p>
                 </div>
 
@@ -118,7 +144,7 @@ function VisionCenterContent() {
             <div className="flex items-center gap-2 overflow-x-auto pb-1 border-b border-panel-border">
                 <button
                     onClick={() => handleTabChange('live')}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition-all whitespace-nowrap ${
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
                         activeTab === 'live'
                             ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
                             : 'text-brand-slate-600 dark:text-slate-400 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 border border-transparent'
@@ -129,8 +155,20 @@ function VisionCenterContent() {
                 </button>
 
                 <button
+                    onClick={() => handleTabChange('plants')}
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
+                        activeTab === 'plants'
+                            ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
+                            : 'text-brand-slate-600 dark:text-slate-400 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 border border-transparent'
+                    }`}
+                >
+                    <Grid className="w-4 h-4 text-emerald-400" />
+                    <span>Mapa de Plantas & Genéticas</span>
+                </button>
+
+                <button
                     onClick={() => handleTabChange('timelapse')}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition-all whitespace-nowrap ${
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
                         activeTab === 'timelapse'
                             ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
                             : 'text-brand-slate-600 dark:text-slate-400 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 border border-transparent'
@@ -142,7 +180,7 @@ function VisionCenterContent() {
 
                 <button
                     onClick={() => handleTabChange('diagnostics')}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition-all whitespace-nowrap ${
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
                         activeTab === 'diagnostics'
                             ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
                             : 'text-brand-slate-600 dark:text-slate-400 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 border border-transparent'
@@ -154,7 +192,7 @@ function VisionCenterContent() {
 
                 <button
                     onClick={() => handleTabChange('settings')}
-                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition-all whitespace-nowrap ${
+                    className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-semibold text-xs sm:text-sm transition-all whitespace-nowrap cursor-pointer ${
                         activeTab === 'settings'
                             ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40 shadow-[0_0_15px_rgba(16,185,129,0.15)]'
                             : 'text-brand-slate-600 dark:text-slate-400 hover:text-foreground hover:bg-black/5 dark:hover:bg-white/5 border border-transparent'
@@ -182,9 +220,14 @@ function VisionCenterContent() {
                             <span className="text-xs text-emerald-400">Ultra-Baja Latencia (&lt;500ms)</span>
                         </div>
                         <div className="p-4 rounded-xl bg-panel-base border border-panel-border flex flex-col gap-1">
-                            <span className="text-[11px] font-mono text-brand-slate-600 dark:text-slate-400 uppercase">Frecuencia de Captura</span>
-                            <span className="text-sm font-bold text-foreground">1 Foto cada 1 Hora</span>
-                            <span className="text-xs text-cyan-400">Durante fotoperíodo activo</span>
+                            <span className="text-[11px] font-mono text-brand-slate-600 dark:text-slate-400 uppercase">Mapeo de Plantas</span>
+                            <span className="text-sm font-bold text-foreground">Cuadrícula Espacial ROI</span>
+                            <button
+                                onClick={() => handleTabChange('plants')}
+                                className="text-xs text-cyan-400 hover:underline text-left cursor-pointer"
+                            >
+                                Configurar genéticas por cuadrante →
+                            </button>
                         </div>
                         <div className="p-4 rounded-xl bg-panel-base border border-panel-border flex flex-col gap-1">
                             <span className="text-[11px] font-mono text-brand-slate-600 dark:text-slate-400 uppercase">Costo de Almacenamiento</span>
@@ -195,82 +238,146 @@ function VisionCenterContent() {
                 </div>
             )}
 
-            {/* 2. Pestaña: Timelapse & Galería */}
-            {activeTab === 'timelapse' && (
-                <div className="bg-panel-base border border-panel-border rounded-2xl p-6 flex flex-col gap-6">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-panel-border">
-                        <div>
-                            <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
-                                <History className="w-5 h-5 text-cyan-400" />
-                                <span>Galería Histórica de Capturas Cenitales</span>
-                            </h2>
-                            <p className="text-xs text-brand-slate-600 dark:text-slate-400">
-                                Capturas horarias de alta resolución tomadas por el sensor Sony IMX708 en la Raspberry Pi 4.
-                            </p>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <span className="text-xs font-mono text-brand-slate-600 dark:text-slate-400">
-                                Total: {captures.length} capturas
-                            </span>
-                            <button
-                                onClick={loadCaptures}
-                                className="p-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-foreground transition-colors"
-                                title="Recargar capturas"
-                            >
-                                <RefreshCw className="w-4 h-4" />
-                            </button>
-                        </div>
-                    </div>
+            {/* 2. Pestaña: Mapa de Plantas Individuales y Multigenética */}
+            {activeTab === 'plants' && (
+                <PlantGridMapper
+                    latestImageUrl={latestAnalysis?.image_url || captures[0]?.url}
+                    cropDetected={latestAnalysis?.crop_detected ?? false}
+                />
+            )}
 
-                    {loadingCaptures ? (
-                        <div className="py-16 text-center text-brand-slate-600 dark:text-slate-400 text-sm">
-                            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-400" />
-                            Cargando galería de capturas...
-                        </div>
-                    ) : captures.length === 0 ? (
-                        <div className="py-16 text-center text-brand-slate-600 dark:text-slate-400 text-sm">
-                            No hay fotos capturadas aún. El sensor toma 1 foto cada hora automáticamente o puedes disparar una en la pestaña "En Vivo".
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-                            {captures.map((cap, idx) => (
-                                <div
-                                    key={idx}
-                                    onClick={() => setModalImageIndex(idx)}
-                                    className="relative aspect-video rounded-xl overflow-hidden bg-black border border-panel-border cursor-pointer group hover:border-emerald-500/50 hover:ring-2 hover:ring-emerald-500/20 transition-all shadow-md"
-                                >
-                                    <img
-                                        src={cap.url}
-                                        alt={cap.name}
-                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
-                                        loading="lazy"
-                                    />
-                                    <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2.5">
-                                        <span className="text-[11px] font-mono text-zinc-200 truncate">
-                                            {new Date(cap.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
-                                        </span>
-                                        <span className="text-[10px] text-emerald-400 font-mono">
-                                            12MP • HDR
-                                        </span>
-                                    </div>
+            {/* 3. Pestaña: Timelapse & Galería */}
+            {activeTab === 'timelapse' && (
+                <div className="flex flex-col gap-6">
+                    {/* Reproductor Interactivo de Timelapse */}
+                    {orderedCapturesForPlayer.length > 0 && (
+                        <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4">
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                                <div>
+                                    <h3 className="text-base font-bold text-zinc-100 flex items-center gap-2">
+                                        <TrendingUp className="w-4 h-4 text-emerald-400" />
+                                        <span>Reproductor Timelapse de Expansión Vegetal & Ritmo Circadiano</span>
+                                    </h3>
+                                    <p className="text-xs text-zinc-400">
+                                        Desliza o reproduce la secuencia cronológica para observar el movimiento circadiano foliar ("rezo") y el llenado de la malla.
+                                    </p>
                                 </div>
-                            ))}
+
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setIsPlayingTimelapse(!isPlayingTimelapse)}
+                                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer"
+                                    >
+                                        {isPlayingTimelapse ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                                        <span>{isPlayingTimelapse ? 'Pausar Timelapse' : 'Reproducir Timelapse'}</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="relative aspect-video max-h-[420px] w-full bg-black rounded-xl overflow-hidden border border-zinc-800 flex items-center justify-center">
+                                {currentTimelapseFrame && (
+                                    <img
+                                        src={currentTimelapseFrame.url}
+                                        alt="Frame Timelapse"
+                                        className="w-full h-full object-contain"
+                                    />
+                                )}
+                                <div className="absolute bottom-3 left-3 px-3 py-1.5 rounded-lg bg-black/75 backdrop-blur-md border border-white/10 text-xs font-mono text-emerald-300">
+                                    Frame {timelapseFrameIdx + 1} / {orderedCapturesForPlayer.length} •{' '}
+                                    {currentTimelapseFrame ? new Date(currentTimelapseFrame.created_at).toLocaleString() : ''}
+                                </div>
+                            </div>
+
+                            <input
+                                type="range"
+                                min={0}
+                                max={Math.max(0, orderedCapturesForPlayer.length - 1)}
+                                value={timelapseFrameIdx}
+                                onChange={e => {
+                                    setIsPlayingTimelapse(false);
+                                    setTimelapseFrameIdx(Number(e.target.value));
+                                }}
+                                className="w-full accent-emerald-500 cursor-pointer"
+                            />
                         </div>
                     )}
+
+                    {/* Galería completa */}
+                    <div className="bg-panel-base border border-panel-border rounded-2xl p-6 flex flex-col gap-6">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-panel-border">
+                            <div>
+                                <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
+                                    <History className="w-5 h-5 text-cyan-400" />
+                                    <span>Galería Histórica de Capturas Cenitales</span>
+                                </h2>
+                                <p className="text-xs text-brand-slate-600 dark:text-slate-400">
+                                    Capturas horarias de alta resolución tomadas por el sensor Sony IMX708 en la Raspberry Pi 4.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                <span className="text-xs font-mono text-brand-slate-600 dark:text-slate-400">
+                                    Total: {captures.length} capturas
+                                </span>
+                                <button
+                                    onClick={loadCaptures}
+                                    className="p-2 rounded-lg bg-black/5 dark:bg-white/5 hover:bg-black/10 dark:hover:bg-white/10 text-foreground transition-colors"
+                                    title="Recargar capturas"
+                                >
+                                    <RefreshCw className="w-4 h-4" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {loadingCaptures ? (
+                            <div className="py-16 text-center text-brand-slate-600 dark:text-slate-400 text-sm">
+                                <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-emerald-400" />
+                                Cargando galería de capturas...
+                            </div>
+                        ) : captures.length === 0 ? (
+                            <div className="py-16 text-center text-brand-slate-600 dark:text-slate-400 text-sm">
+                                No hay fotos capturadas aún. El sensor toma 1 foto cada hora automáticamente o puedes disparar una en la pestaña &quot;En Vivo&quot;.
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                {captures.map((cap, idx) => (
+                                    <div
+                                        key={idx}
+                                        onClick={() => setModalImageIndex(idx)}
+                                        className="relative aspect-video rounded-xl overflow-hidden bg-black border border-panel-border cursor-pointer group hover:border-emerald-500/50 hover:ring-2 hover:ring-emerald-500/20 transition-all shadow-md"
+                                    >
+                                        <img
+                                            src={cap.url}
+                                            alt={cap.name}
+                                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+                                            loading="lazy"
+                                        />
+                                        <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex flex-col justify-end p-2.5">
+                                            <span className="text-[11px] font-mono text-zinc-200 truncate">
+                                                {new Date(cap.created_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
+                                            </span>
+                                            <span className="text-[10px] text-emerald-400 font-mono">
+                                                12MP • HDR
+                                            </span>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 
-            {/* 3. Pestaña: Diagnósticos IA */}
+            {/* 4. Pestaña: Diagnósticos IA */}
             {activeTab === 'diagnostics' && (
                 <div className="bg-panel-base border border-panel-border rounded-2xl p-6 flex flex-col gap-6">
                     <div className="flex items-center justify-between pb-4 border-b border-panel-border">
                         <div>
                             <h2 className="text-lg font-bold text-foreground flex items-center gap-2">
                                 <Sparkles className="w-5 h-5 text-amber-400" />
-                                <span>Historial de Evaluaciones de Visión Multimodal</span>
+                                <span>Historial de Evaluaciones de Visión Multimodal (v2.0)</span>
                             </h2>
                             <p className="text-xs text-brand-slate-600 dark:text-slate-400">
-                                Diagnósticos agronómicos generados por el modelo de visión al analizar el dosel vegetal.
+                                Diagnósticos agronómicos por etapa fenológica, conteo de colas y evaluación por cuadrante.
                             </p>
                         </div>
                         <button
@@ -296,59 +403,72 @@ function VisionCenterContent() {
                             {diagnostics.map((diag) => (
                                 <div
                                     key={diag.id}
-                                    className="p-4 rounded-xl bg-black/5 dark:bg-white/5 border border-panel-border flex flex-col md:flex-row gap-4 justify-between items-start md:items-center"
+                                    className="p-4 rounded-xl bg-black/5 dark:bg-white/5 border border-panel-border flex flex-col gap-3"
                                 >
-                                    <div className="flex items-center gap-4">
-                                        {diag.image_url ? (
-                                            <img
-                                                src={diag.image_url}
-                                                alt="Captura"
-                                                className="w-20 h-14 rounded-lg object-cover bg-black border border-panel-border"
-                                            />
-                                        ) : (
-                                            <div className="w-20 h-14 rounded-lg bg-black/20 flex items-center justify-center border border-panel-border">
-                                                <Camera className="w-5 h-5 text-zinc-500" />
+                                    <div className="flex flex-col md:flex-row gap-4 justify-between items-start md:items-center">
+                                        <div className="flex items-center gap-4">
+                                            {diag.image_url ? (
+                                                <img
+                                                    src={diag.image_url}
+                                                    alt="Captura"
+                                                    className="w-24 h-16 rounded-lg object-cover bg-black border border-panel-border shrink-0"
+                                                />
+                                            ) : (
+                                                <div className="w-24 h-16 rounded-lg bg-black/20 flex items-center justify-center border border-panel-border shrink-0">
+                                                    <Camera className="w-5 h-5 text-zinc-500" />
+                                                </div>
+                                            )}
+                                            <div>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    {diag.crop_detected !== false && (diag.health_score ?? 0) > 0 ? (
+                                                        <>
+                                                            <span className="font-bold text-sm text-foreground">
+                                                                Salud: {diag.health_score}/100
+                                                            </span>
+                                                            <span className="text-xs px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
+                                                                Dosel: {diag.canopy_coverage}%
+                                                            </span>
+                                                            <span className="text-xs px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 font-mono">
+                                                                Postura: {diag.leaf_posture}
+                                                            </span>
+                                                            {diag.bud_sites_count > 0 && (
+                                                                <span className="text-xs px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20 font-mono">
+                                                                    🌸 {diag.bud_sites_count} colas (~{diag.estimated_yield_grams}g)
+                                                                </span>
+                                                            )}
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <span className="font-bold text-sm text-zinc-500">
+                                                                Salud: N/A
+                                                            </span>
+                                                            <span className="text-xs px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-400 border border-zinc-700 font-mono">
+                                                                Dosel: 0%
+                                                            </span>
+                                                            <span className="text-xs px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/30 font-mono">
+                                                                Sin cultivo en escena
+                                                            </span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                                <p className="text-xs font-mono text-brand-slate-600 dark:text-slate-400 mt-1">
+                                                    {new Date(diag.timestamp).toLocaleString()}
+                                                </p>
                                             </div>
-                                        )}
-                                        <div>
-                                            <div className="flex items-center gap-2 flex-wrap">
-                                                {diag.crop_detected !== false && (diag.health_score ?? 0) > 0 ? (
-                                                    <>
-                                                        <span className="font-bold text-sm text-foreground">
-                                                            Salud: {diag.health_score}/100
-                                                        </span>
-                                                        <span className="text-xs px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">
-                                                            Dosel: {diag.canopy_coverage}%
-                                                        </span>
-                                                        <span className="text-xs px-2 py-0.5 rounded-md bg-purple-500/10 text-purple-400 border border-purple-500/20 font-mono">
-                                                            Postura: {diag.leaf_posture}
-                                                        </span>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <span className="font-bold text-sm text-zinc-500">
-                                                            Salud: N/A
-                                                        </span>
-                                                        <span className="text-xs px-2 py-0.5 rounded-md bg-zinc-800 text-zinc-400 border border-zinc-700 font-mono">
-                                                            Dosel: 0%
-                                                        </span>
-                                                        <span className="text-xs px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/30 font-mono">
-                                                            Sin cultivo en escena
-                                                        </span>
-                                                    </>
-                                                )}
-                                            </div>
-                                            <p className="text-xs font-mono text-brand-slate-600 dark:text-slate-400 mt-1">
-                                                {new Date(diag.timestamp).toLocaleString()}
-                                            </p>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs text-emerald-400 flex items-center gap-1 font-mono">
+                                                <CheckCircle2 className="w-3.5 h-3.5" /> Persistido en Supabase
+                                            </span>
                                         </div>
                                     </div>
 
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-xs text-emerald-400 flex items-center gap-1 font-mono">
-                                            <CheckCircle2 className="w-3.5 h-3.5" /> Persistido en Supabase
-                                        </span>
-                                    </div>
+                                    {diag.recommendations && (
+                                        <p className="text-xs text-zinc-300 bg-black/20 p-3 rounded-lg border border-white/5 leading-relaxed">
+                                            {diag.recommendations}
+                                        </p>
+                                    )}
                                 </div>
                             ))}
                         </div>
@@ -356,7 +476,7 @@ function VisionCenterContent() {
                 </div>
             )}
 
-            {/* 4. Pestaña: Configuración Centinela */}
+            {/* 5. Pestaña: Configuración Centinela */}
             {activeTab === 'settings' && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="p-6 rounded-2xl bg-panel-base border border-panel-border flex flex-col gap-4">
@@ -411,8 +531,8 @@ function VisionCenterContent() {
                                 <span className="font-mono text-foreground">Puerto 8889 (HTTP / ICE UDP)</span>
                             </div>
                             <div className="flex justify-between py-1.5 border-b border-panel-border/50">
-                                <span className="text-brand-slate-600 dark:text-slate-400">Broker MQTT (Comandos)</span>
-                                <span className="font-mono text-foreground">Puerto 1883 (cultivo/camera/...)</span>
+                                <span className="text-brand-slate-600 dark:text-slate-400">Mapa de Plantas Persistente</span>
+                                <span className="font-mono text-foreground">/var/www/captures/crop_vision/plant_grid.json</span>
                             </div>
                             <div className="flex justify-between py-1.5 border-b border-panel-border/50">
                                 <span className="text-brand-slate-600 dark:text-slate-400">Ruta SSD de Capturas</span>
@@ -491,4 +611,3 @@ export default function VisionPage() {
         </Suspense>
     );
 }
-

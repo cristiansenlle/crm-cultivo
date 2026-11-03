@@ -1,15 +1,46 @@
 import { createClient } from '@supabase/supabase-js';
+import { loadPlantGrid, PerPlantAnalysis } from './PlantGridStore';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 const adminSupabase = (supabaseUrl && supabaseServiceKey) ? createClient(supabaseUrl, supabaseServiceKey) : null;
 
+export interface LifecycleAdvisors {
+    topping_lst_advice: string;
+    scrog_tucking_advice: string;
+    optimal_flip_advice: string;
+    defoliation_advice: string;
+    staggered_harvest_advice: string;
+}
+
 export interface VisionAnalysisResult {
     crop_detected: boolean;
+    phenological_stage_detected:
+        | 'SEEDLING'
+        | 'VEGETATIVE_EARLY'
+        | 'VEGETATIVE_SCROG'
+        | 'PRE_FLOWER_STRETCH'
+        | 'FLOWERING_MID'
+        | 'RIPENING_SENESCENCE'
+        | 'HARVEST_READY'
+        | 'NONE';
     health_score: number | null;
     canopy_coverage_pct: number;
+    daily_growth_delta_pct: number;
     leaf_posture: 'PRAYING' | 'TURGID' | 'DROOPING' | 'CLAWING' | 'NONE' | 'UNKNOWN';
+    circadian_turgor_state:
+        | 'PEAK_PRAYING'
+        | 'NORMAL_ASSIMILATION'
+        | 'CIRCADIAN_ANTICIPATION_REST'
+        | 'STRESS_DROOP'
+        | 'NONE';
     light_stress: 'OPTIMAL' | 'LIGHT_BLEACHING' | 'HEAT_TACOING' | 'NONE' | 'UNKNOWN';
+    photoperiod_audit: 'LIGHTS_ON_OK' | 'LIGHTS_OFF_OK' | 'LIGHT_LEAK_ALERT';
+    bud_sites_count: number;
+    estimated_yield_grams: number;
+    harvest_readiness_pct: number;
+    lifecycle_advisors: LifecycleAdvisors;
+    per_plant_analysis: PerPlantAnalysis[];
     deficiencies: string[];
     pests_detected: string[];
     issues_detected: string[];
@@ -27,10 +58,8 @@ export interface VisionAnalysisResult {
 
 export class VisionAgentEngine {
     /**
-     * Analiza una imagen cenital del cultivo cruzando telemetría, biopotencial y clima.
-     * @param imageBase64Data URL o base64 con data:image/...
-     * @param imageUrl URL pública/estática de la imagen guardada
-     * @param batchId ID del lote analizado (opcional, busca el activo si no se pasa)
+     * Analiza una imagen cenital del cultivo cruzando el Mapa Espacial de Cuadrícula (Plant Grid),
+     * múltiples genéticas, telemetría ambiental, humedad de suelo y biopotencial vegetal.
      */
     static async analyzeCenitalCapture(
         imageBase64Data: string,
@@ -58,7 +87,32 @@ export class VisionAgentEngine {
         }
         const roomId = activeBatch?.room_id || activeBatch?.location || null;
 
-        // 2. Recopilar contexto agronómico, climático y bioeléctrico
+        // 2. Cargar el Mapa Espacial de Cuadrícula de Plantas y Multigenética
+        const plantGrid = loadPlantGrid();
+        const activeZones = plantGrid.zones.filter(z => z.active);
+
+        // 3. Consultar captura previa válida para calcular Delta de Crecimiento Diario (Δ%/día)
+        let prevCanopyCoverage: number | null = null;
+        try {
+            const { data: prevAnalyses } = await adminSupabase
+                .from('core_image_analyses')
+                .select('created_at, context_snapshot, health_score')
+                .order('created_at', { ascending: false })
+                .limit(10);
+
+            if (prevAnalyses && prevAnalyses.length > 0) {
+                const validPrev = prevAnalyses.find(
+                    a => a.context_snapshot?.crop_detected === true && (a.context_snapshot?.canopy_coverage_pct ?? 0) > 0
+                );
+                if (validPrev) {
+                    prevCanopyCoverage = Number(validPrev.context_snapshot.canopy_coverage_pct);
+                }
+            }
+        } catch (e) {
+            console.warn('[VisionAgentEngine] No se pudo consultar análisis previo para delta de crecimiento:', e);
+        }
+
+        // 4. Recopilar contexto agronómico, climático y bioeléctrico
         let roomData: any = null;
         let recentClimate: any = null;
         let recentPhyto: any = null;
@@ -69,7 +123,6 @@ export class VisionAgentEngine {
             const { data: room } = await adminSupabase.from('core_rooms').select('id, name, phase').eq('id', roomId).single();
             roomData = room;
 
-            // Clima interno reciente (VPD, Temperatura, Humedad)
             const { data: climate } = await adminSupabase.from('daily_telemetry')
                 .select('created_at, temperature_c, humidity_percent, vpd_ambient_kpa, vpd_leaf_kpa')
                 .eq('room_id', roomId)
@@ -78,14 +131,13 @@ export class VisionAgentEngine {
             recentClimate = climate;
         }
 
-        // Telemetría bioeléctrica ADS1115 y suelo centinela
         try {
             const { data: phyto } = await adminSupabase.from('device_logs')
-                .select('created_at, payload')
+                .select('created_at, payload, event')
                 .eq('source', 'plant_electrophysiology')
                 .order('created_at', { ascending: false })
                 .limit(1);
-            if (phyto && phyto.length > 0) recentPhyto = phyto[0].payload;
+            if (phyto && phyto.length > 0) recentPhyto = phyto[0].payload || phyto[0].event;
         } catch (e) {
             console.warn('No se pudo obtener registro bioeléctrico:', e);
         }
@@ -94,13 +146,12 @@ export class VisionAgentEngine {
             const { data: soil } = await adminSupabase.from('core_soil_sensors')
                 .select('soil_moisture_percent, ec_us_cm, soil_temp_c, last_read_at')
                 .order('last_read_at', { ascending: false })
-                .limit(1);
-            if (soil && soil.length > 0) recentSoil = soil[0];
+                .limit(2);
+            if (soil && soil.length > 0) recentSoil = soil;
         } catch (e) {
             console.warn('No se pudo obtener registro de suelo:', e);
         }
 
-        // Eventos agronómicos recientes
         try {
             const { data: events } = await adminSupabase.from('core_agronomic_events')
                 .select('event_type, description, water_liters, date_occurred')
@@ -112,7 +163,6 @@ export class VisionAgentEngine {
             console.warn('No se pudieron obtener eventos recientes:', e);
         }
 
-        // Días en la etapa
         let daysInStage = 0;
         if (activeBatch) {
             const startDate = activeBatch.last_stage_date || activeBatch.start_date || activeBatch.created_at;
@@ -123,92 +173,145 @@ export class VisionAgentEngine {
 
         const contextDossier = {
             timestamp: new Date().toISOString(),
-            batch: {
-                id: resolvedBatchId,
-                strain: activeBatch?.strain || 'Variedad Genérica',
-                stage: activeBatch?.stage || 'Vegetativo',
+            batch: activeBatch ? {
+                id: activeBatch.id,
+                strain: activeBatch.strain,
+                stage: activeBatch.stage || roomData?.phase || 'Floración',
                 days_in_stage: daysInStage,
-                room: roomData?.name || 'Sala Principal',
                 photoperiod: {
-                    light_hours: activeBatch?.light_hours || 18,
-                    dark_hours: activeBatch?.dark_hours || 6
-                }
+                    light_hours: activeBatch.light_hours || 12,
+                    dark_hours: activeBatch.dark_hours || 12
+                },
+                room: roomData?.name || activeBatch.location || 'Sala Principal'
+            } : 'Sin lote activo vinculado',
+            spatial_plant_grid: {
+                dimensions: `${plantGrid.grid_rows} filas x ${plantGrid.grid_cols} columnas`,
+                scrog_net_installed: plantGrid.scrog_net_installed,
+                target_flip_coverage_pct: plantGrid.target_flip_coverage_pct,
+                previous_canopy_coverage_pct: prevCanopyCoverage,
+                mapped_plants: activeZones.map(z => ({
+                    zone_id: z.zone_id,
+                    position: `Fila ${z.row + 1} (${z.row === 0 ? 'Superior/Norte' : z.row === plantGrid.grid_rows - 1 ? 'Inferior/Sur' : 'Centro'}), Columna ${z.col + 1} (${z.col === 0 ? 'Izquierda/Oeste' : z.col === plantGrid.grid_cols - 1 ? 'Derecha/Este' : 'Centro'})`,
+                    plant_name: z.plant_name,
+                    strain: z.strain,
+                    biotype: z.biotype,
+                    natural_anthocyanins_purple: z.natural_anthocyanins,
+                    expected_flowering_days: z.expected_flowering_days,
+                    soil_sensor: z.soil_sensor_pin,
+                    bio_channel: z.bio_channel
+                }))
             },
-            climate_telemetry: recentClimate || 'Sin datos recientes',
+            climate_telemetry: recentClimate || 'Sin lecturas recientes',
             soil_sensor: recentSoil || 'Sin sensor centinela',
-            plant_electrophysiology: recentPhyto ? {
-                biopotential_mv: recentPhyto.biopotential_mv,
-                stress_index: recentPhyto.stress_index,
-                pattern: recentPhyto.circadian_pattern
-            } : 'Sin lectura bioeléctrica',
+            plant_electrophysiology: recentPhyto || 'Sin lectura bioeléctrica',
             recent_events: recentEvents || []
         };
 
-        // 3. Elaborar el Prompt Experto en Visión Cenital
+        // 5. Elaborar el Prompt Experto en Visión Cenital v2.0 (Ciclo Completo + Plantas Individuales + Multigenética)
         const prompt = `Actúa como un Agrónomo Senior y Especialista en Visión Computacional para Cultivo Indoor de Cannabis de Alto Rendimiento.
-Analiza la siguiente IMAGEN CENITAL (Top-Down, cámara de 120° en el techo mirando directamente hacia el dosel vegetal).
+Analiza la siguiente IMAGEN CENITAL (Top-Down, cámara fija de 120° en el techo mirando hacia la carpa de cultivo).
 
-CONTEXTO REAL EN VIVO DEL CULTIVO:
+CONTEXTO REAL EN VIVO Y MAPA ESPACIAL DE PLANTAS:
 ${JSON.stringify(contextDossier, null, 2)}
 
-INSTRUCCIONES DE ANÁLISIS CENITAL:
+INSTRUCCIONES ESTRICTAS DE ANÁLISIS CENITAL v2.0 (CICLO COMPLETO E INDIVIDUALIZACIÓN):
+
 0. DETECCIÓN DE CULTIVO (crop_detected: boolean):
-   - Determina si en la imagen efectivamente se observan plantas, hojas o dosel de cannabis.
-   - Si la imagen muestra una habitación, sala de estar, personas, muebles, techo, paredes, o cualquier escena doméstica sin plantas de cultivo visibles:
+   - Determina si en la imagen se observan plantas reales de cannabis o un entorno de cultivo vegetal.
+   - Si la imagen muestra una habitación doméstica, muebles, televisor, techo, paredes o personas sin plantas visibles:
      DEBES asignar obligatoriamente:
      "crop_detected": false,
+     "phenological_stage_detected": "NONE",
      "health_score": 0,
      "canopy_coverage_pct": 0,
+     "daily_growth_delta_pct": 0,
      "leaf_posture": "NONE",
-     "light_stress": "NONE"
-   - Si se observan plantas de cannabis reales, asigna "crop_detected": true y evalúa los puntos siguientes.
+     "circadian_turgor_state": "NONE",
+     "light_stress": "NONE",
+     "photoperiod_audit": "LIGHTS_ON_OK",
+     "bud_sites_count": 0,
+     "estimated_yield_grams": 0,
+     "harvest_readiness_pct": 0,
+     "per_plant_analysis": []
+   - Si hay cultivo visible, asigna "crop_detected": true y ejecuta el análisis completo de los puntos 1 al 8:
 
-1. COBERTURA DE DOSEL (% Canopy Coverage): Estima el porcentaje (0 a 100) del área del cultivo cubierta por follaje verde vivo versus suelo/macetas/espacio vacío.
-2. POSTURA FOLIAR (Leaf Posture):
-   - "PRAYING": Hojas erguidas apuntando a 45° hacia la luz (máxima tasa de transpiración y asimilación).
-   - "TURGID": Turgencia normal y equilibrada.
-   - "DROOPING": Hojas decaídas o marchitas. Cruza con la humedad del suelo y VPD para saber si es falta de agua o sobre-riego.
-   - "CLAWING": Puntas de las hojas curvadas en garra hacia abajo (posible toxicidad de Nitrógeno o corriente de viento excesiva).
-   - "NONE": Cuando no hay plantas visibles.
-3. ESTRÉS LUMÍNICO / TEMPERATURA:
-   - "OPTIMAL": Color verde parejo en hojas superiores.
-   - "LIGHT_BLEACHING": Puntas o ápices superiores decolorados/blanquecinos por estar demasiado cerca del panel LED.
-   - "HEAT_TACOING": Bordes de las hojas curvados hacia arriba en forma de taco por calor o alto VPD.
-   - "NONE": Cuando no hay plantas visibles.
-4. DEFICIENCIAS Y FITOSANIDAD:
-   - Revisa si hay clorosis intervenal (Mg/Fe), clorosis basal (N), puntas quemadas por sales (Nutrient burn).
-   - Revisa presencia de oídio (manchas blancas pulverulentas), trips o arañita roja.
-5. CORRELACIÓN MULTIMODAL OBLIGATORIA:
-   - En tu "diagnosis", debes relacionar lo que ves en las hojas con los datos del sensor de suelo, el biopotencial bioeléctrico y los últimos riegos registrados.
-6. SCORE DE SALUD: Valor numérico del 0 al 100 (0 si crop_detected es false).
-7. ACCIONES SUGERIDAS: Tareas operativas concretas (Riego, Ajuste de EC, Poda, Subir/Bajar LED).
+1. ETAPA FENOLÓGICA Y COBERTURA DE DOSEL:
+   - Clasifica "phenological_stage_detected" en: "SEEDLING", "VEGETATIVE_EARLY", "VEGETATIVE_SCROG", "PRE_FLOWER_STRETCH", "FLOWERING_MID", "RIPENING_SENESCENCE", o "HARVEST_READY".
+   - Calcula "canopy_coverage_pct" (0 a 100%) de área verde sobre el total de la malla/carpa.
+   - Calcula "daily_growth_delta_pct": tasa de expansión diaria estimada según el vigor o comparando con previous_canopy_coverage_pct.
 
-RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA (sin bloques de código markdown ni texto adicional):
+2. MAPEO INDIVIDUAL DE PLANTAS POR CUADRÍCULA (per_plant_analysis):
+   - Divide mentalmente la imagen en la cuadrícula indicada en spatial_plant_grid (${plantGrid.grid_rows} filas x ${plantGrid.grid_cols} columnas: fila A arriba, fila B abajo; columna 1 izquierda, columna ${plantGrid.grid_cols} derecha).
+   - Para CADA planta listada en mapped_plants, evalúa su cuadrante específico:
+     * Estado de salud individual (0-100), % de su cuadrante cubierto (canopy_share_pct), postura foliar ("PRAYING", "TURGID", "DROOPING", "CLAWING").
+     * DIFERENCIACIÓN MULTIGENÉTICA: Observa el ancho de foliolos (Indica ancha vs Sativa fina), estiramiento (stretch) y pigmentación.
+     * REGLA DE ANTOCIANINAS: Si "natural_anthocyanins_purple" es true para esa planta (ej. Nicole Punch o Tropicanna), los tonos morados/púrpura en hojas superiores durante floración avanzada deben clasificarse como "anthocyanin_expression": "GENETIC_NORMAL" (salud alta) y NO como deficiencia de fósforo. Si es false y hay morado severo, clasifícalo como "STRESS_INDUCED".
+     * Cuenta las colas florales principales en ese cuadrante ("bud_count") y estima su % de madurez hacia cosecha ("maturity_pct" y "harvest_status": "VEGETATIVE", "DEVELOPING", "FLUSH_WINDOW", "READY_TO_CHOP", "OVERRIPE_RISK").
+
+3. ASISTENTES DE CICLO COMPLETO (lifecycle_advisors):
+   - "topping_lst_advice": Recomendación de poda apical o amarre LST según simetría de cada planta.
+   - "scrog_tucking_advice": Indica qué cuadrantes tienen huecos vacíos en la red SCROG y hacia dónde doblar (tuck) las ramas más altas.
+   - "optimal_flip_advice": Indica si ya se alcanzó el % óptimo de malla (${plantGrid.target_flip_coverage_pct}%) para pasar a 12/12 o cuántos días faltan según el biotipo.
+   - "defoliation_advice": Mapa de deshoje selectivo indicando en qué cuadrantes hay hojas abanico grandes tapando flores inferiores o bloqueando el flujo de aire.
+   - "staggered_harvest_advice": Plan de cosecha escalonada comparando las genéticas presentes (cuál cortar primero y a cuál darle más días).
+
+4. CONTEO DE COLAS Y PREDICCIÓN DE COSECHA:
+   - "bud_sites_count": Suma total de colas/ápices florales principales visibles en toda la carpa.
+   - "estimated_yield_grams": Estimación realista en gramos secos para el lote según densidad de colas y cobertura.
+   - "harvest_readiness_pct": Promedio global de maduración (0-100%).
+
+5. AUDITORÍA DE FOTOPERÍODO Y RITMO CIRCADIANO:
+   - "photoperiod_audit": "LIGHTS_ON_OK" si hay luz normal, "LIGHTS_OFF_OK" si está oscuro en horario nocturno, "LIGHT_LEAK_ALERT" si se detecta contaminación lumínica.
+   - "circadian_turgor_state": "PEAK_PRAYING" (hojas a 45°), "NORMAL_ASSIMILATION", "CIRCADIAN_ANTICIPATION_REST" (descanso normal pre-apagado), o "STRESS_DROOP".
+
+RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
 {
   "crop_detected": true,
+  "phenological_stage_detected": "FLOWERING_MID",
   "health_score": 90,
-  "canopy_coverage_pct": 75,
+  "canopy_coverage_pct": 78,
+  "daily_growth_delta_pct": 2.4,
   "leaf_posture": "PRAYING",
+  "circadian_turgor_state": "PEAK_PRAYING",
   "light_stress": "OPTIMAL",
+  "photoperiod_audit": "LIGHTS_ON_OK",
+  "bud_sites_count": 42,
+  "estimated_yield_grams": 380,
+  "harvest_readiness_pct": 65,
+  "lifecycle_advisors": {
+    "topping_lst_advice": "Estructura apical consolidada.",
+    "scrog_tucking_advice": "Guiar ramas centrales de A2 hacia el borde superior izquierdo de A1.",
+    "optimal_flip_advice": "Lote ya en floración con cobertura óptima.",
+    "defoliation_advice": "Deshojar 4-5 hojas abanico internas entre B1 y B2 para liberar flujo de aire.",
+    "staggered_harvest_advice": "Nicole Punch (A1-A3) presenta maduración 7 días más avanzada que Gorilla Glue (B3)."
+  },
+  "per_plant_analysis": [
+    {
+      "zone_id": "A1",
+      "plant_name": "Nicole Punch #1",
+      "strain": "Nicole Punch",
+      "health_score": 92,
+      "canopy_share_pct": 85,
+      "leaf_posture": "PRAYING",
+      "pheno_traits_observed": "Foliolo ancho índico, pigmentación púrpura genética en bordes",
+      "bud_count": 8,
+      "maturity_pct": 75,
+      "harvest_status": "FLUSH_WINDOW",
+      "anthocyanin_expression": "GENETIC_NORMAL",
+      "specific_diagnosis": "Vigor excelente y senescencia limpia.",
+      "specific_action": "Iniciar lavado de raíces en 3 días."
+    }
+  ],
   "deficiencies": [],
   "pests_detected": [],
   "issues_detected": [],
-  "diagnosis": "Diagnóstico conciso y justificado agronómicamente.",
-  "recommendations": "Recomendaciones prácticas para el cultivador.",
-  "suggested_actions": [
-    {
-      "type": "agronomic_event",
-      "event_type": "Watering",
-      "description": "Riego sugerido",
-      "water_liters": 2.5,
-      "ph_water": 6.2
-    }
-  ]
+  "diagnosis": "Diagnóstico agronómico integral.",
+  "recommendations": "Recomendaciones operativas.",
+  "suggested_actions": []
 }`;
 
         let parsedResult: VisionAnalysisResult;
 
-        // 4. Inferencia con LLM Multimodal (OpenRouter / Gemini)
         const openRouterKey = process.env.OPENROUTER_API_KEY || '';
         const geminiKey = process.env.GEMINI_API_KEY || '';
 
@@ -224,7 +327,7 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA (s
                     headers: {
                         'Authorization': `Bearer ${openRouterKey}`,
                         'HTTP-Referer': 'https://cannabiscrm.com',
-                        'X-Title': 'CRM Cannabis Vision Agent',
+                        'X-Title': 'CRM Cannabis Vision Agent v2',
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
@@ -243,17 +346,17 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA (s
                 });
 
                 if (!aiResponse.ok) {
-                    console.warn('[VisionAgentEngine] Intento con gemini-2.5-flash fallo, intentando con claude-sonnet-5...');
+                    console.warn('[VisionAgentEngine] Intento con gemini-2.5-flash fallo, intentando fallback...');
                     aiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                         method: 'POST',
                         headers: {
                             'Authorization': `Bearer ${openRouterKey}`,
                             'HTTP-Referer': 'https://cannabiscrm.com',
-                            'X-Title': 'CRM Cannabis Vision Agent',
+                            'X-Title': 'CRM Cannabis Vision Agent v2',
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            model: 'anthropic/claude-sonnet-5',
+                            model: 'google/gemini-2.0-flash-001',
                             messages: [
                                 {
                                     role: 'user',
@@ -287,18 +390,36 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA (s
             throw new Error('No hay API Keys de visión disponibles (OPENROUTER_API_KEY o GEMINI_API_KEY faltantes)');
         }
 
-        // 5. Guardar en la base de datos `core_image_analyses`
-        try {
-            const isCrop = parsedResult.crop_detected ?? (
-                parsedResult.health_score !== null && 
-                (parsedResult.health_score ?? 0) > 0 && 
-                (parsedResult.canopy_coverage_pct ?? 0) > 0
-            );
-            const finalHealthScore = isCrop ? (parsedResult.health_score ?? 80) : 0;
-            const finalCanopy = isCrop ? (parsedResult.canopy_coverage_pct ?? 0) : 0;
-            const finalPosture = isCrop ? (parsedResult.leaf_posture || 'TURGID') : 'NONE';
-            const finalLightStress = isCrop ? (parsedResult.light_stress || 'OPTIMAL') : 'NONE';
+        // 6. Normalizar y validar estrictamente según crop_detected
+        const isCrop = parsedResult.crop_detected ?? (
+            parsedResult.health_score !== null &&
+            (parsedResult.health_score ?? 0) > 0 &&
+            (parsedResult.canopy_coverage_pct ?? 0) > 0
+        );
 
+        const finalHealthScore = isCrop ? (parsedResult.health_score ?? 80) : 0;
+        const finalCanopy = isCrop ? (parsedResult.canopy_coverage_pct ?? 0) : 0;
+        const finalGrowthDelta = isCrop
+            ? (parsedResult.daily_growth_delta_pct ?? (prevCanopyCoverage !== null ? Number((finalCanopy - prevCanopyCoverage).toFixed(1)) : 0))
+            : 0;
+        const finalPosture = isCrop ? (parsedResult.leaf_posture || 'TURGID') : 'NONE';
+        const finalLightStress = isCrop ? (parsedResult.light_stress || 'OPTIMAL') : 'NONE';
+        const finalStage = isCrop ? (parsedResult.phenological_stage_detected || 'FLOWERING_MID') : 'NONE';
+        const finalCircadian = isCrop ? (parsedResult.circadian_turgor_state || 'NORMAL_ASSIMILATION') : 'NONE';
+        const finalBudCount = isCrop ? (parsedResult.bud_sites_count ?? 0) : 0;
+        const finalEstYield = isCrop ? (parsedResult.estimated_yield_grams ?? 0) : 0;
+        const finalHarvestReadiness = isCrop ? (parsedResult.harvest_readiness_pct ?? 0) : 0;
+        const finalPerPlant = isCrop && Array.isArray(parsedResult.per_plant_analysis) ? parsedResult.per_plant_analysis : [];
+        const finalAdvisors: LifecycleAdvisors = isCrop && parsedResult.lifecycle_advisors ? parsedResult.lifecycle_advisors : {
+            topping_lst_advice: 'Sin cultivo detectado en escena.',
+            scrog_tucking_advice: 'Posicione la cámara sobre la malla SCROG para recibir guías de entrenamiento.',
+            optimal_flip_advice: 'Pendiente de detección de dosel.',
+            defoliation_advice: 'Sin follaje detectado para mapa de deshoje.',
+            staggered_harvest_advice: 'Configure sus genéticas en la pestaña Mapa de Plantas.'
+        };
+
+        // 7. Guardar en la base de datos `core_image_analyses`
+        try {
             const { data: inserted, error: insertError } = await adminSupabase.from('core_image_analyses').insert({
                 batch_id: resolvedBatchId,
                 image_urls: [imageUrl],
@@ -309,9 +430,18 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA (s
                 context_snapshot: {
                     ...contextDossier,
                     crop_detected: isCrop,
+                    phenological_stage_detected: finalStage,
                     canopy_coverage_pct: finalCanopy,
+                    daily_growth_delta_pct: finalGrowthDelta,
                     leaf_posture: finalPosture,
+                    circadian_turgor_state: finalCircadian,
                     light_stress: finalLightStress,
+                    photoperiod_audit: parsedResult.photoperiod_audit || 'LIGHTS_ON_OK',
+                    bud_sites_count: finalBudCount,
+                    estimated_yield_grams: finalEstYield,
+                    harvest_readiness_pct: finalHarvestReadiness,
+                    lifecycle_advisors: finalAdvisors,
+                    per_plant_analysis: finalPerPlant,
                     deficiencies: parsedResult.deficiencies || [],
                     pests_detected: parsedResult.pests_detected || []
                 }
@@ -320,19 +450,33 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA (s
             if (insertError) {
                 console.error('[VisionAgentEngine] ❌ Error insertando en core_image_analyses:', insertError);
             } else {
-                console.log('[VisionAgentEngine] ✅ Análisis persistido exitosamente en core_image_analyses:', inserted?.[0]?.id);
+                console.log('[VisionAgentEngine] ✅ Análisis v2.0 persistido en core_image_analyses:', inserted?.[0]?.id);
             }
         } catch (dbErr) {
             console.error('[VisionAgentEngine] Error al guardar en core_image_analyses:', dbErr);
         }
 
-        return parsedResult;
+        return {
+            ...parsedResult,
+            crop_detected: isCrop,
+            phenological_stage_detected: finalStage,
+            health_score: finalHealthScore,
+            canopy_coverage_pct: finalCanopy,
+            daily_growth_delta_pct: finalGrowthDelta,
+            leaf_posture: finalPosture,
+            circadian_turgor_state: finalCircadian,
+            light_stress: finalLightStress,
+            bud_sites_count: finalBudCount,
+            estimated_yield_grams: finalEstYield,
+            harvest_readiness_pct: finalHarvestReadiness,
+            lifecycle_advisors: finalAdvisors,
+            per_plant_analysis: finalPerPlant
+        };
     }
 
     private static async fallbackGemini(prompt: string, base64Url: string, apiKey: string): Promise<VisionAnalysisResult> {
         if (!apiKey) throw new Error('GEMINI_API_KEY no disponible para fallback');
-        
-        // Extraer base64 crudo y mimeType
+
         const parts = base64Url.split(';base64,');
         const mimeType = parts[0].replace('data:', '') || 'image/jpeg';
         const base64Content = parts[1] || '';

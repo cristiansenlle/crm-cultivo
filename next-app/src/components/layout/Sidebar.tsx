@@ -16,7 +16,7 @@ import {
   X,
   Lightning
 } from "@phosphor-icons/react";
-import { Camera, ChevronDown, ChevronRight, Video, History, Sparkles, Sliders } from "lucide-react";
+import { Camera, ChevronDown, ChevronRight, Video, History, Sparkles, Sliders, Grid } from "lucide-react";
 import { cn } from "../ui/GlassCard"; // quick reuse of cn
 
 interface SubMenuItem {
@@ -62,6 +62,7 @@ export function Sidebar() {
       icon: <Camera className="w-[22px] h-[22px] text-emerald-400" />,
       subItems: [
         { name: "Cámara en Vivo", path: "/vision?tab=live", icon: <Video className="w-3.5 h-3.5 text-red-400" /> },
+        { name: "Mapa de Plantas & Genéticas", path: "/vision?tab=plants", icon: <Grid className="w-3.5 h-3.5 text-emerald-400" /> },
         { name: "Timelapse & Galería", path: "/vision?tab=timelapse", icon: <History className="w-3.5 h-3.5 text-cyan-400" /> },
         { name: "Diagnósticos IA", path: "/vision?tab=diagnostics", icon: <Sparkles className="w-3.5 h-3.5 text-amber-400" /> },
         { name: "Configuración Centinela", path: "/vision?tab=settings", icon: <Sliders className="w-3.5 h-3.5 text-purple-400" /> },
