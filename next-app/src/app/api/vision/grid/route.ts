@@ -115,18 +115,25 @@ export async function POST(req: NextRequest) {
         const body = await req.json();
 
         if (body.action === 'resize') {
-            const rows = Math.min(4, Math.max(1, Number(body.rows) || 2));
-            const cols = Math.min(4, Math.max(1, Number(body.cols) || 3));
-            const current = loadPlantGrid();
-            const fresh = getDefaultGridLayout(rows, cols);
+            const rows = Math.min(6, Math.max(1, Number(body.rows) || 2));
+            const cols = Math.min(6, Math.max(1, Number(body.cols) || 3));
+            const totalCells = rows * cols;
+            const activeCount =
+                typeof body.activeCount === 'number' && body.activeCount >= 1
+                    ? Math.min(totalCells, Math.max(1, Number(body.activeCount)))
+                    : undefined;
 
-            const mergedZones = fresh.zones.map(newZone => {
+            const current = loadPlantGrid();
+            const fresh = getDefaultGridLayout(rows, cols, activeCount);
+
+            const mergedZones = fresh.zones.map((newZone, idx) => {
                 const existing = current.zones.find(z => z.zone_id === newZone.zone_id);
                 if (existing) {
                     return {
                         ...existing,
                         row: newZone.row,
-                        col: newZone.col
+                        col: newZone.col,
+                        active: activeCount !== undefined ? idx < activeCount : existing.active
                     };
                 }
                 return newZone;

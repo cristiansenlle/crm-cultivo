@@ -153,8 +153,14 @@ export const DEFAULT_SOIL_SENSORS: SoilSensorOption[] = [
 const PROD_GRID_PATH = '/var/www/captures/crop_vision/plant_grid.json';
 const LOCAL_GRID_PATH = path.join(process.cwd(), 'public', 'captures', 'plant_grid.json');
 
-export function getDefaultGridLayout(rows = 2, cols = 3): PlantGridLayout {
-    const rowLabels = ['A', 'B', 'C', 'D'];
+export function getDefaultGridLayout(rows = 2, cols = 3, activeCount?: number): PlantGridLayout {
+    const rowLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+    const totalCells = rows * cols;
+    const effectiveActiveCount =
+        typeof activeCount === 'number' && activeCount >= 1
+            ? Math.min(totalCells, Math.max(1, activeCount))
+            : totalCells;
+
     const defaultStrains = [
         { strain: 'Nicole Punch', biotype: 'INDICA_DOMINANT' as const, antho: true, days: 60 },
         { strain: 'Nicole Punch', biotype: 'INDICA_DOMINANT' as const, antho: true, days: 60 },
@@ -186,7 +192,7 @@ export function getDefaultGridLayout(rows = 2, cols = 3): PlantGridLayout {
                 soil_sensor_id: sensorOption ? sensorOption.id : undefined,
                 soil_sensor_pin: sensorOption ? sensorOption.label : 'Monitoreo Visual por IA',
                 bio_channel: index === 0 ? 'CH1' : index === 3 ? 'CH2' : 'NONE',
-                active: true,
+                active: index < effectiveActiveCount,
                 notes: index === 0 ? 'Planta centinela con electrodos CH1' : ''
             });
             index++;

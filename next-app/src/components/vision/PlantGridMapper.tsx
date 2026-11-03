@@ -37,6 +37,9 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
     const [saving, setSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState('');
     const [showOverlayMetrics, setShowOverlayMetrics] = useState(true);
+    const [customRows, setCustomRows] = useState<number>(2);
+    const [customCols, setCustomCols] = useState<number>(3);
+    const [customPlantCount, setCustomPlantCount] = useState<number>(6);
 
     const fetchGridData = async () => {
         setLoading(true);
@@ -68,7 +71,11 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                         }
                         return z;
                     });
-                    setGrid({ ...data.grid, zones: normalizedZones });
+                    const loadedGrid = { ...data.grid, zones: normalizedZones };
+                    setGrid(loadedGrid);
+                    setCustomRows(loadedGrid.grid_rows || 2);
+                    setCustomCols(loadedGrid.grid_cols || 3);
+                    setCustomPlantCount(normalizedZones.filter((z: PlantZoneConfig) => z.active).length || 1);
                 } else {
                     setGrid(data.grid);
                 }
@@ -90,26 +97,71 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
         fetchGridData();
     }, []);
 
-    const handleResizeGrid = async (rows: number, cols: number) => {
+    const handleResizeGrid = async (rows: number, cols: number, activeCount?: number) => {
+        const safeRows = Math.min(6, Math.max(1, Number(rows) || 1));
+        const safeCols = Math.min(6, Math.max(1, Number(cols) || 1));
+        const maxCells = safeRows * safeCols;
+        const targetActive =
+            typeof activeCount === 'number' && activeCount >= 1
+                ? Math.min(maxCells, Math.max(1, activeCount))
+                : maxCells;
+
         setSaving(true);
         try {
             const res = await fetch('/api/vision/grid', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ action: 'resize', rows, cols })
+                body: JSON.stringify({
+                    action: 'resize',
+                    rows: safeRows,
+                    cols: safeCols,
+                    activeCount: targetActive
+                })
             });
             if (res.ok) {
                 const data = await res.json();
                 setGrid(data.grid);
+                setCustomRows(data.grid.grid_rows);
+                setCustomCols(data.grid.grid_cols);
+                setCustomPlantCount(data.grid.zones.filter((z: PlantZoneConfig) => z.active).length);
                 setSelectedZoneId(data.grid.zones[0]?.zone_id || 'A1');
-                setSaveMessage(`Cuadrícula ajustada a ${rows}x${cols} (${rows * cols} zonas)`);
-                setTimeout(() => setSaveMessage(''), 3500);
+                setSaveMessage(
+                    `Cuadrícula personalizada a ${safeRows}×${safeCols} (${targetActive} ${
+                        targetActive === 1 ? 'planta activa' : 'plantas activas'
+                    } de ${maxCells} cuadrantes)`
+                );
+                setTimeout(() => setSaveMessage(''), 4000);
             }
         } catch (err) {
             console.error('Error redimensionando grilla:', err);
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleApplyPlantCount = (newCount: number) => {
+        const count = Math.min(36, Math.max(1, Number(newCount) || 1));
+        setCustomPlantCount(count);
+
+        // Si el número de plantas supera la cuadrícula actual, calcular filas×columnas óptimas automáticamente
+        let r = customRows;
+        let c = customCols;
+        if (count > r * c) {
+            if (count <= 2) { r = 1; c = 2; }
+            else if (count <= 4) { r = 2; c = 2; }
+            else if (count <= 6) { r = 2; c = 3; }
+            else if (count <= 8) { r = 2; c = 4; }
+            else if (count <= 9) { r = 3; c = 3; }
+            else if (count === 10) { r = 2; c = 5; }
+            else if (count <= 12) { r = 3; c = 4; }
+            else if (count <= 16) { r = 4; c = 4; }
+            else if (count <= 20) { r = 4; c = 5; }
+            else if (count <= 25) { r = 5; c = 5; }
+            else { r = 6; c = 6; }
+            setCustomRows(r);
+            setCustomCols(c);
+        }
+        handleResizeGrid(r, c, count);
     };
 
     const handleSaveGrid = async () => {
@@ -140,6 +192,9 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
             z.zone_id === selectedZoneId ? { ...z, ...patch } : z
         );
         setGrid({ ...grid, zones: updatedZones });
+        if (typeof patch.active === 'boolean') {
+            setCustomPlantCount(updatedZones.filter(z => z.active).length);
+        }
     };
 
     if (loading || !grid) {
@@ -195,31 +250,62 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
     return (
         <div className="flex flex-col gap-6">
             {/* Barra de Controles del Mapa Espacial */}
-            <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                <div>
-                    <h2 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
-                        <Grid className="w-5 h-5 text-emerald-400" />
-                        <span>Mapeo Espacial de Plantas Individuales y Multigenética</span>
-                    </h2>
-                    <p className="text-xs text-zinc-400 mt-0.5">
-                        Divide la vista cenital de 120° en cuadrantes fijos para que la IA identifique cada planta, calibre las genéticas y planifique cosechas escalonadas.
-                    </p>
+            <div className="bg-zinc-900/80 border border-zinc-800 rounded-2xl p-5 flex flex-col gap-4">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div>
+                        <h2 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
+                            <Grid className="w-5 h-5 text-emerald-400" />
+                            <span>Mapeo Espacial de Plantas Individuales y Multigenética</span>
+                        </h2>
+                        <p className="text-xs text-zinc-400 mt-0.5">
+                            Divide la vista cenital de 120° en cuadrantes fijos o personaliza el número exacto de filas, columnas y plantas activas en la sala.
+                        </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2.5">
+                        <button
+                            onClick={() => setShowOverlayMetrics(!showOverlayMetrics)}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium border border-zinc-700 transition-colors cursor-pointer"
+                        >
+                            <Eye className="w-3.5 h-3.5 text-cyan-400" />
+                            <span>{showOverlayMetrics ? 'Ocultar Etiquetas' : 'Ver Etiquetas'}</span>
+                        </button>
+
+                        <button
+                            onClick={handleSaveGrid}
+                            disabled={saving}
+                            className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold shadow-lg shadow-emerald-950/50 transition-all cursor-pointer"
+                        >
+                            <Save className="w-4 h-4" />
+                            <span>{saving ? 'Guardando...' : 'Guardar Mapa'}</span>
+                        </button>
+                    </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2.5">
-                    <div className="flex items-center gap-1 bg-zinc-950 border border-zinc-800 rounded-xl p-1 text-xs">
+                {/* Segunda fila: Presets Rápidos + Personalizador Libre de Filas × Columnas y N° de Plantas */}
+                <div className="pt-3 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-3">
+                    {/* Presets Rápidos */}
+                    <div className="flex flex-wrap items-center gap-1 bg-zinc-950 border border-zinc-800 rounded-xl p-1 text-xs">
+                        <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-zinc-500">
+                            Presets:
+                        </span>
                         {[
-                            { r: 1, c: 2, label: '1×2 (2 pl)' },
-                            { r: 2, c: 2, label: '2×2 (4 pl)' },
-                            { r: 2, c: 3, label: '2×3 (6 pl)' },
-                            { r: 3, c: 3, label: '3×3 (9 pl)' },
-                            { r: 3, c: 4, label: '3×4 (12 pl)' }
+                            { r: 1, c: 2, p: 2, label: '1×2 (2 pl)' },
+                            { r: 2, c: 2, p: 4, label: '2×2 (4 pl)' },
+                            { r: 2, c: 3, p: 6, label: '2×3 (6 pl)' },
+                            { r: 3, c: 3, p: 9, label: '3×3 (9 pl)' },
+                            { r: 2, c: 5, p: 10, label: '2×5 (10 pl)' },
+                            { r: 3, c: 4, p: 12, label: '3×4 (12 pl)' }
                         ].map(preset => {
-                            const active = grid.grid_rows === preset.r && grid.grid_cols === preset.c;
+                            const activeCountNow = grid.zones.filter(z => z.active).length;
+                            const active =
+                                grid.grid_rows === preset.r &&
+                                grid.grid_cols === preset.c &&
+                                activeCountNow === preset.p;
                             return (
                                 <button
                                     key={preset.label}
-                                    onClick={() => handleResizeGrid(preset.r, preset.c)}
+                                    onClick={() => handleResizeGrid(preset.r, preset.c, preset.p)}
                                     disabled={saving}
                                     className={`px-2.5 py-1.5 rounded-lg font-mono transition-all cursor-pointer ${
                                         active
@@ -233,22 +319,83 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                         })}
                     </div>
 
-                    <button
-                        onClick={() => setShowOverlayMetrics(!showOverlayMetrics)}
-                        className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium border border-zinc-700 transition-colors cursor-pointer"
-                    >
-                        <Eye className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>{showOverlayMetrics ? 'Ocultar Etiquetas' : 'Ver Etiquetas'}</span>
-                    </button>
+                    {/* Personalizador Numérico Libre */}
+                    <div className="flex flex-wrap items-center gap-2 bg-zinc-950 border border-zinc-800 rounded-xl px-3 py-1.5 text-xs">
+                        <span className="text-[11px] font-semibold text-emerald-400">
+                            Personalizar:
+                        </span>
 
-                    <button
-                        onClick={handleSaveGrid}
-                        disabled={saving}
-                        className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold shadow-lg shadow-emerald-950/50 transition-all cursor-pointer"
-                    >
-                        <Save className="w-4 h-4" />
-                        <span>{saving ? 'Guardando...' : 'Guardar Mapa'}</span>
-                    </button>
+                        <div className="flex items-center gap-1">
+                            <span className="text-zinc-400">Filas</span>
+                            <input
+                                type="number"
+                                min={1}
+                                max={6}
+                                value={customRows}
+                                onChange={e => {
+                                    const r = Math.min(6, Math.max(1, Number(e.target.value) || 1));
+                                    setCustomRows(r);
+                                    setCustomPlantCount(Math.min(r * customCols, customPlantCount));
+                                }}
+                                className="w-12 px-1.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 font-mono font-bold text-center focus:border-emerald-500 outline-none"
+                            />
+                        </div>
+
+                        <span className="text-zinc-500 font-mono">×</span>
+
+                        <div className="flex items-center gap-1">
+                            <span className="text-zinc-400">Columnas</span>
+                            <input
+                                type="number"
+                                min={1}
+                                max={6}
+                                value={customCols}
+                                onChange={e => {
+                                    const c = Math.min(6, Math.max(1, Number(e.target.value) || 1));
+                                    setCustomCols(c);
+                                    setCustomPlantCount(Math.min(customRows * c, customPlantCount));
+                                }}
+                                className="w-12 px-1.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 font-mono font-bold text-center focus:border-emerald-500 outline-none"
+                            />
+                        </div>
+
+                        <div className="h-4 w-px bg-zinc-800 mx-0.5" />
+
+                        <div className="flex items-center gap-1">
+                            <span className="text-zinc-400">N° Plantas:</span>
+                            <input
+                                type="number"
+                                min={1}
+                                max={36}
+                                value={customPlantCount}
+                                onChange={e => {
+                                    const p = Math.min(36, Math.max(1, Number(e.target.value) || 1));
+                                    setCustomPlantCount(p);
+                                }}
+                                onKeyDown={e => {
+                                    if (e.key === 'Enter') {
+                                        handleApplyPlantCount(customPlantCount);
+                                    }
+                                }}
+                                className="w-14 px-1.5 py-1 rounded-lg bg-zinc-900 border border-emerald-500/40 text-emerald-300 font-mono font-bold text-center focus:border-emerald-400 outline-none"
+                                title="Cantidad exacta de plantas activas en la sala"
+                            />
+                        </div>
+
+                        <button
+                            onClick={() => {
+                                if (customPlantCount > customRows * customCols) {
+                                    handleApplyPlantCount(customPlantCount);
+                                } else {
+                                    handleResizeGrid(customRows, customCols, customPlantCount);
+                                }
+                            }}
+                            disabled={saving}
+                            className="px-3 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-semibold transition-all cursor-pointer"
+                        >
+                            Aplicar
+                        </button>
+                    </div>
                 </div>
             </div>
 
