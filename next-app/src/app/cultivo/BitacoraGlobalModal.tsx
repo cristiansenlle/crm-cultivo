@@ -111,7 +111,7 @@ export function BitacoraGlobalModal({
     return fertRows.some(r => {
       if (!r.productName) return false;
       const meta = getProductMeta(r.productName);
-      return meta && (getInsumoOrigin(meta) === "mineral" || meta.uom === "gr" || meta.uom === "Kg");
+      return Boolean(meta && getInsumoOrigin(meta) === "mineral");
     });
   }, [fertRows, groupedInventory]);
 
@@ -219,8 +219,8 @@ export function BitacoraGlobalModal({
 
     const waterLitersTotal = parseFloat(waterLiters) || 0;
     const waterLitersPerBatch = waterLitersTotal > 0 ? Number((waterLitersTotal / splitFactor).toFixed(2)) : 0;
-    const phWaterNum = phWater !== "" ? parseFloat(phWater) : null;
-    const ecWaterNum = ecWater !== "" ? parseFloat(ecWater) : null;
+    const phWaterNum = hasMineralSelected && phWater !== "" ? parseFloat(phWater) : null;
+    const ecWaterNum = hasMineralSelected && ecWater !== "" ? parseFloat(ecWater) : null;
 
     const updatedInv = inventory.map(i => ({ ...i }));
 
@@ -486,7 +486,7 @@ export function BitacoraGlobalModal({
                     const origin = meta ? getInsumoOrigin(meta) : "organico";
                     const uom = meta?.uom || "gr";
                     const doseUom = getDoseUomForInsumo(uom);
-                    const isMineral = origin === "mineral" || uom === "gr" || uom === "Kg";
+                    const isMineral = origin === "mineral";
 
                     return (
                       <div key={idx} className="p-3 rounded-lg border border-panel-border/60 bg-black/20 flex flex-col gap-2.5 w-full min-w-0 overflow-hidden">
@@ -578,51 +578,53 @@ export function BitacoraGlobalModal({
                   })}
                 </div>
 
-                {/* 3. pH y EC del Tanque */}
-                <div className="p-3.5 rounded-xl border border-purple-500/30 bg-purple-500/5 grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[10px] font-mono uppercase text-purple-300 font-bold block mb-1">
-                      pH Solución Tanque {hasMineralSelected ? "*" : ""}
-                    </label>
-                    <input
-                      type="number"
-                      step="0.01"
-                      min="0"
-                      max="14"
-                      required={hasMineralSelected}
-                      value={phWater}
-                      onChange={e => setPhWater(e.target.value)}
-                      placeholder="Ej: 5.9"
-                      className="w-full bg-black/25 border border-purple-500/40 rounded-lg p-2.5 text-sm font-mono text-foreground outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] font-mono uppercase text-purple-300 font-bold block mb-1">
-                      EC Solución Tanque {hasMineralSelected ? "*" : ""}
-                    </label>
-                    <div className="flex gap-1">
+                {/* 3. pH y EC del Tanque (EXCLUSIVO PARA FERTILIZANTES MINERALES) */}
+                {hasMineralSelected && (
+                  <div className="p-3.5 rounded-xl border border-purple-500/30 bg-purple-500/5 grid grid-cols-2 gap-3 animate-in fade-in duration-150">
+                    <div>
+                      <label className="text-[10px] font-mono uppercase text-purple-300 font-bold block mb-1">
+                        pH Solución Tanque *
+                      </label>
                       <input
                         type="number"
                         step="0.01"
                         min="0"
+                        max="14"
                         required={hasMineralSelected}
-                        value={ecWater}
-                        onChange={e => setEcWater(e.target.value)}
-                        placeholder="Ej: 1.5"
+                        value={phWater}
+                        onChange={e => setPhWater(e.target.value)}
+                        placeholder="Ej: 5.9"
                         className="w-full bg-black/25 border border-purple-500/40 rounded-lg p-2.5 text-sm font-mono text-foreground outline-none"
                       />
-                      <select
-                        value={ecUnit}
-                        onChange={e => setEcUnit(e.target.value as any)}
-                        className="bg-black/40 border border-purple-500/30 rounded-lg px-2 text-[11px] font-mono text-purple-300 outline-none"
-                      >
-                        <option value="mS/cm">mS/cm</option>
-                        <option value="µS/cm">µS/cm</option>
-                        <option value="ppm">ppm</option>
-                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-mono uppercase text-purple-300 font-bold block mb-1">
+                        EC Solución Tanque *
+                      </label>
+                      <div className="flex gap-1">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          required={hasMineralSelected}
+                          value={ecWater}
+                          onChange={e => setEcWater(e.target.value)}
+                          placeholder="Ej: 1.5"
+                          className="w-full bg-black/25 border border-purple-500/40 rounded-lg p-2.5 text-sm font-mono text-foreground outline-none"
+                        />
+                        <select
+                          value={ecUnit}
+                          onChange={e => setEcUnit(e.target.value as any)}
+                          className="bg-black/40 border border-purple-500/30 rounded-lg px-2 text-[11px] font-mono text-purple-300 outline-none"
+                        >
+                          <option value="mS/cm">mS/cm</option>
+                          <option value="µS/cm">µS/cm</option>
+                          <option value="ppm">ppm</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
               </>
             )}
 

@@ -138,7 +138,7 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
     return fertRows.some(r => {
       if (!r.productName) return false;
       const meta = getProductMeta(r.productName);
-      return meta && (getInsumoOrigin(meta) === "mineral" || meta.uom === "gr" || meta.uom === "Kg");
+      return Boolean(meta && getInsumoOrigin(meta) === "mineral");
     });
   }, [fertRows, groupedInventory, inventory]);
 
@@ -384,11 +384,11 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
     const appliedRecipeItems: RecipeItemApplied[] = [];
 
     const waterLitersNum = parseFloat(waterLiters) || 0;
-    const phWaterNum = phWater !== "" ? parseFloat(phWater) : null;
-    const ecWaterNum = ecWater !== "" ? parseFloat(ecWater) : null;
-    const ecBaseNum = ecWaterBase !== "" ? parseFloat(ecWaterBase) : null;
-    const phRunoffNum = phRunoff !== "" ? parseFloat(phRunoff) : null;
-    const ecRunoffNum = ecRunoff !== "" ? parseFloat(ecRunoff) : null;
+    const phWaterNum = hasMineralSelected && phWater !== "" ? parseFloat(phWater) : null;
+    const ecWaterNum = hasMineralSelected && ecWater !== "" ? parseFloat(ecWater) : null;
+    const ecBaseNum = hasMineralSelected && ecWaterBase !== "" ? parseFloat(ecWaterBase) : null;
+    const phRunoffNum = hasMineralSelected && phRunoff !== "" ? parseFloat(phRunoff) : null;
+    const ecRunoffNum = hasMineralSelected && ecRunoff !== "" ? parseFloat(ecRunoff) : null;
 
     if (actionType === "riego" || actionType === "ipm") {
       const activeRows = fertRows.filter(r => r.productName.trim() !== "");
@@ -754,7 +754,7 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
                       const origin = meta ? getInsumoOrigin(meta) : "organico";
                       const uom = meta?.uom || "gr";
                       const doseUom = getDoseUomForInsumo(uom);
-                      const isMineral = origin === "mineral" || uom === "gr" || uom === "Kg";
+                      const isMineral = origin === "mineral";
                       const rowCost = meta && parseFloat(row.totalAmount) > 0
                         ? (parseFloat(row.totalAmount) * (meta.unit_cost || 0)).toFixed(2)
                         : null;
@@ -906,134 +906,134 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
                     })}
                   </div>
 
-                  {/* 3. CONTROL FISICOQUÍMICO DE LA SOLUCIÓN: pH Y EC */}
-                  <div className="p-3.5 rounded-xl border border-purple-500/30 bg-purple-500/5 flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-mono font-bold uppercase text-purple-300 flex items-center gap-1.5">
-                        <Lightning size={15} weight="fill" className="text-purple-400" /> Parámetros de la Solución (pH & EC)
-                      </label>
-                      {hasMineralSelected && (
+                  {/* 3. CONTROL FISICOQUÍMICO DE LA SOLUCIÓN: pH Y EC (EXCLUSIVO PARA FERTILIZANTES MINERALES) */}
+                  {hasMineralSelected && (
+                    <div className="p-3.5 rounded-xl border border-purple-500/30 bg-purple-500/5 flex flex-col gap-3 animate-in fade-in duration-150">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-mono font-bold uppercase text-purple-300 flex items-center gap-1.5">
+                          <Lightning size={15} weight="fill" className="text-purple-400" /> Parámetros de la Solución (pH & EC)
+                        </label>
                         <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">
                           Nutrición Mineral Activa
                         </span>
-                      )}
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-[10px] font-mono uppercase text-brand-slate-600 dark:text-slate-300 block mb-1">
-                          pH del Agua / Solución {hasMineralSelected ? "*" : ""}
-                        </label>
-                        <input
-                          type="number"
-                          step="0.01"
-                          min="0"
-                          max="14"
-                          required={hasMineralSelected}
-                          value={phWater}
-                          onChange={e => setPhWater(e.target.value)}
-                          placeholder="Ej: 5.9"
-                          className="w-full bg-black/25 border border-purple-500/40 rounded-lg p-2.5 text-sm font-mono text-foreground focus:border-purple-400 outline-none"
-                        />
                       </div>
 
-                      <div>
-                        <label className="text-[10px] font-mono uppercase text-brand-slate-600 dark:text-slate-300 block mb-1">
-                          EC Solución Final {hasMineralSelected ? "*" : ""}
-                        </label>
-                        <div className="flex gap-1">
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            required={hasMineralSelected}
-                            value={ecWater}
-                            onChange={e => setEcWater(e.target.value)}
-                            placeholder={ecUnit === "mS/cm" ? "Ej: 1.4" : "Ej: 1400"}
-                            className="w-full bg-black/25 border border-purple-500/40 rounded-lg p-2.5 text-sm font-mono text-foreground focus:border-purple-400 outline-none"
-                          />
-                          <select
-                            value={ecUnit}
-                            onChange={e => setEcUnit(e.target.value as any)}
-                            className="bg-black/40 border border-purple-500/30 rounded-lg px-2 text-[11px] font-mono text-purple-300 outline-none"
-                          >
-                            <option value="mS/cm">mS/cm</option>
-                            <option value="µS/cm">µS/cm</option>
-                            <option value="ppm">ppm</option>
-                          </select>
-                        </div>
-                      </div>
-                    </div>
-
-                    {phStatus && (
-                      <div className={`text-[10px] font-mono px-2.5 py-1 rounded border ${phStatus.color}`}>
-                        🧪 Estado pH: <strong>{phStatus.label}</strong>
-                      </div>
-                    )}
-
-                    {/* Botón desplegable para EC Base y Drenaje (Runoff) */}
-                    <button
-                      type="button"
-                      onClick={() => setShowAdvancedMetrics(prev => !prev)}
-                      className="text-[11px] font-mono text-purple-300/80 hover:text-purple-200 flex items-center justify-between pt-1 border-t border-purple-500/20"
-                    >
-                      <span>+ Medición de Agua Base y Drenaje (Runoff) (Opcional)</span>
-                      {showAdvancedMetrics ? <CaretUp size={14} /> : <CaretDown size={14} />}
-                    </button>
-
-                    {showAdvancedMetrics && (
-                      <div className="grid grid-cols-3 gap-2 pt-1 animate-in fade-in duration-150">
+                      <div className="grid grid-cols-2 gap-3">
                         <div>
-                          <label className="text-[9px] font-mono uppercase text-slate-400 block mb-1">
-                            EC Agua Base
-                          </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={ecWaterBase}
-                            onChange={e => setEcWaterBase(e.target.value)}
-                            placeholder="Ej: 0.2"
-                            className="w-full bg-black/30 border border-panel-border rounded-lg p-2 text-xs font-mono outline-none focus:border-purple-400"
-                          />
-                        </div>
-                        <div>
-                          <label className="text-[9px] font-mono uppercase text-slate-400 block mb-1">
-                            pH Drenaje
+                          <label className="text-[10px] font-mono uppercase text-brand-slate-600 dark:text-slate-300 block mb-1">
+                            pH del Agua / Solución *
                           </label>
                           <input
                             type="number"
                             step="0.01"
                             min="0"
                             max="14"
-                            value={phRunoff}
-                            onChange={e => setPhRunoff(e.target.value)}
-                            placeholder="Ej: 6.1"
-                            className="w-full bg-black/30 border border-panel-border rounded-lg p-2 text-xs font-mono outline-none focus:border-purple-400"
+                            required={hasMineralSelected}
+                            value={phWater}
+                            onChange={e => setPhWater(e.target.value)}
+                            placeholder="Ej: 5.9"
+                            className="w-full bg-black/25 border border-purple-500/40 rounded-lg p-2.5 text-sm font-mono text-foreground focus:border-purple-400 outline-none"
                           />
                         </div>
+
                         <div>
-                          <label className="text-[9px] font-mono uppercase text-slate-400 block mb-1">
-                            EC Drenaje
+                          <label className="text-[10px] font-mono uppercase text-brand-slate-600 dark:text-slate-300 block mb-1">
+                            EC Solución Final *
                           </label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={ecRunoff}
-                            onChange={e => setEcRunoff(e.target.value)}
-                            placeholder="Ej: 1.7"
-                            className="w-full bg-black/30 border border-panel-border rounded-lg p-2 text-xs font-mono outline-none focus:border-purple-400"
-                          />
-                        </div>
-                        {ecDeltaStatus && (
-                          <div className={`col-span-3 text-[10px] font-mono px-2.5 py-1 rounded border ${ecDeltaStatus.color}`}>
-                            📉 {ecDeltaStatus.label}
+                          <div className="flex gap-1">
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              required={hasMineralSelected}
+                              value={ecWater}
+                              onChange={e => setEcWater(e.target.value)}
+                              placeholder={ecUnit === "mS/cm" ? "Ej: 1.4" : "Ej: 1400"}
+                              className="w-full bg-black/25 border border-purple-500/40 rounded-lg p-2.5 text-sm font-mono text-foreground focus:border-purple-400 outline-none"
+                            />
+                            <select
+                              value={ecUnit}
+                              onChange={e => setEcUnit(e.target.value as any)}
+                              className="bg-black/40 border border-purple-500/30 rounded-lg px-2 text-[11px] font-mono text-purple-300 outline-none"
+                            >
+                              <option value="mS/cm">mS/cm</option>
+                              <option value="µS/cm">µS/cm</option>
+                              <option value="ppm">ppm</option>
+                            </select>
                           </div>
-                        )}
+                        </div>
                       </div>
-                    )}
-                  </div>
+
+                      {phStatus && (
+                        <div className={`text-[10px] font-mono px-2.5 py-1 rounded border ${phStatus.color}`}>
+                          🧪 Estado pH: <strong>{phStatus.label}</strong>
+                        </div>
+                      )}
+
+                      {/* Botón desplegable para EC Base y Drenaje (Runoff) */}
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvancedMetrics(prev => !prev)}
+                        className="text-[11px] font-mono text-purple-300/80 hover:text-purple-200 flex items-center justify-between pt-1 border-t border-purple-500/20"
+                      >
+                        <span>+ Medición de Agua Base y Drenaje (Runoff) (Opcional)</span>
+                        {showAdvancedMetrics ? <CaretUp size={14} /> : <CaretDown size={14} />}
+                      </button>
+
+                      {showAdvancedMetrics && (
+                        <div className="grid grid-cols-3 gap-2 pt-1 animate-in fade-in duration-150">
+                          <div>
+                            <label className="text-[9px] font-mono uppercase text-slate-400 block mb-1">
+                              EC Agua Base
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={ecWaterBase}
+                              onChange={e => setEcWaterBase(e.target.value)}
+                              placeholder="Ej: 0.2"
+                              className="w-full bg-black/30 border border-panel-border rounded-lg p-2 text-xs font-mono outline-none focus:border-purple-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-mono uppercase text-slate-400 block mb-1">
+                              pH Drenaje
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="14"
+                              value={phRunoff}
+                              onChange={e => setPhRunoff(e.target.value)}
+                              placeholder="Ej: 6.1"
+                              className="w-full bg-black/30 border border-panel-border rounded-lg p-2 text-xs font-mono outline-none focus:border-purple-400"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[9px] font-mono uppercase text-slate-400 block mb-1">
+                              EC Drenaje
+                            </label>
+                            <input
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              value={ecRunoff}
+                              onChange={e => setEcRunoff(e.target.value)}
+                              placeholder="Ej: 1.7"
+                              className="w-full bg-black/30 border border-panel-border rounded-lg p-2 text-xs font-mono outline-none focus:border-purple-400"
+                            />
+                          </div>
+                          {ecDeltaStatus && (
+                            <div className={`col-span-3 text-[10px] font-mono px-2.5 py-1 rounded border ${ecDeltaStatus.color}`}>
+                              📉 {ecDeltaStatus.label}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 
