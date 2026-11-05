@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from "react";
 import { GlassCard } from "../../components/ui/GlassCard";
-import { ProjectorScreenChart, Calendar, Target, Clock, Funnel, MapPinLine, Thermometer } from "@phosphor-icons/react";
+import { ProjectorScreenChart, Calendar, Target, Clock, Funnel, MapPinLine, Thermometer, Lightning } from "@phosphor-icons/react";
 import { supabase } from "../../lib/supabase";
+import { parseEventFertigationMetrics } from "../../lib/agronomy/fertigationUtils";
 import { ResponsiveContainer, ComposedChart, Line, Scatter, XAxis, YAxis, Tooltip, CartesianGrid, Legend } from 'recharts';
 
 const PRODUCT_COLORS = ['#ec4899', '#8b5cf6', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#14b8a6', '#6366f1'];
@@ -75,6 +76,13 @@ export default function AgronomyTimelinePage() {
                 evs.forEach((e:any) => {
                     if (e.batch_id) batchSet.add(e.batch_id);
                     if (selectedBatchTimeline !== "all" && e.batch_id !== selectedBatchTimeline) return;
+                    const parsed = parseEventFertigationMetrics(e);
+                    parsed.recipe_items.forEach(ri => {
+                        if (ri.product_name) prodSet.add(ri.product_name);
+                    });
+                    if (parsed.ph_water !== null) prodSet.add("pH Solución");
+                    if (parsed.ec_water !== null) prodSet.add("EC Solución");
+
                     if (e.description) {
                         if (e.description.includes('--- Bot Auto-Deductions ---')) {
                             const parts = e.description.split('--- Bot Auto-Deductions ---');
@@ -88,7 +96,7 @@ export default function AgronomyTimelinePage() {
                             }
                         }
                         // Soporte para nuevo formato y formatos viejos per cápita
-                        const matches = [...e.description.matchAll(/(?:RIEGO|Nutrici[oó]n|PODA|EVENTO|IPM):\s*([^(]+?)\s*\(\s*([0-9.]+)/gi)];
+                        const matches = [...e.description.matchAll(/(?:RIEGO MINERAL|RIEGO|Nutrici[oó]n|PODA|EVENTO|IPM):\s*([^(]+?)\s*\(\s*([0-9.]+)/gi)];
                         for (const match of matches) {
                             prodSet.add(match[1].trim());
                         }
@@ -117,10 +125,8 @@ export default function AgronomyTimelinePage() {
             
             const groupedMap = new Map();
             if (tel) {
-                // Agrupar registros por etiqueta de tiempo para promediar lecturas coincidentes
                 tel.forEach((t:any) => {
                     const d = new Date(t.created_at);
-                    // Redondear minutos a intervalos de 10 min para mayor suavidad en el promedio si se envían datos asincronizados
                     const min = d.getMinutes();
                     d.setMinutes(Math.floor(min / 10) * 10, 0, 0);
                     
@@ -170,7 +176,6 @@ export default function AgronomyTimelinePage() {
 
             if (evs) {
                 evs.forEach((e:any) => {
-                    // Filter by batch (if not all)
                     if (selectedBatchTimeline !== "all" && e.batch_id !== selectedBatchTimeline) return;
 
                     const ed = new Date(e.date_occurred);
@@ -186,13 +191,25 @@ export default function AgronomyTimelinePage() {
                         timeLabel: ed.toLocaleDateString([],{day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit'}),
                         timestamp: ed.getTime(),
                         Temp: null, Hum: null, VPD: null, Soil: null,
-                        [evtKey]: 1, // Se ubicará en la parte inferior gracias a un eje Y independiente
+                        [evtKey]: 1,
                         eventDesc: e.description,
                         eventType: e.event_type,
                         ...baseNutriObj
                     };
 
-                    // Extract Dose for selected products
+                    const parsed = parseEventFertigationMetrics(e);
+                    if (selectedProducts.includes("pH Solución") && parsed.ph_water !== null) {
+                        eventObj[`nutri_pH Solución`] = parsed.ph_water;
+                    }
+                    if (selectedProducts.includes("EC Solución") && parsed.ec_water !== null) {
+                        eventObj[`nutri_EC Solución`] = parsed.ec_water;
+                    }
+                    parsed.recipe_items.forEach(ri => {
+                        if (selectedProducts.includes(ri.product_name)) {
+                            eventObj[`nutri_${ri.product_name}`] = ri.dose_per_liter > 0 ? ri.dose_per_liter : ri.amount_applied;
+                        }
+                    });
+
                     if (e.description) {
                         if (e.description.includes('--- Bot Auto-Deductions ---')) {
                             const parts = e.description.split('--- Bot Auto-Deductions ---');
@@ -212,11 +229,10 @@ export default function AgronomyTimelinePage() {
                                 }
                             }
                         }
-                        // Soporte para nuevo formato
-                        const matches = [...e.description.matchAll(/(?:RIEGO|Nutrici[oó]n|PODA|EVENTO|IPM):\s*([^(]+?)\s*\(\s*([0-9.]+)/gi)];
+                        const matches = [...e.description.matchAll(/(?:RIEGO MINERAL|RIEGO|Nutrici[oó]n|PODA|EVENTO|IPM):\s*([^(]+?)\s*\(\s*([0-9.]+)/gi)];
                         for (const match of matches) {
                             const pName = match[1].trim();
-                            if (selectedProducts.includes(pName)) {
+                            if (selectedProducts.includes(pName) && eventObj[`nutri_${pName}`] == null) {
                                 eventObj[`nutri_${pName}`] = parseFloat(match[2]);
                             }
                         }
@@ -232,13 +248,11 @@ export default function AgronomyTimelinePage() {
         setLoading(false);
     };
 
-    // Auto-load on filter change
     useEffect(() => {
         loadData();
         // eslint-disable-next-line
     }, [startDate, endDate, selectedRoom, selectedSensor, chartType, selectedBatchTimeline, selectedProducts]);
 
-    // Realtime subscription for telemetry
     useEffect(() => {
         const channel = supabase
             .channel('telemetry_changes')
@@ -287,7 +301,7 @@ export default function AgronomyTimelinePage() {
             {payload.map((entry: any, index: number) => {
               if(entry.name === 'timeLabel') return null;
               if(entry.dataKey && entry.dataKey.startsWith('evento_')) {
-                  return <div key={index} className="mt-2 font-bold max-w-[200px] whitespace-normal" style={{color: entry.color}}>[{entry.payload.eventType}] {entry.payload.eventDesc}</div>
+                  return <div key={index} className="mt-2 font-bold max-w-[240px] whitespace-normal" style={{color: entry.color}}>[{entry.payload.eventType}] {entry.payload.eventDesc}</div>
               }
               if(entry.value !== null) {
                 return (
@@ -324,7 +338,7 @@ export default function AgronomyTimelinePage() {
                         Timeline & Análisis Climático
                     </h1>
                     <p className="text-brand-slate-600 dark:text-slate-400 font-mono mt-2">
-                        Auditoría Híbrida: Sensores de Clima + Bitácora Agronómica
+                        Auditoría Híbrida: Sensores de Clima + Bitácora Agronómica (Dilución g/L, pH & EC)
                     </p>
                 </div>
             </GlassCard>
@@ -378,10 +392,10 @@ export default function AgronomyTimelinePage() {
                         </select>
                     </div>
                     <div>
-                        <label className="text-[10px] font-mono text-brand-slate-600 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">Dosis Productos (Nutrición)</label>
+                        <label className="text-[10px] font-mono text-brand-slate-600 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1 mb-1">Dosis Productos (g/L o ml/L), pH & EC</label>
                         <div className="flex flex-wrap gap-2 p-2 bg-black/[0.05] dark:bg-black/30 border border-panel-border rounded min-h-[38px] items-center">
                             {availableProducts.length === 0 ? (
-                                <span className="text-xs font-mono text-brand-slate-600 dark:text-slate-400 opacity-50">No se detectaron aplicaciones en este rango. Verifique si existen riegos con autodeducciones registradas en la bitácora.</span>
+                                <span className="text-xs font-mono text-brand-slate-600 dark:text-slate-400 opacity-50">No se detectaron aplicaciones en este rango. Verifique si existen riegos registrados en la bitácora.</span>
                             ) : (
                                 availableProducts.map(prod => {
                                     const isSelected = selectedProducts.includes(prod);
@@ -409,7 +423,7 @@ export default function AgronomyTimelinePage() {
             <div className="flex flex-wrap gap-2 p-1 bg-black/20 border border-panel-border rounded-xl w-fit mx-auto relative z-30 justify-center">
                  <button onClick={() => { setChartType("ambient"); setSelectedSensor("all"); }} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${chartType === "ambient" ? "bg-indigo-600 text-white shadow-md" : "text-brand-slate-600 dark:text-slate-400 hover:text-white"}`}>Telemetría Ambiental (Clima)</button>
                  <button onClick={() => { setChartType("soil"); setSelectedSensor("all"); }} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${chartType === "soil" ? "bg-blue-600 text-white shadow-md" : "text-brand-slate-600 dark:text-slate-400 hover:text-white"}`}>Humedad de Suelo</button>
-                 <button onClick={() => { setChartType("nutrition"); setSelectedSensor("all"); }} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${chartType === "nutrition" ? "bg-purple-600 text-white shadow-md" : "text-brand-slate-600 dark:text-slate-400 hover:text-white"}`}>Nutrición</button>
+                 <button onClick={() => { setChartType("nutrition"); setSelectedSensor("all"); }} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${chartType === "nutrition" ? "bg-purple-600 text-white shadow-md" : "text-brand-slate-600 dark:text-slate-400 hover:text-white"}`}>Nutrición (g/L, ml/L, pH & EC)</button>
             </div>
 
             {/* Grafico Multi-Eje */}
@@ -427,7 +441,7 @@ export default function AgronomyTimelinePage() {
                                <XAxis dataKey="timeLabel" tick={{fontSize: 10, fill: '#888'}} interval="preserveStartEnd" minTickGap={30} />
                                {chartType !== "nutrition" && <YAxis yAxisId="yClima" orientation="left" tick={{fontSize: 10, fill: '#888'}} domain={chartType === "ambient" ? ['dataMin - 2', 'dataMax + 2'] : [0, 100]} allowDataOverflow />}
                                {chartType === "ambient" && <YAxis yAxisId="yHum" orientation="right" tick={{fontSize: 10, fill: '#888'}} domain={[0, 100]} tickFormatter={(val) => `${val}%`} />}
-                               {chartType === "nutrition" && selectedProducts.length > 0 && <YAxis yAxisId="yNutri" orientation="left" width={90} tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'dataMax']} tickFormatter={(val) => `${val} ml/l`} />}
+                               {chartType === "nutrition" && selectedProducts.length > 0 && <YAxis yAxisId="yNutri" orientation="left" width={90} tick={{fontSize: 10, fill: '#a855f7'}} domain={[0, 'dataMax']} tickFormatter={(val) => `${val}`} />}
                                <YAxis yAxisId="yEvent" type="number" domain={[0, 15]} hide />
                                <Tooltip content={<CustomTooltip />} />
                                <Legend wrapperStyle={{ fontSize: '12px' }} />
@@ -443,7 +457,7 @@ export default function AgronomyTimelinePage() {
                                    <Line yAxisId="yClima" type="monotone" dataKey="Soil" stroke="#3b82f6" strokeWidth={2} dot={false} name="Humedad Suelo %" connectNulls />
                                )}
 
-                               {/* Dynamic Nutrition Doses Lines */}
+                               {/* Dynamic Nutrition Doses / pH / EC Lines */}
                                {selectedProducts.map((prod, idx) => (
                                    <Line 
                                        key={prod} 
@@ -454,7 +468,7 @@ export default function AgronomyTimelinePage() {
                                        strokeWidth={3} 
                                        dot={{ r: 4, strokeWidth: 2, fill: '#fff' }} 
                                        activeDot={{ r: 8 }}
-                                       name={`Dosis ${prod} (ml/l)`}  
+                                       name={prod === "pH Solución" || prod === "EC Solución" ? prod : `Dosis ${prod} (g/L o ml/L)`}  
                                        connectNulls 
                                    />
                                ))}
@@ -473,19 +487,19 @@ export default function AgronomyTimelinePage() {
 
             {/* Timeline Filter Textual */}
             <div className="flex bg-panel-base border border-panel-border rounded-xl p-2 gap-2 shadow-lg backdrop-blur-md sticky top-4 z-40 overflow-x-auto mt-4">
-                <button onClick={() => setFilterCategory("all")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'all' ? 'bg-indigo-600 text-white' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
+                <button onClick={() => setFilterCategory("all")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap ${filterCategory === 'all' ? 'bg-indigo-600 text-white' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
                     <Funnel size={16} /> Ver Todos
                 </button>
-                <button onClick={() => setFilterCategory("Fase")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'Fase' ? 'bg-yellow-600 text-foreground' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
+                <button onClick={() => setFilterCategory("Fase")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap ${filterCategory === 'Fase' ? 'bg-yellow-600 text-foreground' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
                     Fotoperiodos & Fases
                 </button>
-                <button onClick={() => setFilterCategory("riego")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'riego' ? 'bg-blue-600 text-white' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
+                <button onClick={() => setFilterCategory("riego")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap ${filterCategory === 'riego' ? 'bg-blue-600 text-white' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
                     Riegos
                 </button>
-                <button onClick={() => setFilterCategory("nutrici")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'nutrici' ? 'bg-purple-600 text-white' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
+                <button onClick={() => setFilterCategory("nutrici")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap ${filterCategory === 'nutrici' ? 'bg-purple-600 text-white' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
                     Nutrición
                 </button>
-                <button onClick={() => setFilterCategory("poda")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap \${filterCategory === 'poda' ? 'bg-emerald-600 text-foreground' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
+                <button onClick={() => setFilterCategory("poda")} className={`flex items-center gap-2 px-4 py-2 rounded-lg font-bold text-sm transition-colors whitespace-nowrap ${filterCategory === 'poda' ? 'bg-emerald-600 text-foreground' : 'hover:bg-black/[0.03] dark:bg-black/20 text-brand-slate-600 dark:text-slate-400'}`}>
                     Poda
                 </button>
             </div>
@@ -506,21 +520,42 @@ export default function AgronomyTimelinePage() {
                         {filteredEventsTimeline.map((evt, idx) => {
                             const dateObj = new Date(evt.date_occurred);
                             const style = getEventIconAndColor(evt.event_type);
+                            const metrics = parseEventFertigationMetrics(evt);
                             return (
                                 <div key={idx} className="relative pl-6 sm:pl-8 group hover:-translate-y-1 transition-transform">
-                                    <div className={`absolute -left-[5px] top-1.5 w-[10px] h-[10px] rounded-full scale-100 group-hover:scale-150 transition-transform \${style.bg} border border-\${style.border} shadow-[0_0_10px_rgba(255,255,255,0.1)]`} 
+                                    <div className={`absolute -left-[5px] top-1.5 w-[10px] h-[10px] rounded-full scale-100 group-hover:scale-150 transition-transform ${style.bg} border border-${style.border} shadow-[0_0_10px_rgba(255,255,255,0.1)]`} 
                                          style={{ backgroundColor: 'var(--bg-dark)' }}
                                     ></div>
                                     
                                     <div className={`p-4 md:p-5 rounded-xl border border-panel-border bg-black/10 hover:bg-black/[0.05] dark:bg-black/30 transition-colors`}>
                                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                                             <div className="flex items-center gap-2 flex-wrap">
-                                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider \${style.bg} \${style.color} border \${style.border}`}>
+                                                <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider ${style.bg} ${style.color} border ${style.border}`}>
                                                     {evt.event_type}
                                                 </span>
+                                                {metrics.is_mineral && (
+                                                    <span className="px-2 py-1 rounded text-[10px] font-mono font-bold uppercase bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 flex items-center gap-1">
+                                                        <Lightning size={12} weight="fill" /> Mineral
+                                                    </span>
+                                                )}
                                                 <span className="text-[11px] font-mono text-brand-slate-600 dark:text-slate-400 flex items-center gap-1 bg-black/[0.03] dark:bg-black/20 px-2 py-1 rounded border border-panel-border/30">
                                                     <Target size={12} /> LOTE: {evt.batch_id || '-'}
                                                 </span>
+                                                {metrics.water_liters && (
+                                                    <span className="text-[11px] font-mono text-blue-300 bg-blue-500/10 px-2 py-1 rounded border border-blue-500/20 font-bold">
+                                                        💧 {metrics.water_liters} L
+                                                    </span>
+                                                )}
+                                                {metrics.ph_water !== null && (
+                                                    <span className="text-[11px] font-mono text-purple-300 bg-purple-500/10 px-2 py-1 rounded border border-purple-500/20 font-bold">
+                                                        🧪 pH {metrics.ph_water}
+                                                    </span>
+                                                )}
+                                                {metrics.ec_water !== null && (
+                                                    <span className="text-[11px] font-mono text-cyan-300 bg-cyan-500/10 px-2 py-1 rounded border border-cyan-500/20 font-bold">
+                                                        ⚡ EC {metrics.ec_water} {metrics.ec_unit}
+                                                    </span>
+                                                )}
                                             </div>
                                             <div className="text-[11px] font-mono opacity-60 flex items-center gap-1 bg-white/5 px-2 py-1 rounded w-max">
                                                 <Calendar size={12}/> 

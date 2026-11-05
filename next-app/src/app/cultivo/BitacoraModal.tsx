@@ -1,28 +1,73 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { X, Drop, Bug, Scissors, ClockCounterClockwise, FloppyDisk, Warning, PencilSimple, Trash } from "@phosphor-icons/react";
+import React, { useState, useEffect, useMemo } from "react";
+import {
+  X,
+  Drop,
+  Bug,
+  Scissors,
+  ClockCounterClockwise,
+  FloppyDisk,
+  Warning,
+  PencilSimple,
+  Trash,
+  Plus,
+  Lightning,
+  Leaf,
+  Flask,
+  CaretDown,
+  CaretUp
+} from "@phosphor-icons/react";
 import { supabase } from "../../lib/supabase";
+import {
+  getInsumoOrigin,
+  getDoseUomForInsumo,
+  calcTotalStockFromDose,
+  calcDoseFromTotalStock,
+  buildFertigationDescription,
+  parseEventFertigationMetrics,
+  insertAgronomicEventsSafe,
+  updateAgronomicEventSafe,
+  RecipeItemApplied
+} from "../../lib/agronomy/fertigationUtils";
 
-export function BitacoraModal({ batch, onClose }: { batch: any, onClose: () => void }) {
+interface FertRowInput {
+  productName: string;
+  dosePerLiter: string; // g/L o ml/L
+  totalAmount: string;  // gr o ml totales a descontar de bodega
+}
+
+export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => void }) {
   const [events, setEvents] = useState<any[]>([]);
   const [inventory, setInventory] = useState<any[]>([]);
   const [loadingEvents, setLoadingEvents] = useState(true);
-  
+
   const [actionType, setActionType] = useState<"riego" | "ipm" | "poda" | "alerta" | "cosecha_humeda">("riego");
-  
-  // States Modal Forms
-  const [selectedProduct, setSelectedProduct] = useState("");
-  const [amount, setAmount] = useState("");
+
+  // Estados de Dilución en Agua y Nutrición Mineral / Orgánica
+  const [waterLiters, setWaterLiters] = useState<string>("");
+  const [fertRows, setFertRows] = useState<FertRowInput[]>([
+    { productName: "", dosePerLiter: "", totalAmount: "" }
+  ]);
+
+  // Parámetros Fisicoquímicos de la Solución (pH y EC)
+  const [phWater, setPhWater] = useState<string>("");
+  const [ecWater, setEcWater] = useState<string>("");
+  const [ecUnit, setEcUnit] = useState<"mS/cm" | "µS/cm" | "ppm">("mS/cm");
+  const [showAdvancedMetrics, setShowAdvancedMetrics] = useState<boolean>(false);
+  const [ecWaterBase, setEcWaterBase] = useState<string>("");
+  const [phRunoff, setPhRunoff] = useState<string>("");
+  const [ecRunoff, setEcRunoff] = useState<string>("");
+
+  // Otros estados del formulario
   const [desc, setDesc] = useState("");
   const [podaType, setPodaType] = useState("Defoliación Baja");
   const [harvestCutName, setHarvestCutName] = useState("Tanda 1");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Edit States
+  // Estados de Edición
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
-  const [editingOldAmount, setEditingOldAmount] = useState<number>(0);
-  const [editingOldProductId, setEditingOldProductId] = useState<string | null>(null);
+  const [editingOldEvent, setEditingOldEvent] = useState<any | null>(null);
 
   useEffect(() => {
     fetchEvents();
@@ -32,76 +77,289 @@ export function BitacoraModal({ batch, onClose }: { batch: any, onClose: () => v
   const fetchEvents = async () => {
     setLoadingEvents(true);
     const { data } = await supabase
-      .from('core_agronomic_events')
-      .select('*')
-      .eq('batch_id', batch.id)
-      .order('date_occurred', { ascending: false });
+      .from("core_agronomic_events")
+      .select("*")
+      .eq("batch_id", batch.id)
+      .order("date_occurred", { ascending: false });
     if (data) setEvents(data);
     setLoadingEvents(false);
   };
 
   const fetchInventory = async () => {
     const { data } = await supabase
-      .from('core_inventory_quimicos')
-      .select('*')
-      .order('name');
+      .from("core_inventory_quimicos")
+      .select("*")
+      .order("name");
     if (data) setInventory(data);
   };
 
+  // Agrupar inventario por nombre comercial con su stock combinado y origen
+  const groupedInventory = useMemo(() => {
+    let localDoses: Record<string, number> = {};
+    if (typeof window !== "undefined") {
+      try {
+        localDoses = JSON.parse(localStorage.getItem("crm_insumo_recommended_doses") || "{}");
+      } catch {}
+    }
+
+    return Array.from(
+      inventory.reduce((acc: Map<string, any>, item: any) => {
+        const key = (item.name || "").trim();
+        if (!key) return acc;
+        const origin = getInsumoOrigin(item);
+        const recDose = item.recommended_dose ?? localDoses[key.toLowerCase()] ?? null;
+        if (!acc.has(key)) {
+          acc.set(key, {
+            ...item,
+            origin_type: origin,
+            recommended_dose: recDose
+          });
+        } else {
+          const existing = acc.get(key);
+          existing.qty += item.qty;
+          if (origin === "mineral") existing.origin_type = "mineral";
+          if (recDose) existing.recommended_dose = recDose;
+        }
+        return acc;
+      }, new Map()).values()
+    )
+      .filter((i: any) => i.qty > 0)
+      .sort((a: any, b: any) => a.name.localeCompare(b.name));
+  }, [inventory]);
+
+  const getProductMeta = (productName: string) => {
+    return groupedInventory.find((i: any) => i.name === productName) ||
+      inventory.find((i: any) => i.name === productName) ||
+      null;
+  };
+
+  // Verificar si alguno de los productos seleccionados es mineral
+  const hasMineralSelected = useMemo(() => {
+    return fertRows.some(r => {
+      if (!r.productName) return false;
+      const meta = getProductMeta(r.productName);
+      return meta && (getInsumoOrigin(meta) === "mineral" || meta.uom === "gr" || meta.uom === "Kg");
+    });
+  }, [fertRows, groupedInventory, inventory]);
+
+  // Recalcular gramos/ml totales cuando cambian los litros de agua
+  const handleWaterLitersChange = (val: string) => {
+    setWaterLiters(val);
+    const litersNum = parseFloat(val) || 0;
+    if (litersNum > 0) {
+      setFertRows(prev =>
+        prev.map(row => {
+          const doseNum = parseFloat(row.dosePerLiter) || 0;
+          if (row.productName && doseNum > 0) {
+            const meta = getProductMeta(row.productName);
+            const total = calcTotalStockFromDose(litersNum, doseNum, meta?.uom);
+            return { ...row, totalAmount: total > 0 ? String(total) : row.totalAmount };
+          }
+          return row;
+        })
+      );
+    }
+  };
+
+  // Cambiar producto en una fila de mezcla
+  const handleProductChange = (idx: number, prodName: string) => {
+    const meta = getProductMeta(prodName);
+    const litersNum = parseFloat(waterLiters) || 0;
+    const recDose = meta?.recommended_dose ? String(meta.recommended_dose) : "";
+    const recDoseNum = parseFloat(recDose) || 0;
+
+    setFertRows(prev =>
+      prev.map((row, i) => {
+        if (i !== idx) return row;
+        if (!prodName) return { productName: "", dosePerLiter: "", totalAmount: "" };
+        const newDose = recDose || row.dosePerLiter;
+        const doseToUse = parseFloat(newDose) || 0;
+        const newTotal =
+          litersNum > 0 && doseToUse > 0
+            ? String(calcTotalStockFromDose(litersNum, doseToUse, meta?.uom))
+            : row.totalAmount;
+        return {
+          productName: prodName,
+          dosePerLiter: newDose,
+          totalAmount: newTotal
+        };
+      })
+    );
+  };
+
+  // Cambiar dosis (g/L o ml/L) en una fila -> calcula automáticamente gramos/ml totales
+  const handleDoseChange = (idx: number, doseVal: string) => {
+    const litersNum = parseFloat(waterLiters) || 0;
+    const doseNum = parseFloat(doseVal) || 0;
+
+    setFertRows(prev =>
+      prev.map((row, i) => {
+        if (i !== idx) return row;
+        const meta = getProductMeta(row.productName);
+        const computedTotal =
+          litersNum > 0 && doseNum > 0
+            ? String(calcTotalStockFromDose(litersNum, doseNum, meta?.uom))
+            : doseVal === ""
+            ? ""
+            : row.totalAmount;
+        return {
+          ...row,
+          dosePerLiter: doseVal,
+          totalAmount: computedTotal
+        };
+      })
+    );
+  };
+
+  // Cambiar gramos/ml totales directamente -> calcula automáticamente la concentración (g/L o ml/L)
+  const handleTotalAmountChange = (idx: number, totalVal: string) => {
+    const litersNum = parseFloat(waterLiters) || 0;
+    const totalNum = parseFloat(totalVal) || 0;
+
+    setFertRows(prev =>
+      prev.map((row, i) => {
+        if (i !== idx) return row;
+        const meta = getProductMeta(row.productName);
+        const computedDose =
+          litersNum > 0 && totalNum > 0
+            ? String(calcDoseFromTotalStock(litersNum, totalNum, meta?.uom))
+            : row.dosePerLiter;
+        return {
+          ...row,
+          totalAmount: totalVal,
+          dosePerLiter: computedDose
+        };
+      })
+    );
+  };
+
+  const addFertRow = () => {
+    setFertRows(prev => [...prev, { productName: "", dosePerLiter: "", totalAmount: "" }]);
+  };
+
+  const removeFertRow = (idx: number) => {
+    setFertRows(prev => (prev.length <= 1 ? [{ productName: "", dosePerLiter: "", totalAmount: "" }] : prev.filter((_, i) => i !== idx)));
+  };
+
+  // Restaurar stock de un evento anterior (cuando se edita o elimina)
+  const restoreStockFromEvent = async (ev: any, invList: any[]) => {
+    const parsed = parseEventFertigationMetrics(ev);
+    if (parsed.recipe_items && parsed.recipe_items.length > 0) {
+      for (const rItem of parsed.recipe_items) {
+        if (rItem.consumed_batches && rItem.consumed_batches.length > 0) {
+          for (const cb of rItem.consumed_batches) {
+            const target = invList.find(i => i.id === cb.id);
+            if (target) {
+              const newQty = Number((target.qty + cb.qty).toFixed(4));
+              await supabase.from("core_inventory_quimicos").update({ qty: newQty }).eq("id", target.id);
+              target.qty = newQty;
+            }
+          }
+        } else if (rItem.product_name && rItem.amount_applied > 0) {
+          const target = invList.find(i => i.id === rItem.product_id) || invList.find(i => i.name === rItem.product_name);
+          if (target) {
+            const newQty = Number((target.qty + rItem.amount_applied).toFixed(4));
+            await supabase.from("core_inventory_quimicos").update({ qty: newQty }).eq("id", target.id);
+            target.qty = newQty;
+          }
+        }
+      }
+    } else if (ev.product_id && ev.amount_applied > 0) {
+      const oldItem = invList.find(i => i.id === ev.product_id);
+      if (oldItem) {
+        const newQty = Number((oldItem.qty + ev.amount_applied).toFixed(4));
+        await supabase.from("core_inventory_quimicos").update({ qty: newQty }).eq("id", oldItem.id);
+        oldItem.qty = newQty;
+      }
+    }
+  };
+
   const handleEditClick = (ev: any) => {
-    const et = (ev.event_type || '').toLowerCase();
-    if (et.includes('cosecha')) {
-      setActionType('cosecha_humeda');
+    const et = (ev.event_type || "").toLowerCase();
+    const parsed = parseEventFertigationMetrics(ev);
+
+    if (et.includes("cosecha")) {
+      setActionType("cosecha_humeda");
       const cutMatch = ev.description?.match(/COSECHA HÚMEDA: (.*?)\./);
       if (cutMatch && cutMatch[1]) setHarvestCutName(cutMatch[1]);
     } else {
-      setActionType(et === 'riego' || et === 'nutricion' ? 'riego' : et === 'ipm' ? 'ipm' : et === 'alerta' ? 'alerta' : 'poda');
+      setActionType(
+        et === "riego" || et === "nutricion"
+          ? "riego"
+          : et === "ipm"
+          ? "ipm"
+          : et === "alerta"
+          ? "alerta"
+          : "poda"
+      );
     }
-    setSelectedProduct(ev.product_id || "");
-    setAmount(ev.amount_applied ? ev.amount_applied.toString() : "");
-    
-    // Extract raw notes if possible
-    let rawDesc = ev.description || "";
-    if (rawDesc.includes(". ")) {
-      const parts = rawDesc.split(". ");
-      // Simple heuristic: if the first part is fully uppercase or looks like a prefix
-      if (parts[0] === parts[0].toUpperCase() || parts[0].includes(":") || parts[0].includes("PODA") || parts[0].includes("COSECHA")) {
-         rawDesc = parts.slice(1).join(". ");
-      }
+
+    setWaterLiters(parsed.water_liters ? String(parsed.water_liters) : "");
+    setPhWater(parsed.ph_water !== null ? String(parsed.ph_water) : "");
+    setEcWater(parsed.ec_water !== null ? String(parsed.ec_water) : "");
+    setEcUnit(parsed.ec_unit || "mS/cm");
+    setEcWaterBase(parsed.ec_water_base !== null ? String(parsed.ec_water_base) : "");
+    setPhRunoff(parsed.ph_runoff !== null ? String(parsed.ph_runoff) : "");
+    setEcRunoff(parsed.ec_runoff !== null ? String(parsed.ec_runoff) : "");
+    setShowAdvancedMetrics(
+      parsed.ec_water_base !== null || parsed.ph_runoff !== null || parsed.ec_runoff !== null
+    );
+
+    if (parsed.recipe_items.length > 0) {
+      setFertRows(
+        parsed.recipe_items.map(ri => ({
+          productName: ri.product_name,
+          dosePerLiter: ri.dose_per_liter > 0 ? String(ri.dose_per_liter) : "",
+          totalAmount: ri.amount_applied > 0 ? String(ri.amount_applied) : ""
+        }))
+      );
+    } else if (ev.product_id) {
+      const prodObj = inventory.find(i => i.id === ev.product_id);
+      setFertRows([
+        {
+          productName: prodObj?.name || "",
+          dosePerLiter: parsed.dosage_per_liter ? String(parsed.dosage_per_liter) : "",
+          totalAmount: ev.amount_applied ? String(ev.amount_applied) : ""
+        }
+      ]);
+    } else {
+      setFertRows([{ productName: "", dosePerLiter: "", totalAmount: "" }]);
     }
-    setDesc(rawDesc);
-    
-    if (et === 'poda') {
-        const podaMatch = ev.description?.match(/PODA: (.*?)\./);
-        if (podaMatch && podaMatch[1]) setPodaType(podaMatch[1]);
+
+    setDesc(parsed.raw_notes || "");
+
+    if (et === "poda") {
+      const podaMatch = ev.description?.match(/PODA: (.*?)\./);
+      if (podaMatch && podaMatch[1]) setPodaType(podaMatch[1]);
     }
 
     setEditingEventId(ev.id);
-    setEditingOldAmount(ev.amount_applied || 0);
-    setEditingOldProductId(ev.product_id || null);
+    setEditingOldEvent(ev);
   };
 
   const handleDeleteEvent = async (ev: any) => {
     if (!window.confirm("¿Seguro que querés eliminar este registro? La cantidad de insumo se restaurará al inventario (si aplica).")) return;
-    
-    if (ev.product_id && ev.amount_applied > 0) {
-       const oldItem = inventory.find(i => i.id === ev.product_id);
-       if (oldItem) {
-          const newQty = oldItem.qty + ev.amount_applied;
-          await supabase.from('core_inventory_quimicos').update({ qty: newQty }).eq('id', oldItem.id);
-       }
-    }
-    
-    await supabase.from('core_agronomic_events').delete().eq('id', ev.id);
+
+    const updatedInv = [...inventory];
+    await restoreStockFromEvent(ev, updatedInv);
+
+    await supabase.from("core_agronomic_events").delete().eq("id", ev.id);
     await fetchEvents();
     await fetchInventory();
   };
 
   const cancelEdit = () => {
     setEditingEventId(null);
+    setEditingOldEvent(null);
     setDesc("");
-    setAmount("");
-    setSelectedProduct("");
+    setWaterLiters("");
+    setFertRows([{ productName: "", dosePerLiter: "", totalAmount: "" }]);
+    setPhWater("");
+    setEcWater("");
+    setEcWaterBase("");
+    setPhRunoff("");
+    setEcRunoff("");
+    setShowAdvancedMetrics(false);
     setHarvestCutName("Tanda 1");
     setActionType("riego");
   };
@@ -112,315 +370,892 @@ export function BitacoraModal({ batch, onClose }: { batch: any, onClose: () => v
 
     let finalDesc = desc;
     let finalCost = 0;
-    
-    // Clone inventory to modify locally before save
-    let updatedInv = [...inventory];
+    const updatedInv = inventory.map(i => ({ ...i }));
 
-    if (editingEventId && editingOldProductId && editingOldAmount > 0) {
-       const oldItem = updatedInv.find(i => i.id === editingOldProductId);
-       if (oldItem) {
-          await supabase.from('core_inventory_quimicos').update({ qty: oldItem.qty + editingOldAmount }).eq('id', oldItem.id);
-          oldItem.qty += editingOldAmount;
-       }
+    // Si estamos editando, restauramos primero el stock previo
+    if (editingEventId && editingOldEvent) {
+      await restoreStockFromEvent(editingOldEvent, updatedInv);
     }
-    
+
     let selectedProductIdForEvent: string | null = null;
-    
-    if (actionType === 'riego' || actionType === 'ipm') {
-       if (selectedProduct) { // selectedProduct is now the NAME
-          const matchingItems = updatedInv
-              .filter(i => i.name === selectedProduct)
-              .sort((a,b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
-          
-          let reqAmount = parseFloat(amount) || 0;
-          
-          if (matchingItems.length === 0) {
-             alert("Producto no encontrado en inventario."); setIsSubmitting(false); return;
-          }
-          if (reqAmount <= 0) {
-             alert("Ingresa una cantidad mayor a 0 mL."); setIsSubmitting(false); return;
-          }
-          
-          const totalStock = matchingItems.reduce((sum, i) => sum + i.qty, 0);
-          if (reqAmount > totalStock) {
-             alert(`Stock Insuficiente. Requerís ${reqAmount} pero el total combinado es ${totalStock} disponibles en Bodega.`); setIsSubmitting(false); return;
-          }
-          
-          let remainingReq = reqAmount;
-          let calculatedCost = 0;
-          let lastConsumedItemId = matchingItems[0].id;
+    let totalAmountForEvent: number | null = null;
+    let primaryDosePerLiter: number | null = null;
+    let primaryDoseUom: string | null = null;
+    const appliedRecipeItems: RecipeItemApplied[] = [];
 
-          for (const item of matchingItems) {
-              if (remainingReq <= 0) break;
-              if (item.qty <= 0) continue; // Skip empty stocks
-              
-              const consume = Math.min(remainingReq, item.qty);
-              calculatedCost += parseFloat(item.unit_cost || 0) * consume;
-              
-              const newQty = item.qty - consume;
-              await supabase.from('core_inventory_quimicos').update({ qty: newQty }).eq('id', item.id);
-              
-              item.qty = newQty;
-              remainingReq -= consume;
-              lastConsumedItemId = item.id;
-          }
-          
-          finalCost = calculatedCost;
-          const unit = matchingItems[0]?.uom || matchingItems[0]?.unit || 'unidades';
-          finalDesc = `${actionType.toUpperCase()}: ${selectedProduct} (${reqAmount} ${unit}). ` + desc;
-          selectedProductIdForEvent = lastConsumedItemId;
+    const waterLitersNum = parseFloat(waterLiters) || 0;
+    const phWaterNum = phWater !== "" ? parseFloat(phWater) : null;
+    const ecWaterNum = ecWater !== "" ? parseFloat(ecWater) : null;
+    const ecBaseNum = ecWaterBase !== "" ? parseFloat(ecWaterBase) : null;
+    const phRunoffNum = phRunoff !== "" ? parseFloat(phRunoff) : null;
+    const ecRunoffNum = ecRunoff !== "" ? parseFloat(ecRunoff) : null;
 
-       } else {
-          finalDesc = `${actionType === 'riego' ? 'Sólo Agua / Preventivo Manual' : 'Acción Manual (sin insumo)'}. ` + desc;
-       }
-    } else if (actionType === 'poda') {
-       finalDesc = `PODA: ${podaType}. ` + desc;
-    } else if (actionType === 'alerta') {
-       finalDesc = `⚠️ EVENTO/PLAGA: ` + desc;
-    } else if (actionType === 'cosecha_humeda') {
-       finalDesc = `COSECHA HÚMEDA: ${harvestCutName || 'Tanda'}. ` + (desc ? desc : 'Corte en verde registrado previo al secado.');
+    if (actionType === "riego" || actionType === "ipm") {
+      const activeRows = fertRows.filter(r => r.productName.trim() !== "");
+
+      // 1. Validar stock de todas las filas antes de descontar nada
+      for (const row of activeRows) {
+        const matchingItems = updatedInv
+          .filter(i => i.name === row.productName)
+          .sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+
+        if (matchingItems.length === 0) {
+          alert(`Producto "${row.productName}" no encontrado en inventario.`);
+          setIsSubmitting(false);
+          return;
+        }
+
+        const uom = matchingItems[0]?.uom || "gr";
+        const doseNum = parseFloat(row.dosePerLiter) || 0;
+        let reqAmount = parseFloat(row.totalAmount) || 0;
+        if (reqAmount <= 0 && waterLitersNum > 0 && doseNum > 0) {
+          reqAmount = calcTotalStockFromDose(waterLitersNum, doseNum, uom);
+        }
+
+        if (reqAmount <= 0) {
+          alert(`Ingresá los gramos/ml o la dosis en g/L junto a los litros de agua para "${row.productName}".`);
+          setIsSubmitting(false);
+          return;
+        }
+
+        const totalStock = matchingItems.reduce((sum, i) => sum + i.qty, 0);
+        if (reqAmount > totalStock) {
+          alert(
+            `Stock Insuficiente para "${row.productName}". Requerís ${reqAmount} ${uom} pero el total disponible en Bodega es ${Number(totalStock.toFixed(2))} ${uom}.`
+          );
+          setIsSubmitting(false);
+          return;
+        }
+      }
+
+      // 2. Descontar FIFO y construir el detalle de receta
+      for (const row of activeRows) {
+        const matchingItems = updatedInv
+          .filter(i => i.name === row.productName)
+          .sort((a, b) => new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime());
+
+        const uom = matchingItems[0]?.uom || "gr";
+        const origin = getInsumoOrigin(matchingItems[0]);
+        const doseUom = getDoseUomForInsumo(uom);
+        const doseNum = parseFloat(row.dosePerLiter) || 0;
+        let reqAmount = parseFloat(row.totalAmount) || 0;
+        if (reqAmount <= 0 && waterLitersNum > 0 && doseNum > 0) {
+          reqAmount = calcTotalStockFromDose(waterLitersNum, doseNum, uom);
+        }
+        const effectiveDose =
+          doseNum > 0
+            ? doseNum
+            : waterLitersNum > 0
+            ? calcDoseFromTotalStock(waterLitersNum, reqAmount, uom)
+            : 0;
+
+        let remainingReq = reqAmount;
+        let itemCost = 0;
+        let lastConsumedItemId = matchingItems[0].id;
+        const consumedBatches: Array<{ id: string; qty: number }> = [];
+
+        for (const item of matchingItems) {
+          if (remainingReq <= 0) break;
+          if (item.qty <= 0) continue;
+
+          const consume = Number(Math.min(remainingReq, item.qty).toFixed(4));
+          itemCost += parseFloat(item.unit_cost || 0) * consume;
+
+          const newQty = Number((item.qty - consume).toFixed(4));
+          await supabase.from("core_inventory_quimicos").update({ qty: newQty }).eq("id", item.id);
+
+          item.qty = newQty;
+          remainingReq = Number((remainingReq - consume).toFixed(4));
+          lastConsumedItemId = item.id;
+          consumedBatches.push({ id: item.id, qty: consume });
+        }
+
+        finalCost += itemCost;
+        if (!selectedProductIdForEvent) selectedProductIdForEvent = lastConsumedItemId;
+        totalAmountForEvent = (totalAmountForEvent || 0) + reqAmount;
+        if (primaryDosePerLiter === null && effectiveDose > 0) {
+          primaryDosePerLiter = effectiveDose;
+          primaryDoseUom = doseUom;
+        }
+
+        appliedRecipeItems.push({
+          product_name: row.productName,
+          product_id: lastConsumedItemId,
+          origin_type: origin,
+          uom,
+          dose_per_liter: effectiveDose,
+          dose_uom: doseUom,
+          amount_applied: reqAmount,
+          cost: Number(itemCost.toFixed(2)),
+          consumed_batches: consumedBatches
+        });
+      }
+
+      finalDesc = buildFertigationDescription({
+        actionType,
+        waterLiters: waterLitersNum > 0 ? waterLitersNum : null,
+        phWater: phWaterNum,
+        ecWater: ecWaterNum,
+        ecUnit,
+        ecWaterBase: ecBaseNum,
+        phRunoff: phRunoffNum,
+        ecRunoff: ecRunoffNum,
+        recipeItems: appliedRecipeItems,
+        notes: desc
+      });
+    } else if (actionType === "poda") {
+      finalDesc = `PODA: ${podaType}. ` + desc;
+    } else if (actionType === "alerta") {
+      finalDesc = `⚠️ EVENTO/PLAGA: ` + desc;
+    } else if (actionType === "cosecha_humeda") {
+      finalDesc =
+        `COSECHA HÚMEDA: ${harvestCutName || "Tanda"}. ` +
+        (desc ? desc : "Corte en verde registrado previo al secado.");
     }
 
     const payload: any = {
       batch_id: batch.id,
       room_id: batch.location || batch.room_id,
-      event_type: actionType === 'riego' ? 'Riego' : actionType === 'ipm' ? 'IPM' : actionType === 'cosecha_humeda' ? 'Cosecha Húmeda' : actionType,
-      amount_applied: (actionType === 'riego' || actionType === 'ipm') && amount ? parseFloat(amount) : null,
-      product_id: (actionType === 'riego' || actionType === 'ipm') ? selectedProductIdForEvent : null,
-      total_cost: finalCost,
+      event_type:
+        actionType === "riego"
+          ? "Riego"
+          : actionType === "ipm"
+          ? "IPM"
+          : actionType === "cosecha_humeda"
+          ? "Cosecha Húmeda"
+          : actionType,
+      water_liters: (actionType === "riego" || actionType === "ipm") && waterLitersNum > 0 ? waterLitersNum : 0,
+      amount_applied: (actionType === "riego" || actionType === "ipm") ? totalAmountForEvent : null,
+      product_id: (actionType === "riego" || actionType === "ipm") ? selectedProductIdForEvent : null,
+      total_cost: Number(finalCost.toFixed(2)),
       description: finalDesc,
+      dosage_per_liter: primaryDosePerLiter,
+      dosage_uom: primaryDoseUom,
+      ph_water: phWaterNum,
+      ec_water: ecWaterNum,
+      ec_unit: ecUnit,
+      ec_water_base: ecBaseNum,
+      ph_runoff: phRunoffNum,
+      ec_runoff: ecRunoffNum,
+      recipe_items: appliedRecipeItems.length > 0 ? appliedRecipeItems : null
     };
 
     if (editingEventId) {
-       const { error } = await supabase.from('core_agronomic_events').update(payload).eq('id', editingEventId);
-       if (!error) {
-         cancelEdit();
-         await fetchEvents();
-         await fetchInventory(); 
-       } else {
-         alert("Error actualizando el registro. " + error.message);
-       }
+      const { error } = await updateAgronomicEventSafe(supabase, editingEventId, payload);
+      if (!error) {
+        cancelEdit();
+        await fetchEvents();
+        await fetchInventory();
+      } else {
+        alert("Error actualizando el registro: " + error.message);
+      }
     } else {
-       payload.date_occurred = new Date().toISOString();
-       const { error } = await supabase.from('core_agronomic_events').insert([payload]);
-       if (!error) {
-         setDesc(""); setAmount(""); setSelectedProduct("");
-         await fetchEvents();
-         await fetchInventory(); 
-       } else {
-         alert("Error insertando el registro. " + error.message);
-       }
+      payload.date_occurred = new Date().toISOString();
+      const { error } = await insertAgronomicEventsSafe(supabase, [payload]);
+      if (!error) {
+        cancelEdit();
+        await fetchEvents();
+        await fetchInventory();
+      } else {
+        alert("Error insertando el registro: " + error.message);
+      }
     }
-    
+
     setIsSubmitting(false);
   };
 
+  // Evaluación rápida de rango pH y EC para feedback visual al cultivador
+  const phStatus = useMemo(() => {
+    const val = parseFloat(phWater);
+    if (isNaN(val)) return null;
+    if (val >= 5.5 && val <= 6.3) return { label: "Óptimo Mineral (5.5–6.3)", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30" };
+    if (val > 6.3 && val <= 6.8) return { label: "Rango Orgánico / Alto p/ Mineral", color: "text-amber-400 bg-amber-500/10 border-amber-500/30" };
+    return { label: "Fuera de Rango (Riesgo Bloqueo)", color: "text-red-400 bg-red-500/10 border-red-500/30" };
+  }, [phWater]);
+
+  const ecDeltaStatus = useMemo(() => {
+    const inVal = parseFloat(ecWater);
+    const outVal = parseFloat(ecRunoff);
+    if (isNaN(inVal) || isNaN(outVal)) return null;
+    const diff = Number((outVal - inVal).toFixed(2));
+    if (diff > 0.5 && ecUnit === "mS/cm") {
+      return {
+        label: `ΔEC +${diff} mS/cm (Acumulación de sales en sustrato)`,
+        color: "text-red-400 bg-red-500/10 border-red-500/30"
+      };
+    }
+    return {
+      label: `ΔEC ${diff >= 0 ? `+${diff}` : diff} ${ecUnit} (Drenaje equilibrado)`,
+      color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
+    };
+  }, [ecWater, ecRunoff, ecUnit]);
+
   return (
     <div className="fixed inset-0 z-[60] flex justify-end bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-panel-base border-l border-panel-border w-full max-w-2xl h-full shadow-2xl flex flex-col slide-in-from-right duration-300">
-        
+      <div className="bg-panel-base border-l border-panel-border w-full max-w-4xl h-full shadow-2xl flex flex-col slide-in-from-right duration-300">
         {/* Header */}
         <div className="p-6 border-b border-panel-border bg-black/[0.03] dark:bg-black/20 flex justify-between items-center">
-           <div>
-             <h2 className="text-xl font-bold flex items-center gap-2">
-               Bitácora Operativa
-             </h2>
-             <p className="text-sm font-mono text-emerald-500 mt-1">Lote: {batch.id} ({batch.strain})</p>
-           </div>
-           <button onClick={onClose} className="text-brand-slate-600 hover:text-foreground transition-colors bg-black/[0.08] dark:bg-black/40 p-2 rounded-lg">
-             <X size={24} />
-           </button>
+          <div>
+            <h2 className="text-xl font-bold flex items-center gap-2">
+              Bitácora Operativa & Fertirriego Mineral
+            </h2>
+            <p className="text-sm font-mono text-emerald-500 mt-1">
+              Lote: {batch.id} ({batch.strain}) • Fase:{" "}
+              <span className="uppercase text-purple-400 font-bold">{batch.stage || "Vegetativo"}</span>
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-brand-slate-600 hover:text-foreground transition-colors bg-black/[0.08] dark:bg-black/40 p-2 rounded-lg"
+          >
+            <X size={24} />
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto flex flex-col md:flex-row">
-            {/* Panel de Inyección (Col 1) */}
-            <div className="p-6 md:w-1/2 border-r border-panel-border/30 bg-black/10 flex flex-col">
-               <div className="flex justify-between items-center mb-6">
-                 <h3 className="text-sm uppercase tracking-widest font-bold text-brand-slate-600 relative pl-3 border-l-2 border-emerald-500">
-                    {editingEventId ? "Editar Registro" : "Nuevo Registro"}
-                 </h3>
-                 {editingEventId && (
-                   <button onClick={cancelEdit} className="text-[10px] uppercase font-bold text-brand-slate-600 hover:text-white px-2 py-1 rounded border border-panel-border hover:bg-black/20 transition-all">
-                     Cancelar
-                   </button>
-                 )}
-               </div>
-               
-               <div className="grid grid-cols-2 gap-2 mb-6">
-                 <button onClick={() => setActionType('riego')} className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${actionType === 'riego' ? 'bg-blue-500/20 border-blue-500 text-blue-400' : 'bg-black/[0.03] dark:bg-black/20 border-panel-border text-brand-slate-600 hover:border-blue-500/50'}`}>
-                    <Drop size={20} weight={actionType === 'riego' ? 'fill' : 'regular'} />
-                    <span className="text-[10px] font-bold">RIEGO</span>
-                 </button>
-                 <button onClick={() => setActionType('ipm')} className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${actionType === 'ipm' ? 'bg-red-500/20 border-red-500 text-red-400' : 'bg-black/[0.03] dark:bg-black/20 border-panel-border text-brand-slate-600 hover:border-red-500/50'}`}>
-                    <Bug size={20} weight={actionType === 'ipm' ? 'fill' : 'regular'} />
-                    <span className="text-[10px] font-bold">IPM</span>
-                 </button>
-                 <button onClick={() => setActionType('poda')} className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${actionType === 'poda' ? 'bg-green-500/20 border-green-500 text-green-400' : 'bg-black/[0.03] dark:bg-black/20 border-panel-border text-brand-slate-600 hover:border-green-500/50'}`}>
-                    <Scissors size={20} weight={actionType === 'poda' ? 'fill' : 'regular'} />
-                    <span className="text-[10px] font-bold">PODA</span>
-                 </button>
-                 <button onClick={() => setActionType('alerta')} className={`flex flex-col items-center gap-1 p-2 rounded-lg border transition-all ${actionType === 'alerta' ? 'bg-yellow-500/20 border-yellow-500 text-yellow-400' : 'bg-black/[0.03] dark:bg-black/20 border-panel-border text-brand-slate-600 hover:border-yellow-500/50'}`}>
-                    <Warning size={20} weight={actionType === 'alerta' ? 'fill' : 'regular'} />
-                    <span className="text-[10px] font-bold">ALERTA</span>
-                 </button>
-                 <button onClick={() => setActionType('cosecha_humeda')} className={`col-span-2 flex items-center justify-center gap-2 p-2 rounded-lg border transition-all ${actionType === 'cosecha_humeda' ? 'bg-orange-500/20 border-orange-500 text-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.15)]' : 'bg-black/[0.03] dark:bg-black/20 border-panel-border text-brand-slate-600 hover:border-orange-500/50'}`}>
-                    <Scissors size={20} weight={actionType === 'cosecha_humeda' ? 'fill' : 'regular'} className="text-orange-400" />
-                    <span className="text-[10px] font-bold tracking-wider">COSECHA HÚMEDA (CORTE EN VERDE)</span>
-                 </button>
-               </div>
+          {/* Panel de Inyección (Col 1) */}
+          <div className="p-6 md:w-[54%] border-r border-panel-border/30 bg-black/10 flex flex-col">
+            <div className="flex justify-between items-center mb-5">
+              <h3 className="text-sm uppercase tracking-widest font-bold text-brand-slate-600 relative pl-3 border-l-2 border-emerald-500">
+                {editingEventId ? "Editar Registro" : "Nuevo Registro"}
+              </h3>
+              {editingEventId && (
+                <button
+                  onClick={cancelEdit}
+                  className="text-[10px] uppercase font-bold text-brand-slate-600 hover:text-white px-2 py-1 rounded border border-panel-border hover:bg-black/20 transition-all"
+                >
+                  Cancelar Edición
+                </button>
+              )}
+            </div>
 
-               <form onSubmit={handleCreateEvent} className="flex flex-col gap-4 flex-1">
-                  {(actionType === 'riego' || actionType === 'ipm') && (
-                    <>
-                    <div>
-                       <label className="text-xs uppercase text-brand-slate-600 mb-1 block">Insumo / Bodega</label>
-                       <select 
-                          value={selectedProduct} 
-                          onChange={(e)=>setSelectedProduct(e.target.value)} 
-                          className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-3 text-sm focus:border-blue-500 outline-none truncate"
-                       >
-                          <option value="">{actionType === 'riego' ? '— Sólo Agua (Sin Insumo) —' : '— Manual (Sin Producto) —'}</option>
-                          {Array.from(
-                             inventory.reduce((acc: Map<string, any>, item: any) => {
-                               if (!acc.has(item.name)) acc.set(item.name, { ...item });
-                               else acc.get(item.name).qty += item.qty;
-                               return acc;
-                             }, new Map()).values()
-                          )
-                          .filter((i: any) => i.qty > 0)
-                          .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                          .map((item: any) => (
-                              <option key={item.name} value={item.name}>
-                                  {item.name} (Disp: {item.qty} {item.uom || 'unidades'})
-                              </option>
-                          ))}
-                       </select>
-                    </div>
-                    {selectedProduct && (
-                        <div>
-                           <label className="text-xs uppercase text-brand-slate-600 mb-1 block">Cantidad Extraída</label>
-                           <input type="number" step="0.1" required value={amount} onChange={(e)=>setAmount(e.target.value)} placeholder="Ej: 50" className="w-full bg-black/[0.03] dark:bg-black/20 border border-emerald-500/30 rounded-lg p-3 text-sm focus:border-emerald-500 outline-none shadow-[0_0_15px_rgba(16,185,129,0.1)_inset]" />
-                           <div className="text-[10px] font-mono text-status-yellow mt-1">El stock se ajustará automáticamente de la BD.</div>
-                        </div>
-                    )}
-                    </>
-                  )}
+            <div className="grid grid-cols-2 gap-2 mb-5">
+              <button
+                type="button"
+                onClick={() => setActionType("riego")}
+                className={`flex flex-col items-center gap-1 p-2.5 rounded-lg border transition-all ${
+                  actionType === "riego"
+                    ? "bg-blue-500/20 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.2)]"
+                    : "bg-black/[0.03] dark:bg-black/20 border-panel-border text-brand-slate-600 hover:border-blue-500/50"
+                }`}
+              >
+                <Drop size={20} weight={actionType === "riego" ? "fill" : "regular"} />
+                <span className="text-[10px] font-bold">RIEGO / FERTIRRIEGO</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActionType("ipm")}
+                className={`flex flex-col items-center gap-1 p-2.5 rounded-lg border transition-all ${
+                  actionType === "ipm"
+                    ? "bg-red-500/20 border-red-500 text-red-400"
+                    : "bg-black/[0.03] dark:bg-black/20 border-panel-border text-brand-slate-600 hover:border-red-500/50"
+                }`}
+              >
+                <Bug size={20} weight={actionType === "ipm" ? "fill" : "regular"} />
+                <span className="text-[10px] font-bold">IPM / FOLIAR</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActionType("poda")}
+                className={`flex flex-col items-center gap-1 p-2.5 rounded-lg border transition-all ${
+                  actionType === "poda"
+                    ? "bg-green-500/20 border-green-500 text-green-400"
+                    : "bg-black/[0.03] dark:bg-black/20 border-panel-border text-brand-slate-600 hover:border-green-500/50"
+                }`}
+              >
+                <Scissors size={20} weight={actionType === "poda" ? "fill" : "regular"} />
+                <span className="text-[10px] font-bold">PODA</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActionType("alerta")}
+                className={`flex flex-col items-center gap-1 p-2.5 rounded-lg border transition-all ${
+                  actionType === "alerta"
+                    ? "bg-yellow-500/20 border-yellow-500 text-yellow-400"
+                    : "bg-black/[0.03] dark:bg-black/20 border-panel-border text-brand-slate-600 hover:border-yellow-500/50"
+                }`}
+              >
+                <Warning size={20} weight={actionType === "alerta" ? "fill" : "regular"} />
+                <span className="text-[10px] font-bold">ALERTA</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setActionType("cosecha_humeda")}
+                className={`col-span-2 flex items-center justify-center gap-2 p-2 rounded-lg border transition-all ${
+                  actionType === "cosecha_humeda"
+                    ? "bg-orange-500/20 border-orange-500 text-orange-400 shadow-[0_0_15px_rgba(249,115,22,0.15)]"
+                    : "bg-black/[0.03] dark:bg-black/20 border-panel-border text-brand-slate-600 hover:border-orange-500/50"
+                }`}
+              >
+                <Scissors size={20} weight={actionType === "cosecha_humeda" ? "fill" : "regular"} className="text-orange-400" />
+                <span className="text-[10px] font-bold tracking-wider">COSECHA HÚMEDA (CORTE EN VERDE)</span>
+              </button>
+            </div>
 
-                  {actionType === 'poda' && (
-                    <div>
-                       <label className="text-xs uppercase text-brand-slate-600 mb-1 block">Técnica a Aplicar</label>
-                       <select 
-                          value={podaType} 
-                          onChange={(e)=>setPodaType(e.target.value)} 
-                          className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-3 text-sm focus:border-green-500 outline-none"
-                       >
-                          <option value="Defoliación Baja">Defoliación Baja (Lollipop)</option>
-                          <option value="Topping / Poda Apical">Topping / Poda Apical</option>
-                          <option value="LST (Low Stress Training)">LST (Low Stress Training)</option>
-                          <option value="FIM">FIM</option>
-                          <option value="Mantenimiento Limpieza">Revisión / Limpieza Físico</option>
-                       </select>
-                    </div>
-                  )}
-
-                  {actionType === 'alerta' && (
-                    <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-xs font-mono text-yellow-400">
-                       Registrá la aparición de plagas, hongos o deficiencias detectadas. Este evento será resaltado pero no consumirá inventario a menos que luego apliques un control IPM.
-                    </div>
-                  )}
-
-                  {actionType === 'cosecha_humeda' && (
-                    <div className="flex flex-col gap-3">
-                      <div className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg text-xs font-mono text-orange-400 leading-relaxed">
-                        🌱 Registrá un corte o tanda en verde antes del secado. No altera stock final ni requiere pesaje húmedo (el peso seco definitivo se ingresará al finalizar el lote).
-                      </div>
-                      <div>
-                        <label className="text-xs uppercase text-brand-slate-600 mb-1 block">Identificador / Tanda Cortada</label>
-                        <input
-                          type="text"
-                          value={harvestCutName}
-                          onChange={(e) => setHarvestCutName(e.target.value)}
-                          placeholder="Ej: Tanda 1 / Puntas principales / Corte parcial"
-                          className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-3 text-sm focus:border-orange-500 outline-none"
-                        />
+            <form onSubmit={handleCreateEvent} className="flex flex-col gap-4 flex-1">
+              {(actionType === "riego" || actionType === "ipm") && (
+                <>
+                  {/* 1. VOLUMEN DE AGUA DE DILUCIÓN */}
+                  <div className="p-3.5 rounded-xl border border-blue-500/30 bg-blue-500/5 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-mono font-bold uppercase text-blue-400 flex items-center gap-1.5">
+                        <Drop size={15} weight="fill" /> Agua de Dilución / Riego (Litros)
+                      </label>
+                      <div className="flex gap-1">
+                        {[5, 10, 20, 50].map(preset => (
+                          <button
+                            key={preset}
+                            type="button"
+                            onClick={() => handleWaterLitersChange(String(preset))}
+                            className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border transition-colors ${
+                              Number(waterLiters) === preset
+                                ? "bg-blue-600 text-white border-blue-400"
+                                : "bg-black/30 text-blue-300 border-blue-500/20 hover:bg-blue-500/20"
+                            }`}
+                          >
+                            {preset}L
+                          </button>
+                        ))}
                       </div>
                     </div>
-                  )}
-                  
-                  <div>
-                    <label className="text-xs uppercase text-brand-slate-600 mb-1 block">Notas de la Bitácora {actionType === 'alerta' ? '*' : '(Opcional)'}</label>
-                    <textarea required={actionType === 'alerta'} value={desc} onChange={e=>setDesc(e.target.value)} rows={3} placeholder="Comentarios adicionales..." className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-3 text-sm focus:border-emerald-500 outline-none resize-none"></textarea>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        value={waterLiters}
+                        onChange={e => handleWaterLitersChange(e.target.value)}
+                        placeholder="Ej: 10 (Litros de agua donde diluís el fertilizante)"
+                        className="w-full bg-black/20 border border-blue-500/30 rounded-lg p-2.5 pr-12 text-sm font-mono text-foreground focus:border-blue-400 outline-none"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-blue-400">
+                        Litros
+                      </span>
+                    </div>
                   </div>
 
-                  <div className="flex-1"></div>
+                  {/* 2. INSUMOS Y CALCULADORA DE GRAMOS POR LITRO (g/L) */}
+                  <div className="p-3.5 rounded-xl border border-panel-border bg-black/[0.03] dark:bg-black/20 flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-mono font-bold uppercase text-brand-slate-600 dark:text-slate-300 flex items-center gap-1.5">
+                        <Flask size={15} className="text-cyan-400" /> Insumos Diluidos en el Agua
+                      </label>
+                      <button
+                        type="button"
+                        onClick={addFertRow}
+                        className="text-[11px] font-mono font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 px-2 py-1 rounded bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors"
+                      >
+                        <Plus size={12} weight="bold" /> + Agregar Sal / Insumo
+                      </button>
+                    </div>
 
-                  <button disabled={isSubmitting} type="submit" className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg font-bold transition-all disabled:opacity-50 mt-4 ${
-                    actionType === 'riego' 
-                      ? 'bg-blue-600 hover:bg-blue-500 text-foreground shadow-[0_0_15px_rgba(37,99,235,0.2)]' 
-                      : actionType === 'ipm' 
-                      ? 'bg-red-600 hover:bg-red-500 text-foreground shadow-[0_0_15px_rgba(220,38,38,0.2)]' 
-                      : actionType === 'alerta' 
-                      ? 'bg-yellow-600 hover:bg-yellow-500 text-foreground shadow-[0_0_15px_rgba(234,179,8,0.2)]' 
-                      : actionType === 'cosecha_humeda'
-                      ? 'bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_15px_rgba(249,115,22,0.2)]'
-                      : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.2)]'
-                  }`}>
-                     {isSubmitting ? 'Verificando BD...' : <><FloppyDisk size={20} /> {editingEventId ? "Guardar Cambios" : "Asentar Bitácora"}</>}
-                  </button>
-               </form>
-            </div>
+                    {fertRows.map((row, idx) => {
+                      const meta = getProductMeta(row.productName);
+                      const origin = meta ? getInsumoOrigin(meta) : "organico";
+                      const uom = meta?.uom || "gr";
+                      const doseUom = getDoseUomForInsumo(uom);
+                      const isMineral = origin === "mineral" || uom === "gr" || uom === "Kg";
+                      const rowCost = meta && parseFloat(row.totalAmount) > 0
+                        ? (parseFloat(row.totalAmount) * (meta.unit_cost || 0)).toFixed(2)
+                        : null;
 
-            {/* Panel de Historial (Col 2) */}
-            <div className="p-6 md:w-1/2 flex flex-col">
-               <h3 className="text-sm uppercase tracking-widest font-bold text-brand-slate-600 mb-6 flex justify-between items-center relative pl-3 border-l-2 border-brand-slate-600">
-                  <span className="flex items-center gap-2"><ClockCounterClockwise size={16}/> Historial</span>
-                  <span className="text-[10px] bg-black/[0.08] dark:bg-black/40 px-2 py-0.5 rounded text-emerald-500">{events.length} logs vitales</span>
-               </h3>
-               
-               <div className="flex-1 flex flex-col gap-3 relative pr-1 overflow-y-auto">
-                  {loadingEvents ? (
-                      <div className="text-sm text-center py-10 font-mono text-brand-slate-600 animate-pulse">Consultando Registros...</div>
-                  ) : events.length === 0 ? (
-                      <div className="opacity-50 text-center py-10 font-mono text-sm text-brand-slate-600 border border-dashed border-panel-border rounded-xl">Sin historial agronómico.</div>
-                  ) : (
-                      events.map(ev => {
-                          let evColor = 'text-emerald-500 border-emerald-500/20 bg-emerald-500/5';
-                          let EvIcon = Scissors;
-                          const evType = (ev.event_type || '').toLowerCase();
-                          if (evType === 'nutricion' || evType === 'riego') {
-                              evColor = 'text-blue-400 border-blue-500/20 bg-blue-500/5'; EvIcon = Drop;
-                          } else if (evType === 'ipm') {
-                              evColor = 'text-red-400 border-red-500/20 bg-red-500/5'; EvIcon = Bug;
-                          } else if (evType === 'alerta') {
-                              evColor = 'text-yellow-400 border-yellow-500/40 bg-yellow-500/10 shadow-[0_0_15px_rgba(234,179,8,0.1)]'; EvIcon = Warning;
-                          } else if (evType.includes('cosecha')) {
-                              evColor = 'text-orange-400 border-orange-500/40 bg-orange-500/10 shadow-[0_0_15px_rgba(249,115,22,0.1)]'; EvIcon = Scissors;
-                          }
+                      return (
+                        <div
+                          key={idx}
+                          className={`p-3 rounded-lg border flex flex-col gap-2.5 ${
+                            isMineral && row.productName
+                              ? "border-cyan-500/40 bg-cyan-950/10"
+                              : "border-panel-border/60 bg-black/20"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <select
+                              value={row.productName}
+                              onChange={e => handleProductChange(idx, e.target.value)}
+                              className="flex-1 bg-panel-base border border-panel-border rounded-lg p-2.5 text-xs font-mono focus:border-cyan-500 outline-none truncate"
+                            >
+                              <option value="">
+                                {idx === 0
+                                  ? actionType === "riego"
+                                    ? "— Sólo Agua (Sin Fertilizante) —"
+                                    : "— Manual (Sin Producto) —"
+                                  : "— Seleccionar otro insumo —"}
+                              </option>
+                              {groupedInventory.map((item: any) => {
+                                const itemOrigin = getInsumoOrigin(item);
+                                const tag =
+                                  itemOrigin === "mineral"
+                                    ? "⚡ MINERAL"
+                                    : itemOrigin === "organico"
+                                    ? "🌿 ORG"
+                                    : itemOrigin === "corrector_ph"
+                                    ? "🧪 pH"
+                                    : "📦";
+                                return (
+                                  <option key={item.name} value={item.name}>
+                                    [{tag}] {item.name} (Stock: {Number(item.qty.toFixed(2))} {item.uom || "gr"})
+                                  </option>
+                                );
+                              })}
+                            </select>
 
-                          return (
-                              <div key={ev.id} className={`p-4 rounded-xl border ${evColor} flex flex-col gap-2 shadow-sm relative group`}>
-                                  <div className="flex justify-between items-start">
-                                     <span className="flex items-center gap-1.5 font-bold text-xs uppercase"><EvIcon size={16} weight="bold"/> {ev.event_type}</span>
-                                     <div className="flex items-center gap-1">
-                                        <span className="text-[10px] font-mono opacity-80 bg-black/[0.08] dark:bg-black/40 px-2 py-1 rounded">{new Date(ev.date_occurred || ev.timestamp || ev.created_at).toLocaleDateString()}</span>
-                                        <div className="flex gap-1 ml-1 opacity-70 hover:opacity-100 transition-opacity">
-                                           <button onClick={() => handleEditClick(ev)} className="p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-colors text-brand-slate-600 hover:text-blue-400" title="Editar">
-                                              <PencilSimple size={16} weight="bold" />
-                                           </button>
-                                           <button onClick={() => handleDeleteEvent(ev)} className="p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-colors text-brand-slate-600 hover:text-red-400" title="Eliminar">
-                                              <Trash size={16} weight="bold" />
-                                           </button>
-                                        </div>
-                                     </div>
-                                  </div>
-                                  <p className="text-sm text-foreground my-1 leading-relaxed">{ev.description}</p>
-                                  {ev.total_cost > 0 && <span className="font-mono text-[10px] text-orange-400 uppercase place-self-end mt-1 font-bold">Invertido: ${ev.total_cost.toFixed(2)}</span>}
+                            {fertRows.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeFertRow(idx)}
+                                className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg border border-red-500/20 transition-colors"
+                                title="Quitar de la solución"
+                              >
+                                <Trash size={15} />
+                              </button>
+                            )}
+                          </div>
+
+                          {row.productName && (
+                            <>
+                              <div className="flex items-center justify-between text-[10px] font-mono">
+                                <span className="flex items-center gap-1">
+                                  {isMineral ? (
+                                    <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold flex items-center gap-1">
+                                      <Lightning size={10} weight="fill" /> Mineral ({doseUom})
+                                    </span>
+                                  ) : (
+                                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold flex items-center gap-1">
+                                      <Leaf size={10} weight="fill" /> Orgánico ({doseUom})
+                                    </span>
+                                  )}
+                                  {meta?.recommended_dose && (
+                                    <span className="text-cyan-400 ml-1">
+                                      • Sugerido: {meta.recommended_dose} {doseUom}
+                                    </span>
+                                  )}
+                                </span>
+                                {rowCost && (
+                                  <span className="text-orange-400 font-bold">Costo: ${rowCost}</span>
+                                )}
                               </div>
-                          )
-                      })
-                  )}
-               </div>
+
+                              <div className="grid grid-cols-2 gap-2.5">
+                                <div>
+                                  <label className="text-[10px] font-mono uppercase text-cyan-400 block mb-1 font-bold">
+                                    Dosis por Litro ({doseUom})
+                                  </label>
+                                  <div className="relative">
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      value={row.dosePerLiter}
+                                      onChange={e => handleDoseChange(idx, e.target.value)}
+                                      placeholder={doseUom === "g/L" ? "Ej: 1.5" : "Ej: 2.0"}
+                                      className="w-full bg-black/30 border border-cyan-500/40 rounded-lg p-2 pr-11 text-sm font-mono text-cyan-300 focus:border-cyan-400 outline-none"
+                                    />
+                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold text-cyan-400">
+                                      {doseUom}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <label className="text-[10px] font-mono uppercase text-emerald-400 block mb-1 font-bold">
+                                    Total a Descontar ({uom}) *
+                                  </label>
+                                  <div className="relative">
+                                    <input
+                                      type="number"
+                                      step="0.01"
+                                      min="0"
+                                      required
+                                      value={row.totalAmount}
+                                      onChange={e => handleTotalAmountChange(idx, e.target.value)}
+                                      placeholder={
+                                        waterLiters
+                                          ? `Total en ${ waterLiters }L`
+                                          : "Ej: 15"
+                                      }
+                                      className="w-full bg-black/30 border border-emerald-500/40 rounded-lg p-2 pr-10 text-sm font-mono text-emerald-300 font-bold focus:border-emerald-400 outline-none"
+                                    />
+                                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold text-emerald-400">
+                                      {uom}
+                                    </span>
+                                  </div>
+                                </div>
+                              </div>
+
+                              {parseFloat(waterLiters) > 0 && parseFloat(row.dosePerLiter) > 0 && (
+                                <div className="text-[10px] font-mono text-cyan-300/80 bg-cyan-500/10 px-2.5 py-1 rounded border border-cyan-500/20">
+                                  💧 Dilución calculada:{" "}
+                                  <strong>
+                                    {row.dosePerLiter} {doseUom}
+                                  </strong>{" "}
+                                  × <strong>{waterLiters} L de agua</strong> ={" "}
+                                  <strong className="text-emerald-300">
+                                    {row.totalAmount} {uom}
+                                  </strong>{" "}
+                                  extraídos de bodega.
+                                </div>
+                              )}
+                            </>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* 3. CONTROL FISICOQUÍMICO DE LA SOLUCIÓN: pH Y EC */}
+                  <div className="p-3.5 rounded-xl border border-purple-500/30 bg-purple-500/5 flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-mono font-bold uppercase text-purple-300 flex items-center gap-1.5">
+                        <Lightning size={15} weight="fill" className="text-purple-400" /> Parámetros de la Solución (pH & EC)
+                      </label>
+                      {hasMineralSelected && (
+                        <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">
+                          Nutrición Mineral Activa
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-[10px] font-mono uppercase text-brand-slate-600 dark:text-slate-300 block mb-1">
+                          pH del Agua / Solución {hasMineralSelected ? "*" : ""}
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0"
+                          max="14"
+                          required={hasMineralSelected}
+                          value={phWater}
+                          onChange={e => setPhWater(e.target.value)}
+                          placeholder="Ej: 5.9"
+                          className="w-full bg-black/25 border border-purple-500/40 rounded-lg p-2.5 text-sm font-mono text-foreground focus:border-purple-400 outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-mono uppercase text-brand-slate-600 dark:text-slate-300 block mb-1">
+                          EC Solución Final {hasMineralSelected ? "*" : ""}
+                        </label>
+                        <div className="flex gap-1">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            required={hasMineralSelected}
+                            value={ecWater}
+                            onChange={e => setEcWater(e.target.value)}
+                            placeholder={ecUnit === "mS/cm" ? "Ej: 1.4" : "Ej: 1400"}
+                            className="w-full bg-black/25 border border-purple-500/40 rounded-lg p-2.5 text-sm font-mono text-foreground focus:border-purple-400 outline-none"
+                          />
+                          <select
+                            value={ecUnit}
+                            onChange={e => setEcUnit(e.target.value as any)}
+                            className="bg-black/40 border border-purple-500/30 rounded-lg px-2 text-[11px] font-mono text-purple-300 outline-none"
+                          >
+                            <option value="mS/cm">mS/cm</option>
+                            <option value="µS/cm">µS/cm</option>
+                            <option value="ppm">ppm</option>
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+
+                    {phStatus && (
+                      <div className={`text-[10px] font-mono px-2.5 py-1 rounded border ${phStatus.color}`}>
+                        🧪 Estado pH: <strong>{phStatus.label}</strong>
+                      </div>
+                    )}
+
+                    {/* Botón desplegable para EC Base y Drenaje (Runoff) */}
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvancedMetrics(prev => !prev)}
+                      className="text-[11px] font-mono text-purple-300/80 hover:text-purple-200 flex items-center justify-between pt-1 border-t border-purple-500/20"
+                    >
+                      <span>+ Medición de Agua Base y Drenaje (Runoff) (Opcional)</span>
+                      {showAdvancedMetrics ? <CaretUp size={14} /> : <CaretDown size={14} />}
+                    </button>
+
+                    {showAdvancedMetrics && (
+                      <div className="grid grid-cols-3 gap-2 pt-1 animate-in fade-in duration-150">
+                        <div>
+                          <label className="text-[9px] font-mono uppercase text-slate-400 block mb-1">
+                            EC Agua Base
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={ecWaterBase}
+                            onChange={e => setEcWaterBase(e.target.value)}
+                            placeholder="Ej: 0.2"
+                            className="w-full bg-black/30 border border-panel-border rounded-lg p-2 text-xs font-mono outline-none focus:border-purple-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-mono uppercase text-slate-400 block mb-1">
+                            pH Drenaje
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            max="14"
+                            value={phRunoff}
+                            onChange={e => setPhRunoff(e.target.value)}
+                            placeholder="Ej: 6.1"
+                            className="w-full bg-black/30 border border-panel-border rounded-lg p-2 text-xs font-mono outline-none focus:border-purple-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-mono uppercase text-slate-400 block mb-1">
+                            EC Drenaje
+                          </label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={ecRunoff}
+                            onChange={e => setEcRunoff(e.target.value)}
+                            placeholder="Ej: 1.7"
+                            className="w-full bg-black/30 border border-panel-border rounded-lg p-2 text-xs font-mono outline-none focus:border-purple-400"
+                          />
+                        </div>
+                        {ecDeltaStatus && (
+                          <div className={`col-span-3 text-[10px] font-mono px-2.5 py-1 rounded border ${ecDeltaStatus.color}`}>
+                            📉 {ecDeltaStatus.label}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+
+              {actionType === "poda" && (
+                <div>
+                  <label className="text-xs uppercase text-brand-slate-600 mb-1 block">Técnica a Aplicar</label>
+                  <select
+                    value={podaType}
+                    onChange={e => setPodaType(e.target.value)}
+                    className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-3 text-sm focus:border-green-500 outline-none"
+                  >
+                    <option value="Defoliación Baja">Defoliación Baja (Lollipop)</option>
+                    <option value="Topping / Poda Apical">Topping / Poda Apical</option>
+                    <option value="LST (Low Stress Training)">LST (Low Stress Training)</option>
+                    <option value="FIM">FIM</option>
+                    <option value="Mantenimiento Limpieza">Revisión / Limpieza Físico</option>
+                  </select>
+                </div>
+              )}
+
+              {actionType === "alerta" && (
+                <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg text-xs font-mono text-yellow-400">
+                  Registrá la aparición de plagas, hongos o deficiencias detectadas. Este evento será resaltado pero no consumirá inventario a menos que luego apliques un control IPM.
+                </div>
+              )}
+
+              {actionType === "cosecha_humeda" && (
+                <div className="flex flex-col gap-3">
+                  <div className="p-3 bg-orange-500/10 border border-orange-500/30 rounded-lg text-xs font-mono text-orange-400 leading-relaxed">
+                    🌱 Registrá un corte o tanda en verde antes del secado. No altera stock final ni requiere pesaje húmedo (el peso seco definitivo se ingresará al finalizar el lote).
+                  </div>
+                  <div>
+                    <label className="text-xs uppercase text-brand-slate-600 mb-1 block">Identificador / Tanda Cortada</label>
+                    <input
+                      type="text"
+                      value={harvestCutName}
+                      onChange={e => setHarvestCutName(e.target.value)}
+                      placeholder="Ej: Tanda 1 / Puntas principales / Corte parcial"
+                      className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-3 text-sm focus:border-orange-500 outline-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs uppercase text-brand-slate-600 mb-1 block">
+                  Notas de la Bitácora {actionType === "alerta" ? "*" : "(Opcional)"}
+                </label>
+                <textarea
+                  required={actionType === "alerta"}
+                  value={desc}
+                  onChange={e => setDesc(e.target.value)}
+                  rows={2}
+                  placeholder="Observaciones adicionales de la aplicación..."
+                  className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm focus:border-emerald-500 outline-none resize-none"
+                ></textarea>
+              </div>
+
+              <div className="flex-1"></div>
+
+              <button
+                disabled={isSubmitting}
+                type="submit"
+                className={`w-full flex items-center justify-center gap-2 py-3 rounded-lg font-bold transition-all disabled:opacity-50 mt-2 ${
+                  actionType === "riego"
+                    ? "bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_15px_rgba(37,99,235,0.2)]"
+                    : actionType === "ipm"
+                    ? "bg-red-600 hover:bg-red-500 text-white shadow-[0_0_15px_rgba(220,38,38,0.2)]"
+                    : actionType === "alerta"
+                    ? "bg-yellow-600 hover:bg-yellow-500 text-foreground shadow-[0_0_15px_rgba(234,179,8,0.2)]"
+                    : actionType === "cosecha_humeda"
+                    ? "bg-orange-600 hover:bg-orange-500 text-white shadow-[0_0_15px_rgba(249,115,22,0.2)]"
+                    : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.2)]"
+                }`}
+              >
+                {isSubmitting ? (
+                  "Verificando BD..."
+                ) : (
+                  <>
+                    <FloppyDisk size={20} /> {editingEventId ? "Guardar Cambios" : "Asentar Bitácora"}
+                  </>
+                )}
+              </button>
+            </form>
+          </div>
+
+          {/* Panel de Historial (Col 2) */}
+          <div className="p-6 md:w-[46%] flex flex-col">
+            <h3 className="text-sm uppercase tracking-widest font-bold text-brand-slate-600 mb-6 flex justify-between items-center relative pl-3 border-l-2 border-brand-slate-600">
+              <span className="flex items-center gap-2">
+                <ClockCounterClockwise size={16} /> Historial del Lote
+              </span>
+              <span className="text-[10px] bg-black/[0.08] dark:bg-black/40 px-2 py-0.5 rounded text-emerald-500">
+                {events.length} logs vitales
+              </span>
+            </h3>
+
+            <div className="flex-1 flex flex-col gap-3 relative pr-1 overflow-y-auto">
+              {loadingEvents ? (
+                <div className="text-sm text-center py-10 font-mono text-brand-slate-600 animate-pulse">
+                  Consultando Registros...
+                </div>
+              ) : events.length === 0 ? (
+                <div className="opacity-50 text-center py-10 font-mono text-sm text-brand-slate-600 border border-dashed border-panel-border rounded-xl">
+                  Sin historial agronómico.
+                </div>
+              ) : (
+                events.map(ev => {
+                  const metrics = parseEventFertigationMetrics(ev);
+                  let evColor = "text-emerald-500 border-emerald-500/20 bg-emerald-500/5";
+                  let EvIcon = Scissors;
+                  const evType = (ev.event_type || "").toLowerCase();
+                  if (evType === "nutricion" || evType === "riego") {
+                    evColor = metrics.is_mineral
+                      ? "text-cyan-400 border-cyan-500/30 bg-cyan-500/5"
+                      : "text-blue-400 border-blue-500/20 bg-blue-500/5";
+                    EvIcon = Drop;
+                  } else if (evType === "ipm") {
+                    evColor = "text-red-400 border-red-500/20 bg-red-500/5";
+                    EvIcon = Bug;
+                  } else if (evType === "alerta") {
+                    evColor =
+                      "text-yellow-400 border-yellow-500/40 bg-yellow-500/10 shadow-[0_0_15px_rgba(234,179,8,0.1)]";
+                    EvIcon = Warning;
+                  } else if (evType.includes("cosecha")) {
+                    evColor =
+                      "text-orange-400 border-orange-500/40 bg-orange-500/10 shadow-[0_0_15px_rgba(249,115,22,0.1)]";
+                    EvIcon = Scissors;
+                  }
+
+                  return (
+                    <div
+                      key={ev.id}
+                      className={`p-4 rounded-xl border ${evColor} flex flex-col gap-2 shadow-sm relative group`}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="flex items-center gap-1.5 font-bold text-xs uppercase">
+                            <EvIcon size={16} weight="bold" /> {ev.event_type}
+                          </span>
+                          {metrics.is_mineral && (
+                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 flex items-center gap-0.5">
+                              <Lightning size={10} weight="fill" /> Mineral
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] font-mono opacity-80 bg-black/[0.08] dark:bg-black/40 px-2 py-1 rounded">
+                            {new Date(ev.date_occurred || ev.timestamp || ev.created_at).toLocaleDateString()}
+                          </span>
+                          <div className="flex gap-1 ml-1 opacity-70 hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => handleEditClick(ev)}
+                              className="p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-colors text-brand-slate-600 hover:text-blue-400"
+                              title="Editar"
+                            >
+                              <PencilSimple size={16} weight="bold" />
+                            </button>
+                            <button
+                              onClick={() => handleDeleteEvent(ev)}
+                              className="p-1 hover:bg-black/10 dark:hover:bg-white/10 rounded transition-colors text-brand-slate-600 hover:text-red-400"
+                              title="Eliminar"
+                            >
+                              <Trash size={16} weight="bold" />
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Píldoras Técnicas de Fertirriego (Agua, Dosis g/L, pH, EC, Drenaje) */}
+                      {(metrics.water_liters ||
+                        metrics.ph_water !== null ||
+                        metrics.ec_water !== null ||
+                        metrics.recipe_items.length > 0) && (
+                        <div className="flex flex-wrap gap-1.5 mt-1">
+                          {metrics.water_liters && (
+                            <span className="px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30 text-[10px] font-mono font-bold">
+                              💧 {metrics.water_liters} L
+                            </span>
+                          )}
+                          {metrics.recipe_items.map((ri, rIdx) => (
+                            <span
+                              key={rIdx}
+                              className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono font-bold"
+                            >
+                              ⚖️ {ri.product_name}:{" "}
+                              {ri.dose_per_liter > 0 ? `${ri.dose_per_liter} ${ri.dose_uom} ` : ""}
+                              ({ri.amount_applied} {ri.uom})
+                            </span>
+                          ))}
+                          {metrics.ph_water !== null && (
+                            <span className="px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30 text-[10px] font-mono font-bold">
+                              🧪 pH {metrics.ph_water}
+                            </span>
+                          )}
+                          {metrics.ec_water !== null && (
+                            <span className="px-2 py-0.5 rounded bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 text-[10px] font-mono font-bold">
+                              ⚡ EC {metrics.ec_water} {metrics.ec_unit}
+                            </span>
+                          )}
+                          {(metrics.ph_runoff !== null || metrics.ec_runoff !== null) && (
+                            <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-mono">
+                              📉 Runoff:{" "}
+                              {metrics.ph_runoff !== null ? `pH ${metrics.ph_runoff}` : ""}
+                              {metrics.ph_runoff !== null && metrics.ec_runoff !== null ? " / " : ""}
+                              {metrics.ec_runoff !== null ? `EC ${metrics.ec_runoff}` : ""}
+                            </span>
+                          )}
+                        </div>
+                      )}
+
+                      <p className="text-sm text-foreground my-0.5 leading-relaxed">
+                        {ev.description}
+                      </p>
+
+                      {ev.total_cost > 0 && (
+                        <span className="font-mono text-[10px] text-orange-400 uppercase place-self-end mt-1 font-bold">
+                          Invertido: ${Number(ev.total_cost).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })
+              )}
             </div>
+          </div>
         </div>
       </div>
     </div>

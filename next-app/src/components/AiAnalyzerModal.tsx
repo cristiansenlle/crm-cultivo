@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Camera, X, Upload, Activity, Leaf, CheckCircle2, AlertTriangle, CloudRain, Wind, Thermometer, MapPin, Loader2 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { insertAgronomicEventsSafe, buildFertigationDescription } from '../lib/agronomy/fertigationUtils';
 import { motion, AnimatePresence } from 'framer-motion';
 
 export default function AiAnalyzerModal({ onClose }: { onClose: () => void }) {
@@ -139,18 +140,28 @@ export default function AiAnalyzerModal({ onClose }: { onClose: () => void }) {
     const handleCreateAction = async (action: any, status: 'completed' | 'pending') => {
         try {
             if (action.type === 'agronomic_event') {
+                const fullDescription = buildFertigationDescription({
+                    actionType: 'riego',
+                    notes: action.description || 'Sugerencia de IA aplicada',
+                    waterLiters: action.water_liters || 0,
+                    phWater: action.ph_water || null,
+                    ecWater: action.ec_water || null,
+                    ecUnit: 'mS/cm',
+                    recipeItems: []
+                });
                 const payload = {
                     batch_id: selectedBatchId,
                     date_occurred: new Date().toISOString(),
                     event_type: action.event_type || 'Observation',
-                    description: action.description || 'Sugerencia de IA aplicada',
+                    description: fullDescription,
                     water_liters: action.water_liters || 0,
                     ph_water: action.ph_water || null,
+                    ec_water: action.ec_water || null,
                     total_cost: 0,
                     status: status
                 };
                 
-                const { error } = await supabase.from('core_agronomic_events').insert([payload]);
+                const { error } = await insertAgronomicEventsSafe(supabase, [payload]);
                 if (error) throw error;
                 alert(status === 'completed' ? "✅ Evento registrado en la bitácora!" : "📅 Tarea agendada para el futuro!");
             }

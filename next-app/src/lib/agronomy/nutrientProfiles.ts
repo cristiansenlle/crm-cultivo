@@ -135,6 +135,25 @@ export const KNOWN_NUTRIENT_PROFILES: Record<string, NutrientProfile> = {
       deficiency_name: 'Ataque de Plagas / Herbivoría Activa',
       warning_text: 'Ráfagas de picos de variación (VP: -11 a -129 mV). Alerta de araña roja, trips o ácaros picadores.'
     }
+  },
+  sales_minerales: {
+    id_aliases: ['sales', 'mineral', 'hakaphos', 'athena', 'powder feeding', 'nitrato', 'mkp', 'fosfato', 'sulfato'],
+    name: 'Nutrición Mineral Inorgánica (Sales Solubles g/L)',
+    category: 'vegetativo',
+    primary_actives: ['Iones NPK de Asimilación Directa (NO₃⁻, NH₄⁺, H₂PO₄⁻, K⁺)', 'Quelatos Minerales'],
+    npk_ratio: 'Mineral Soluble (Control pH / EC)',
+    ionic_charge: 'balanced',
+    bioelectric_signature: {
+      expected_response: 'depolarization',
+      expected_delta_mv: [20, 60],
+      onset_window_hours: [0.5, 6],
+      physiological_meaning: 'Influjo iónico inmediato por disponibilidad directa de sales minerales disueltas en agua con EC y pH regulados.'
+    },
+    deficiency_indicator: {
+      symptom_signal: 'chronic_depolarization',
+      deficiency_name: 'Bloqueo por pH o Estrés Osmótico (EC)',
+      warning_text: 'Variación bioeléctrica fuera de rango tras fertirriego mineral. Verificar pH (5.5-6.2) y EC de solución/drenaje.'
+    }
   }
 };
 
@@ -152,6 +171,9 @@ export function resolveNutrientProfile(productName: string, productType?: string
   }
 
   // Fallback por tipo de producto en bodega
+  if (productType === 'fertilizante_mineral') {
+    return KNOWN_NUTRIENT_PROFILES.sales_minerales;
+  }
   if (productType === 'fungicida' || productType === 'pesticida_biologico') {
     return KNOWN_NUTRIENT_PROFILES.fitosanitarios;
   }

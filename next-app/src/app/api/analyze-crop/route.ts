@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
 
             // Eventos agronómicos recientes
             const { data: events, error: evErr } = await adminSupabase.from('core_agronomic_events')
-                .select('event_type, description, water_liters, date_occurred, status')
+                .select('event_type, description, water_liters, dosage_per_liter, dosage_uom, ph_water, ec_water, ec_unit, ph_runoff, ec_runoff, recipe_items, date_occurred, status')
                 .eq('batch_id', batchId)
                 .order('date_occurred', { ascending: false })
                 .limit(5);

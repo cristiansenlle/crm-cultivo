@@ -9,6 +9,7 @@ import {
   Camera
 } from "@phosphor-icons/react";
 import { supabase } from "../../lib/supabase";
+import { parseEventFertigationMetrics } from "../../lib/agronomy/fertigationUtils";
 import { 
   ResponsiveContainer, LineChart, Line, XAxis, YAxis, 
   CartesianGrid, Tooltip, Legend 
@@ -186,7 +187,10 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
 
   // Totales
   const totalCost = events.reduce((sum: number, e: any) => sum + Number(e.total_cost || 0), 0);
-  const totalWater = events.reduce((sum: number, e: any) => sum + Number(e.water_liters || 0), 0);
+  const totalWater = events.reduce((sum: number, e: any) => {
+    const m = parseEventFertigationMetrics(e);
+    return sum + Number(m.water_liters || e.water_liters || 0);
+  }, 0);
   const totalGrams = partials.reduce((sum: number, p: any) => sum + Number(p.weight_dry || 0), 0);
   const avgCostPerGram = totalGrams > 0 ? (totalCost / totalGrams) : 0;
   
@@ -430,31 +434,47 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
                 {/* 4. INSUMOS LIST */}
                 {activeTab === 'insumos' && (
                   <div className="flex flex-col gap-3">
-                    <h4 className="text-sm font-bold uppercase tracking-wider text-status-yellow flex items-center gap-2 mb-2"><ShoppingBag size={16}/> Historial de Nutrición y Agroquímicos</h4>
+                    <h4 className="text-sm font-bold uppercase tracking-wider text-status-yellow flex items-center gap-2 mb-2"><ShoppingBag size={16}/> Historial de Nutrición, Dilución (g/L), pH & EC</h4>
                     <div className="overflow-x-auto">
                       <table className="w-full text-left text-xs font-mono">
                         <thead>
                           <tr className="border-b border-panel-border/50 text-brand-slate-600 pb-2">
                             <th className="py-2">Fecha</th>
                             <th className="py-2">Evento</th>
-                            <th className="py-2">Producto</th>
-                            <th className="py-2 text-right">Cantidad</th>
+                            <th className="py-2">Producto / Detalle</th>
+                            <th className="py-2 text-right">Dosis</th>
+                            <th className="py-2 text-right">Total</th>
                             <th className="py-2 text-right">Agua (L)</th>
+                            <th className="py-2 text-center">pH / EC</th>
                             <th className="py-2 text-right">Costo</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {events.map((e, idx) => (
-                            <tr key={idx} className="border-b border-panel-border/20 hover:bg-black/5">
-                              <td className="py-2">{new Date(e.date_occurred).toLocaleDateString()}</td>
-                              <td className="py-2 capitalize font-bold text-foreground">{e.event_type}</td>
-                              <td className="py-2 opacity-80">{e.description || '-'}</td>
-                              <td className="py-2 text-right">{e.amount_applied ? `${e.amount_applied}g/ml` : '-'}</td>
-                              <td className="py-2 text-right">{e.water_liters || '-'}</td>
-                              <td className="py-2 text-right text-status-yellow">${Number(e.total_cost || 0).toFixed(2)}</td>
-                            </tr>
-                          ))}
-                          {events.length === 0 && <tr><td colSpan={6} className="py-8 text-center opacity-40">Sin eventos registrados.</td></tr>}
+                          {events.map((e, idx) => {
+                            const m = parseEventFertigationMetrics(e);
+                            const doseStr = m.recipe_items.length > 0
+                              ? m.recipe_items.map(ri => ri.dose_per_liter > 0 ? `${ri.dose_per_liter} ${ri.dose_uom}` : '-').join(' + ')
+                              : (m.dosage_per_liter ? `${m.dosage_per_liter} ${m.dosage_uom || 'g/L'}` : '-');
+                            const totalStr = m.recipe_items.length > 0
+                              ? m.recipe_items.map(ri => `${ri.amount_applied} ${ri.uom}`).join(' + ')
+                              : (e.amount_applied ? `${e.amount_applied}g/ml` : '-');
+                            const phecParts: string[] = [];
+                            if (m.ph_water !== null) phecParts.push(`pH ${m.ph_water}`);
+                            if (m.ec_water !== null) phecParts.push(`EC ${m.ec_water} ${m.ec_unit}`);
+                            return (
+                              <tr key={idx} className="border-b border-panel-border/20 hover:bg-black/5">
+                                <td className="py-2 whitespace-nowrap">{new Date(e.date_occurred).toLocaleDateString()}</td>
+                                <td className="py-2 capitalize font-bold text-foreground whitespace-nowrap">{e.event_type}</td>
+                                <td className="py-2 opacity-85 max-w-xs truncate" title={e.description}>{e.description || '-'}</td>
+                                <td className="py-2 text-right text-cyan-400 font-bold whitespace-nowrap">{doseStr}</td>
+                                <td className="py-2 text-right text-emerald-400 whitespace-nowrap">{totalStr}</td>
+                                <td className="py-2 text-right text-blue-400 whitespace-nowrap">{m.water_liters ? `${m.water_liters} L` : '-'}</td>
+                                <td className="py-2 text-center text-purple-300 whitespace-nowrap">{phecParts.length > 0 ? phecParts.join(' | ') : '-'}</td>
+                                <td className="py-2 text-right text-status-yellow whitespace-nowrap">${Number(e.total_cost || 0).toFixed(2)}</td>
+                              </tr>
+                            );
+                          })}
+                          {events.length === 0 && <tr><td colSpan={8} className="py-8 text-center opacity-40">Sin eventos registrados.</td></tr>}
                         </tbody>
                       </table>
                     </div>

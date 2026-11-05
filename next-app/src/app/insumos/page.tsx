@@ -2,10 +2,11 @@
 
 import React, { useEffect, useState } from "react";
 import { GlassCard } from "../../components/ui/GlassCard";
-import { Flask, Plus, Warehouse, WarningOctagon, CaretRight, X, FloppyDisk, PencilSimple, Storefront, Clock, CalendarBlank, HourglassMedium, Plant, Scissors } from "@phosphor-icons/react";
+import { Flask, Plus, Warehouse, WarningOctagon, CaretRight, X, FloppyDisk, PencilSimple, Storefront, Clock, CalendarBlank, HourglassMedium, Plant, Scissors, Lightning, Leaf, Drop } from "@phosphor-icons/react";
 import { supabase } from "../../lib/supabase";
 import { getHarvestDateInfo } from "../pos/page";
 import { ManageTandasModal } from "../../components/ManageTandasModal";
+import { getInsumoOrigin, getDoseUomForInsumo, insertInsumoSafe, updateInsumoSafe, InsumoOriginType } from "../../lib/agronomy/fertigationUtils";
 
 export default function InsumosPage() {
   const [quimicos, setQuimicos] = useState<any[]>([]);
@@ -14,15 +15,38 @@ export default function InsumosPage() {
   const [loadingCosechas, setLoadingCosechas] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [manageTandasModal, setManageTandasModal] = useState<{ isOpen: boolean; batchId?: string }>({ isOpen: false });
+  const [filterOrigin, setFilterOrigin] = useState<"all" | "mineral" | "organico" | "otros">("all");
   
   // Modal form states
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
-  const [newType, setNewType] = useState("fertilizante");
+  const [newType, setNewType] = useState("fertilizante_mineral");
+  const [newOrigin, setNewOrigin] = useState<InsumoOriginType>("mineral");
   const [newQty, setNewQty] = useState("");
   const [newCost, setNewCost] = useState("");
-  const [newUom, setNewUom] = useState("ml");
-  const [newMinStock, setNewMinStock] = useState("1000"); // Ej: 1000ml por defecto
+  const [newUom, setNewUom] = useState("gr");
+  const [newMinStock, setNewMinStock] = useState("500"); // Ej: 500gr o 1000ml por defecto
+  const [newRecommendedDose, setNewRecommendedDose] = useState("");
+
+  const getLocalDoseMap = (): Record<string, number> => {
+    if (typeof window === "undefined") return {};
+    try {
+      return JSON.parse(localStorage.getItem("crm_insumo_recommended_doses") || "{}");
+    } catch {
+      return {};
+    }
+  };
+
+  const saveLocalDose = (name: string, dose: number | null) => {
+    if (typeof window === "undefined" || !name) return;
+    try {
+      const map = getLocalDoseMap();
+      const key = name.trim().toLowerCase();
+      if (dose && dose > 0) map[key] = dose;
+      else delete map[key];
+      localStorage.setItem("crm_insumo_recommended_doses", JSON.stringify(map));
+    } catch {}
+  };
 
   const loadInventory = async () => {
     setLoading(true);
@@ -34,17 +58,29 @@ export default function InsumosPage() {
         console.error("Supabase Error:", error);
     }
     if (data && !error) {
+        const localDoses = getLocalDoseMap();
         const grouped = Array.from(
           data.reduce((acc: Map<string, any>, item: any) => {
             const key = (item.name || "").trim().toLowerCase();
+            const origin = getInsumoOrigin(item);
+            const recDose = item.recommended_dose ?? localDoses[key] ?? null;
             if (!acc.has(key)) {
-               acc.set(key, { ...item, original_qty: item.qty });
+               acc.set(key, {
+                 ...item,
+                 origin_type: origin,
+                 recommended_dose: recDose,
+                 original_qty: item.qty,
+                 _all_ids: [item.id]
+               });
             } else {
                const existing = acc.get(key);
                existing.qty += item.qty;
                existing.id = item.id; // Keep latest ID for editing metadata
                existing.unit_cost = item.unit_cost; // Latest cost
                existing.min_stock = item.min_stock;
+               if (origin === 'mineral') existing.origin_type = 'mineral';
+               if (recDose) existing.recommended_dose = recDose;
+               existing._all_ids.push(item.id);
             }
             return acc;
           }, new Map()).values()
@@ -133,26 +169,51 @@ export default function InsumosPage() {
   const openNewModal = () => {
       setEditingId(null);
       setNewName("");
-      setNewType("fertilizante");
-      setNewUom("ml");
+      setNewType("fertilizante_mineral");
+      setNewOrigin("mineral");
+      setNewUom("gr");
       setNewQty("");
       setNewCost("");
-      setNewMinStock("1000");
+      setNewMinStock("250");
+      setNewRecommendedDose("");
       setIsModalOpen(true);
   };
 
   const openEditModal = (item: any) => {
       setEditingId(item._all_ids ? item._all_ids.join(',') : item.id);
       setNewName(item.name || "");
-      setNewType(item.type || "fertilizante");
-      // Rescatar UoM (Si no existe en el item viejo, usar 'unidades')
-      setNewUom(item.uom || 'unidades');
+      const origin = getInsumoOrigin(item);
+      setNewOrigin(origin);
+      setNewType(item.type || (origin === 'mineral' ? "fertilizante_mineral" : "fertilizante"));
+      setNewUom(item.uom || (origin === 'mineral' ? 'gr' : 'ml'));
       setNewQty(String(item.qty || 0));
-      // Revertir el cost total multiplicando el cost unitario de DB por el stock
       const totalPaid = (item.qty || 0) * (item.unit_cost || 0);
-      setNewCost(totalPaid > 0 ? String(totalPaid) : "");
-      setNewMinStock(String(item.min_stock || 1000));
+      setNewCost(totalPaid > 0 ? String(Number(totalPaid.toFixed(2))) : "");
+      setNewMinStock(String(item.min_stock || (origin === 'mineral' ? 250 : 1000)));
+      const localDoses = getLocalDoseMap();
+      const rec = item.recommended_dose ?? localDoses[(item.name || "").trim().toLowerCase()] ?? "";
+      setNewRecommendedDose(rec ? String(rec) : "");
       setIsModalOpen(true);
+  };
+
+  const handleCategoryChange = (selectedType: string) => {
+    setNewType(selectedType);
+    if (selectedType === "fertilizante_mineral") {
+      setNewOrigin("mineral");
+      setNewUom("gr");
+      if (!editingId) setNewMinStock("250");
+    } else if (selectedType === "fertilizante" || selectedType === "estimulador") {
+      setNewOrigin("organico");
+      setNewUom("ml");
+      if (!editingId) setNewMinStock("1000");
+    } else if (selectedType === "corrector_ph") {
+      setNewOrigin("corrector_ph");
+      setNewUom("ml");
+    } else if (selectedType === "pesticida_biologico" || selectedType === "fungicida") {
+      setNewOrigin("biologico");
+    } else {
+      setNewOrigin("otro");
+    }
   };
 
   const handleCreateInsumo = async (e: React.FormEvent) => {
@@ -160,12 +221,19 @@ export default function InsumosPage() {
     const qtyTotal = parseFloat(newQty) || 0;
     const costTotal = parseFloat(newCost) || 0;
     const calculatedUnitCost = qtyTotal > 0 ? costTotal / qtyTotal : 0;
+    const recDoseNum = parseFloat(newRecommendedDose) || null;
+    const doseUom = getDoseUomForInsumo(newUom);
+
+    saveLocalDose(newName, recDoseNum);
 
     const payload: any = {
-        name: newName,
+        name: newName.trim(),
         type: newType,
         uom: newUom,
         min_stock: parseFloat(newMinStock) || 0,
+        origin_type: newOrigin,
+        recommended_dose: recDoseNum,
+        dose_uom: doseUom,
         last_updated: new Date().toISOString()
     };
 
@@ -176,13 +244,16 @@ export default function InsumosPage() {
 
     let errorResult = null;
 
-    if(editingId) {
-       // If editingId is an array of IDs (because we grouped them), update all of them
+    if (editingId) {
        const idsToUpdate = typeof editingId === 'string' && editingId.includes(',') ? editingId.split(',') : [editingId];
-       const { error } = await supabase.from('core_inventory_quimicos').update(payload).in('id', idsToUpdate);
+       if (idsToUpdate.length === 1) {
+         payload.qty = qtyTotal;
+         payload.unit_cost = Number(calculatedUnitCost.toFixed(2));
+       }
+       const { error } = await updateInsumoSafe(supabase, idsToUpdate, payload);
        errorResult = error;
     } else {
-       const { error } = await supabase.from('core_inventory_quimicos').insert([payload]);
+       const { error } = await insertInsumoSafe(supabase, payload);
        errorResult = error;
     }
     
@@ -399,10 +470,41 @@ export default function InsumosPage() {
       {/* Inventario Químico Table */}
       <section>
         <GlassCard className="w-full">
-           <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold flex items-center gap-2">
-                <Flask size={24} className="text-purple-400" /> Nutrición & Químicos
-              </h2>
+           <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 mb-6">
+              <div>
+                <h2 className="text-xl font-bold flex items-center gap-2">
+                  <Flask size={24} className="text-purple-400" /> Nutrición & Químicos
+                </h2>
+                <p className="text-xs font-mono text-brand-slate-600 dark:text-slate-400 mt-1">
+                  Soporte dual para Fertilizantes Orgánicos (ml/L) e Inorgánicos Minerales (Sales solubles en g/L con control de pH y EC)
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5 bg-black/[0.04] dark:bg-black/30 p-1 rounded-xl border border-panel-border">
+                <button
+                  onClick={() => setFilterOrigin("all")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-colors ${filterOrigin === "all" ? "bg-purple-600 text-white" : "text-brand-slate-600 hover:text-foreground"}`}
+                >
+                  Todos ({quimicos.length})
+                </button>
+                <button
+                  onClick={() => setFilterOrigin("mineral")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-colors flex items-center gap-1 ${filterOrigin === "mineral" ? "bg-cyan-600 text-white" : "text-cyan-400 hover:bg-cyan-500/10"}`}
+                >
+                  <Lightning size={12} weight="fill" /> Minerales ({quimicos.filter(q => getInsumoOrigin(q) === "mineral").length})
+                </button>
+                <button
+                  onClick={() => setFilterOrigin("organico")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-colors flex items-center gap-1 ${filterOrigin === "organico" ? "bg-emerald-600 text-white" : "text-emerald-400 hover:bg-emerald-500/10"}`}
+                >
+                  <Leaf size={12} weight="fill" /> Orgánicos ({quimicos.filter(q => getInsumoOrigin(q) === "organico").length})
+                </button>
+                <button
+                  onClick={() => setFilterOrigin("otros")}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-mono font-bold transition-colors ${filterOrigin === "otros" ? "bg-amber-600 text-white" : "text-amber-400 hover:bg-amber-500/10"}`}
+                >
+                  IPM / pH / Otros ({quimicos.filter(q => !["mineral", "organico"].includes(getInsumoOrigin(q))).length})
+                </button>
+              </div>
            </div>
            
            <div className="overflow-x-auto">
@@ -410,7 +512,8 @@ export default function InsumosPage() {
                <thead>
                  <tr className="border-b border-panel-border/50 text-brand-slate-600 dark:text-slate-400 font-mono text-xs uppercase tracking-wider">
                    <th className="py-3 px-4 font-normal">Insumo Identificador</th>
-                   <th className="py-3 px-4 font-normal">Clasificación</th>
+                   <th className="py-3 px-4 font-normal">Origen & Clasificación</th>
+                   <th className="py-3 px-4 text-center font-normal">Dosis Base</th>
                    <th className="py-3 px-4 text-right font-normal">Stock Bodega</th>
                    <th className="py-3 px-4 text-right font-normal">Costo Unitario</th>
                    <th className="py-3 px-4 text-right font-normal">Capital Valorizado (Costo)</th>
@@ -419,25 +522,63 @@ export default function InsumosPage() {
                </thead>
                <tbody className="font-mono">
                  {loading ? (
-                    <tr><td colSpan={6} className="py-8 px-4 text-center text-brand-slate-600">Sincronizando Bodegas vía Supabase...</td></tr>
+                    <tr><td colSpan={7} className="py-8 px-4 text-center text-brand-slate-600">Sincronizando Bodegas vía Supabase...</td></tr>
                  ) : quimicos.length === 0 ? (
-                    <tr><td colSpan={6} className="py-8 px-4 text-center text-status-yellow border border-dashed border-status-yellow/30 bg-status-yellow/5 rounded-lg mt-4 block">BODEGA CRÍTICA ESTÁ VACÍA</td></tr>
-                 ) : quimicos.map((item, i) => {
+                    <tr><td colSpan={7} className="py-8 px-4 text-center text-status-yellow border border-dashed border-status-yellow/30 bg-status-yellow/5 rounded-lg mt-4 block">BODEGA CRÍTICA ESTÁ VACÍA</td></tr>
+                 ) : quimicos
+                    .filter(item => {
+                      const origin = getInsumoOrigin(item);
+                      if (filterOrigin === "all") return true;
+                      if (filterOrigin === "mineral") return origin === "mineral";
+                      if (filterOrigin === "organico") return origin === "organico";
+                      return origin !== "mineral" && origin !== "organico";
+                    })
+                    .map((item, i) => {
                    const uom = item.uom || 'unidades';
+                   const origin = getInsumoOrigin(item);
+                   const doseUom = getDoseUomForInsumo(uom);
                    const isCritical = item.qty <= (item.min_stock || 100);
                    return (
-                   <tr key={i} className="border-b border-panel-border/20 hover:bg-black/5 dark:hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
+                   <tr key={i} className="border-b border-panel-border/20 hover:bg-black/5 dark:hover:bg-white/5 transition-colors group">
                      <td className="py-4 px-4 font-sans font-bold text-foreground">
                         {item.name || `Químico ${item.id.substring?.(0,5)}`}
                      </td>
                      <td className="py-4 px-4">
-                        <span className="px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-400">
-                           {item.type || 'N/A'}
-                        </span>
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {origin === "mineral" ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-cyan-500/15 text-cyan-400 border border-cyan-500/30 flex items-center gap-1">
+                              <Lightning size={11} weight="fill" /> Mineral (Sales)
+                            </span>
+                          ) : origin === "organico" ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                              <Leaf size={11} weight="fill" /> Orgánico
+                            </span>
+                          ) : origin === "corrector_ph" ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                              🧪 Regulador pH
+                            </span>
+                          ) : origin === "biologico" ? (
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-teal-500/15 text-teal-400 border border-teal-500/30">
+                              🧬 Biológico
+                            </span>
+                          ) : null}
+                          <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-purple-500/10 text-purple-400">
+                             {item.type === 'fertilizante_mineral' ? 'Fertilizante Mineral' : (item.type || 'N/A')}
+                          </span>
+                        </div>
+                     </td>
+                     <td className="py-4 px-4 text-center">
+                        {item.recommended_dose ? (
+                          <span className="px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20 text-xs font-bold">
+                            {item.recommended_dose} {doseUom}
+                          </span>
+                        ) : (
+                          <span className="text-xs opacity-40">En {doseUom}</span>
+                        )}
                      </td>
                      <td className="py-4 px-4 text-right">
                         <span className={"font-bold tracking-widest text-lg " + (isCritical ? 'text-status-red drop-shadow-[0_0_5px_red]' : 'text-emerald-500')}>
-                          {item.qty} <span className="text-xs opacity-60 font-medium">{uom}</span>
+                          {Number(item.qty || 0).toFixed(item.qty % 1 !== 0 ? 2 : 0)} <span className="text-xs opacity-60 font-medium">{uom}</span>
                         </span>
                      </td>
                      <td className="py-4 px-4 text-right text-brand-slate-600 font-medium">
@@ -469,7 +610,7 @@ export default function InsumosPage() {
             <div className="flex justify-between items-center mb-6">
               <h2 className="text-xl font-bold flex items-center gap-2">
                  <Flask size={24} className="text-emerald-500"/> 
-                 {editingId ? "Editar Reactivo Químico" : "Nuevo Reactivo Químico"}
+                 {editingId ? "Editar Reactivo / Insumo" : "Nuevo Reactivo / Insumo"}
               </h2>
               <button onClick={() => setIsModalOpen(false)} className="text-brand-slate-600 hover:text-foreground p-1 rounded hover:bg-panel-border transition-colors"><X size={24}/></button>
             </div>
@@ -481,7 +622,7 @@ export default function InsumosPage() {
                    type="text" required
                    list="existing-products"
                    value={newName} onChange={e => setNewName(e.target.value)}
-                   placeholder="Ej: Advanced Nutrients Grow"
+                   placeholder="Ej: Athena Pro Core / Hakaphos / Powder Feeding"
                    className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 transition-colors"
                 />
                 <datalist id="existing-products">
@@ -493,40 +634,68 @@ export default function InsumosPage() {
 
               <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Categoría (Tipo)</label>
+                    <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Categoría / Naturaleza</label>
                     <select 
-                       value={newType} onChange={e => setNewType(e.target.value)}
+                       value={newType} onChange={e => handleCategoryChange(e.target.value)}
                        className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 font-mono"
                     >
-                       <option value="fertilizante">Fertilizante (Líquido/Polvo)</option>
-                       <option value="pesticida">Pesticida / Fungicida</option>
-                       <option value="sustrato">Sustrato Genérico</option>
-                       <option value="miscelaneo">Otros (Misceláneo)</option>
+                       <option value="fertilizante_mineral">⚡ Fertilizante Mineral / Sales (g/L)</option>
+                       <option value="fertilizante">🌿 Fertilizante Orgánico (ml/L)</option>
+                       <option value="estimulador">🌱 Estimulador / Aditivo</option>
+                       <option value="corrector_ph">🧪 Corrector de pH (pH- / pH+)</option>
+                       <option value="pesticida_biologico">🧬 Preventivo Biológico (IPM)</option>
+                       <option value="pesticida">🛡️ Pesticida / Fungicida</option>
+                       <option value="sustrato">🪴 Sustrato / Enmienda</option>
+                       <option value="miscelaneo">📦 Otros (Misceláneo)</option>
                     </select>
                   </div>
                   <div>
-                    <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Unidad de Medida (UoM)</label>
+                    <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Unidad de Bodega (UoM)</label>
                     <select 
                        value={newUom} onChange={e => setNewUom(e.target.value)}
                        className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 font-mono"
                     >
-                       <option value="ml">Mililitros (ml)</option>
-                       <option value="L">Litros (L)</option>
-                       <option value="gr">Gramos (gr)</option>
+                       <option value="gr">Gramos (gr) — Sales / Polvo</option>
                        <option value="Kg">Kilogramos (Kg)</option>
+                       <option value="ml">Mililitros (ml) — Líquido</option>
+                       <option value="L">Litros (L)</option>
                        <option value="unidades">Unidades / Piezas</option>
                     </select>
                   </div>
               </div>
 
+              {(newOrigin === "mineral" || newOrigin === "organico") && (
+                <div className="p-3 rounded-xl border border-cyan-500/30 bg-cyan-500/5 flex flex-col gap-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-mono text-cyan-400 font-bold uppercase flex items-center gap-1.5">
+                      <Drop size={14} weight="fill" /> Dosis Base Sugerida en Agua ({getDoseUomForInsumo(newUom)})
+                    </label>
+                    <span className="text-[10px] font-mono text-cyan-300/70">Opcional (Autocompleta al regar)</span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={newRecommendedDose}
+                      onChange={e => setNewRecommendedDose(e.target.value)}
+                      placeholder={newUom === 'gr' || newUom === 'Kg' ? "Ej: 1.5 (gramos por litro de agua)" : "Ej: 2.0 (ml por litro de agua)"}
+                      className="w-full bg-black/20 border border-cyan-500/30 rounded-lg p-2 pr-14 text-sm font-mono outline-none focus:border-cyan-400"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-cyan-400">
+                      {getDoseUomForInsumo(newUom)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Stock Total Actual</label>
+                    <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Stock Total Actual ({newUom})</label>
                     <input 
                        type="number" step="0.01" required
                        value={newQty} onChange={e => setNewQty(e.target.value)}
-                       placeholder="1000"
-                       disabled={!!editingId}
+                       placeholder={newUom === "gr" ? "500" : "1000"}
+                       disabled={!!(editingId && editingId.includes(','))}
                        className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 text-right font-mono disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   </div>
@@ -535,25 +704,25 @@ export default function InsumosPage() {
                     <input 
                        type="number" step="0.01" required
                        value={newCost} onChange={e => setNewCost(e.target.value)}
-                       placeholder="$ 5500.00"
-                       disabled={!!editingId}
+                       placeholder="$ 15000.00"
+                       disabled={!!(editingId && editingId.includes(','))}
                        className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-emerald-500 text-right font-mono disabled:opacity-50 disabled:cursor-not-allowed"
                     />
                   </div>
-                  {editingId && (
+                  {editingId && editingId.includes(',') && (
                       <div className="col-span-2 text-[10px] text-yellow-500 font-mono">
-                          Nota: Para agregar nuevo stock o un costo diferente, crea un "Nuevo Reactivo Químico" con el mismo Nombre Comercial exacto. El sistema los agrupará automáticamente.
+                          Nota: Este insumo tiene múltiples compras agrupadas. Para sumar una nueva compra con diferente costo, crea un "Nuevo Reactivo" con el mismo Nombre Comercial exacto.
                       </div>
                   )}
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                   <div className="col-span-2">
-                    <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Alerta Critical Stock</label>
+                    <label className="text-xs font-mono text-brand-slate-600 uppercase mb-1 block">Alerta Critical Stock ({newUom})</label>
                     <input 
                        type="number" step="1" required
                        value={newMinStock} onChange={e => setNewMinStock(e.target.value)}
-                       placeholder="1000"
+                       placeholder={newUom === "gr" ? "100" : "1000"}
                        className="w-full bg-black/[0.03] dark:bg-black/20 border border-panel-border rounded-lg p-2.5 text-sm outline-none focus:border-yellow-500 text-right font-mono text-yellow-500"
                     />
                   </div>
