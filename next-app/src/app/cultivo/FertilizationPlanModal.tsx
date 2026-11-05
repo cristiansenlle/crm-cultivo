@@ -51,12 +51,20 @@ export function FertilizationPlanModal({
   onOpenBitacoraWithRecipe?: (batch: any) => void;
 }) {
   const [plans, setPlans] = useState<FertilizationPlan[]>(DEFAULT_FERTILIZATION_PLANS);
-  const initialAssign = batch ? getBatchPlanAssignment(batch) : { planId: initialPlanToInspect?.id || RED_HOT_COOKIES_FEEDING_PLAN.id, weekOffset: 0, syncMode: "biological_cycles" as const };
+  const initialAssign = batch
+    ? getBatchPlanAssignment(batch)
+    : {
+        planId: initialPlanToInspect?.id || RED_HOT_COOKIES_FEEDING_PLAN.id,
+        weekOffset: 0,
+        syncMode: "biological_cycles" as const
+      };
 
-  // Si el lote no tiene plan asignado (""), mostramos igualmente un plan en "vista previa" para que pueda inspeccionarlo, editarlo o asignarlo
-  const [assignedPlanId, setAssignedPlanId] = useState<string>(batch ? initialAssign.planId : (initialPlanToInspect?.id || RED_HOT_COOKIES_FEEDING_PLAN.id));
-  const [previewPlanId, setPreviewPlanId] = useState<string>(
-    initialPlanToInspect?.id || initialAssign.planId || RED_HOT_COOKIES_FEEDING_PLAN.id
+  const [assignedPlanId, setAssignedPlanId] = useState<string>(
+    batch ? initialAssign.planId : initialPlanToInspect?.id || RED_HOT_COOKIES_FEEDING_PLAN.id
+  );
+  // Solo mostramos un plan en pantalla si el lote YA tiene uno asignado, o si el usuario pidió explícitamente inspeccionar/editar uno
+  const [inspectingPlanId, setInspectingPlanId] = useState<string | null>(
+    batch ? (initialAssign.planId || null) : (initialPlanToInspect?.id || RED_HOT_COOKIES_FEEDING_PLAN.id)
   );
 
   const [weekOffset, setWeekOffset] = useState<number>(initialAssign.weekOffset);
@@ -84,9 +92,7 @@ export function FertilizationPlanModal({
       if (batch) {
         const refreshedAssign = getBatchPlanAssignment(batch);
         setAssignedPlanId(refreshedAssign.planId);
-        if (refreshedAssign.planId) {
-          setPreviewPlanId(refreshedAssign.planId);
-        }
+        setInspectingPlanId(refreshedAssign.planId || null);
       }
     });
 
@@ -123,16 +129,24 @@ export function FertilizationPlanModal({
     }
   }, [batch?.id]);
 
-  const currentPlan = useMemo(() => {
+  // El plan activo en pantalla: nulo cuando el lote está "Sin Plan Asignado" y no se está inspeccionando ni editando ninguno
+  const activeViewPlan = useMemo<FertilizationPlan | null>(() => {
     if (isEditingPlan && draftPlan) return draftPlan;
-    return plans.find(p => p.id === previewPlanId) || RED_HOT_COOKIES_FEEDING_PLAN;
-  }, [plans, previewPlanId, isEditingPlan, draftPlan]);
+    const targetId = inspectingPlanId || assignedPlanId;
+    if (!targetId) return null;
+    return plans.find(p => p.id === targetId) || null;
+  }, [plans, inspectingPlanId, assignedPlanId, isEditingPlan, draftPlan]);
+
+  // Fallback interno sólo para cálculos de reloj del lote cuando no hay plan activo
+  const currentPlan = activeViewPlan || RED_HOT_COOKIES_FEEDING_PLAN;
 
   useEffect(() => {
     if (startInEditMode && !draftPlan) {
-      setDraftPlan(JSON.parse(JSON.stringify(currentPlan)));
+      const target = initialPlanToInspect || activeViewPlan || RED_HOT_COOKIES_FEEDING_PLAN;
+      setDraftPlan(JSON.parse(JSON.stringify(target)));
+      setInspectingPlanId(target.id);
     }
-  }, [startInEditMode, currentPlan, draftPlan]);
+  }, [startInEditMode, initialPlanToInspect, activeViewPlan, draftPlan]);
 
   const resolution = useMemo(() => {
     return resolveBatchActivePlanWeek(batch || { stage: "vegetativo", num_plants: 10 }, currentPlan, recentEvents, {
@@ -151,7 +165,7 @@ export function FertilizationPlanModal({
     newSyncMode = syncMode
   ) => {
     setAssignedPlanId(newPlanId);
-    if (newPlanId) setPreviewPlanId(newPlanId);
+    setInspectingPlanId(newPlanId || null);
     if (!batch?.id) return;
     setSavingAssign(true);
     await updateBatchPlanAssignment(supabase, batch.id, {
@@ -164,9 +178,11 @@ export function FertilizationPlanModal({
   };
 
   // Funciones de Creación, Duplicación, Importación y Edición de Planes
-  const handleStartEdit = () => {
-    const clone: FertilizationPlan = JSON.parse(JSON.stringify(currentPlan));
+  const handleStartEdit = (planToEdit?: FertilizationPlan) => {
+    const base = planToEdit || activeViewPlan || RED_HOT_COOKIES_FEEDING_PLAN;
+    const clone: FertilizationPlan = JSON.parse(JSON.stringify(base));
     setDraftPlan(clone);
+    setInspectingPlanId(clone.id);
     setIsEditingPlan(true);
   };
 
@@ -176,17 +192,18 @@ export function FertilizationPlanModal({
       batch?.strain || "General"
     );
     setDraftPlan(newPlan);
-    setPreviewPlanId(newPlan.id);
+    setInspectingPlanId(newPlan.id);
     setIsEditingPlan(true);
     setEditingWeekId(newPlan.weeks_schedule[0]?.week_id || null);
   };
 
-  const handleDuplicatePlan = () => {
-    const clone: FertilizationPlan = JSON.parse(JSON.stringify(currentPlan));
+  const handleDuplicatePlan = (planToDup?: FertilizationPlan) => {
+    const base = planToDup || activeViewPlan || RED_HOT_COOKIES_FEEDING_PLAN;
+    const clone: FertilizationPlan = JSON.parse(JSON.stringify(base));
     clone.id = `plan-copy-${Date.now()}`;
-    clone.name = `${currentPlan.name} (Copia Editable)`;
+    clone.name = `${base.name} (Copia Editable)`;
     setDraftPlan(clone);
-    setPreviewPlanId(clone.id);
+    setInspectingPlanId(clone.id);
     setIsEditingPlan(true);
   };
 
@@ -221,7 +238,11 @@ export function FertilizationPlanModal({
     await saveFertilizationPlan(supabase, finalPlan);
     const updatedList = await loadFertilizationPlans(supabase);
     setPlans(updatedList);
-    setPreviewPlanId(finalPlan.id);
+    setInspectingPlanId(finalPlan.id);
+    // Si estamos dentro de un lote, preguntamos o asignamos automáticamente el plan recién creado/editado si estaba sin plan
+    if (batch?.id && !assignedPlanId) {
+      await handleSaveAssignment(finalPlan.id, weekOffset, syncMode);
+    }
     setIsEditingPlan(false);
     setDraftPlan(null);
     setEditingWeekId(null);
@@ -230,18 +251,19 @@ export function FertilizationPlanModal({
   };
 
   const handleDeleteCurrentPlan = async () => {
-    if (currentPlan.id === RED_HOT_COOKIES_FEEDING_PLAN.id) {
+    if (!activeViewPlan) return;
+    if (activeViewPlan.id === RED_HOT_COOKIES_FEEDING_PLAN.id) {
       alert("El plan piloto base no se puede eliminar, pero podés editarlo o duplicarlo.");
       return;
     }
-    if (!window.confirm(`¿Eliminar el plan "${currentPlan.name}"?`)) return;
-    await deleteFertilizationPlan(supabase, currentPlan.id);
+    if (!window.confirm(`¿Eliminar el plan "${activeViewPlan.name}"?`)) return;
+    await deleteFertilizationPlan(supabase, activeViewPlan.id);
     const updatedList = await loadFertilizationPlans(supabase);
     setPlans(updatedList);
-    const fallbackId = updatedList[0]?.id || RED_HOT_COOKIES_FEEDING_PLAN.id;
-    setPreviewPlanId(fallbackId);
-    if (assignedPlanId === currentPlan.id && batch?.id) {
+    if (assignedPlanId === activeViewPlan.id && batch?.id) {
       await handleSaveAssignment("");
+    } else {
+      setInspectingPlanId(batch ? null : (updatedList[0]?.id || RED_HOT_COOKIES_FEEDING_PLAN.id));
     }
     if (onUpdated) onUpdated();
   };
@@ -266,7 +288,10 @@ export function FertilizationPlanModal({
       await saveFertilizationPlan(supabase, data.plan);
       const updatedList = await loadFertilizationPlans(supabase);
       setPlans(updatedList);
-      setPreviewPlanId(data.plan.id);
+      setInspectingPlanId(data.plan.id);
+      if (batch?.id && !assignedPlanId) {
+        await handleSaveAssignment(data.plan.id, weekOffset, syncMode);
+      }
       setShowSheetImporter(false);
       setSheetUrl("");
       setSheetCustomName("");
@@ -757,11 +782,15 @@ export function FertilizationPlanModal({
               {batch ? (
                 assignedPlanId ? (
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                    ✅ Plan Asignado a Lote: {batch.id}
+                    ✅ Plan Activo en Lote: {batch.id}
+                  </span>
+                ) : activeViewPlan ? (
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    👁️ Inspeccionando Plantilla (Lote {batch.id} sigue Sin Plan)
                   </span>
                 ) : (
                   <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold uppercase bg-slate-500/20 text-slate-300 border border-slate-500/40">
-                    ⚪ Lote {batch.id}: Sin Plan Asignado (Vista Previa)
+                    ⚪ Lote {batch.id}: Sin Plan Asignado (Cultivo Libre)
                   </span>
                 )
               ) : (
@@ -806,13 +835,22 @@ export function FertilizationPlanModal({
                   className="md:col-span-3 bg-black/50 border border-panel-border rounded-lg px-3 py-1 text-xs font-mono text-slate-300"
                 />
               </div>
-            ) : (
+            ) : activeViewPlan ? (
               <>
                 <h2 className="text-xl sm:text-2xl font-black text-foreground mt-1 truncate">
-                  {currentPlan.name}
+                  {activeViewPlan.name}
                 </h2>
                 <p className="text-xs font-mono text-brand-slate-600 dark:text-slate-400">
-                  {currentPlan.subtitle}
+                  {activeViewPlan.subtitle}
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 className="text-xl sm:text-2xl font-black text-foreground mt-1">
+                  Lote {batch?.id} ({batch?.strain}) • Sin Plan de Fertilización Asignado
+                </h2>
+                <p className="text-xs font-mono text-brand-slate-600 dark:text-slate-400 mt-0.5">
+                  Este lote opera en Modo Libre. Elegí abajo si querés asignarle un plan existente, crear un plan nuevo desde cero o importar un Google Sheet.
                 </p>
               </>
             )}
@@ -836,6 +874,7 @@ export function FertilizationPlanModal({
                     setIsEditingPlan(false);
                     setDraftPlan(null);
                     setEditingWeekId(null);
+                    if (!assignedPlanId && batch) setInspectingPlanId(null);
                   }}
                   className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 text-xs font-bold cursor-pointer"
                 >
@@ -844,13 +883,43 @@ export function FertilizationPlanModal({
               </>
             ) : (
               <>
-                <button
-                  type="button"
-                  onClick={handleStartEdit}
-                  className="px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                >
-                  <PencilSimple size={15} weight="bold" /> Editar Plan
-                </button>
+                {batch && !assignedPlanId && activeViewPlan && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setInspectingPlanId(null)}
+                      className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-bold cursor-pointer"
+                    >
+                      ← Volver (Sin Plan)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveAssignment(activeViewPlan.id, weekOffset, syncMode)}
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-lg cursor-pointer"
+                    >
+                      <CheckCircle size={15} weight="fill" /> Asignar este Plan al Lote
+                    </button>
+                  </>
+                )}
+                {activeViewPlan && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleStartEdit(activeViewPlan)}
+                      className="px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <PencilSimple size={15} weight="bold" /> Editar Plan
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDuplicatePlan(activeViewPlan)}
+                      className="px-3 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
+                      title="Duplicar este plan para crear una variante"
+                    >
+                      <Copy size={15} weight="bold" /> Duplicar
+                    </button>
+                  </>
+                )}
                 <button
                   type="button"
                   onClick={handleCreateNewPlan}
@@ -860,20 +929,12 @@ export function FertilizationPlanModal({
                 </button>
                 <button
                   type="button"
-                  onClick={handleDuplicatePlan}
-                  className="px-3 py-2 rounded-xl bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                  title="Duplicar este plan para crear una variante"
-                >
-                  <Copy size={15} weight="bold" /> Duplicar
-                </button>
-                <button
-                  type="button"
                   onClick={() => setShowSheetImporter(!showSheetImporter)}
                   className="px-3 py-2 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <CloudArrowDown size={15} weight="bold" /> Importar Sheet
                 </button>
-                {currentPlan.id !== RED_HOT_COOKIES_FEEDING_PLAN.id && (
+                {activeViewPlan && activeViewPlan.id !== RED_HOT_COOKIES_FEEDING_PLAN.id && (
                   <button
                     type="button"
                     onClick={handleDeleteCurrentPlan}
@@ -941,291 +1002,423 @@ export function FertilizationPlanModal({
 
         {/* Contenido Principal Scrolleable */}
         <div className="flex-1 overflow-y-auto p-5 flex flex-col gap-6">
-          {/* 1. Tarjetas Resumen de Configuración del Lote y Sincronización (>24h) */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
-            {/* Selector de Plan / Asignación al Lote */}
-            <div className="p-3.5 rounded-xl bg-black/25 border border-panel-border flex flex-col justify-between gap-2">
-              <span className="text-[10px] font-mono uppercase text-brand-slate-600 dark:text-slate-400 font-bold">
-                {batch ? `Asignación para Lote ${batch.id}` : "Seleccionar Plan para Ver/Editar"}
-              </span>
-              {batch ? (
-                <>
-                  <select
-                    value={assignedPlanId}
-                    onChange={e => handleSaveAssignment(e.target.value, weekOffset, syncMode)}
-                    className="w-full bg-panel-base border border-panel-border rounded-lg p-2 text-xs font-mono text-foreground focus:border-emerald-500 outline-none"
-                  >
-                    <option value="">-- Sin Plan Asignado (Libre) --</option>
-                    {plans.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </select>
-                  {!assignedPlanId ? (
-                    <div className="flex items-center justify-between gap-2">
-                      <select
-                        value={previewPlanId}
-                        onChange={e => setPreviewPlanId(e.target.value)}
-                        className="flex-1 min-w-0 bg-black/40 border border-panel-border rounded px-2 py-1 text-[10px] font-mono text-slate-300"
-                        title="Previsualizar plantilla"
+          {!activeViewPlan ? (
+            /* PANTALLA LIMPIA CUANDO EL LOTE NO TIENE PLAN ASIGNADO */
+            <div className="flex flex-col gap-5">
+              {/* Estado actual del Lote */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 rounded-xl bg-black/30 border border-panel-border flex flex-col justify-between gap-2">
+                  <span className="text-[10px] font-mono uppercase text-slate-400 font-bold">
+                    Estado Nutricional de Lote {batch?.id}
+                  </span>
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-base font-extrabold text-foreground">
+                        ⚪ Sin Plan Asignado (Cultivo Libre)
+                      </div>
+                      <p className="text-xs font-mono text-slate-400 mt-0.5">
+                        Podés cargar riegos libremente en la Bitácora sin metas semanales fijas, o asignarle un plan abajo.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="p-4 rounded-xl bg-black/30 border border-panel-border flex flex-col justify-between gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase text-slate-400 font-bold">
+                      Reloj del Lote & Fotoperiodo
+                    </span>
+                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-yellow-500/15 text-yellow-300 border border-yellow-500/30 font-bold">
+                      {resolution.lightHours}L / {resolution.darkHours}O ({resolution.cycleTotalHours}h)
+                    </span>
+                  </div>
+                  <div className="text-sm font-bold text-foreground font-mono">
+                    Día {resolution.calendarDaysInStage} Calendario (Semana {resolution.calendarWeekInStage} de {batch?.stage || "Vegetativo"})
+                  </div>
+                  <div className="text-xs font-mono text-cyan-400">
+                    ☀️ {resolution.biologicalCyclesCompleted} Ciclos Lumínicos completados → Semana Fenológica {resolution.biologicalWeekInStage}
+                  </div>
+                </div>
+              </div>
+
+              {/* Acciones Rápidas: Crear desde Cero o Importar */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <button
+                  type="button"
+                  onClick={handleCreateNewPlan}
+                  className="p-5 rounded-xl bg-cyan-500/10 hover:bg-cyan-500/20 border border-cyan-500/40 text-left flex items-start gap-4 transition-all cursor-pointer group"
+                >
+                  <div className="p-3 rounded-xl bg-cyan-500/20 text-cyan-300">
+                    <Plus size={24} weight="bold" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-black text-cyan-300 group-hover:underline">
+                      ➕ Crear un Plan Nuevo desde Cero para {batch?.strain || "este Lote"}
+                    </div>
+                    <p className="text-xs font-mono text-slate-300 mt-1">
+                      Armá tu propio cronograma semana por semana con tus productos, dosis en g/L o ml/L, pH, EC y PPM.
+                    </p>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowSheetImporter(true)}
+                  className="p-5 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/40 text-left flex items-start gap-4 transition-all cursor-pointer group"
+                >
+                  <div className="p-3 rounded-xl bg-emerald-500/20 text-emerald-300">
+                    <CloudArrowDown size={24} weight="bold" />
+                  </div>
+                  <div>
+                    <div className="text-sm font-black text-emerald-300 group-hover:underline">
+                      📥 Importar Plan desde Google Sheets
+                    </div>
+                    <p className="text-xs font-mono text-slate-300 mt-1">
+                      Pegá el enlace compartido de tu hoja de cálculo y convertilo automáticamente en un plan semanal editable.
+                    </p>
+                  </div>
+                </button>
+              </div>
+
+              {/* Biblioteca de Planes / Plantillas Disponibles para Asignar o Editar */}
+              <div className="flex flex-col gap-3">
+                <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-slate-300">
+                  📚 O seleccioná uno de los Planes / Plantillas guardados en la Biblioteca ({plans.length}):
+                </h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {plans.map(planItem => {
+                    const vegCount = planItem.weeks_schedule.filter(w => w.stage === "vegetativo").length;
+                    const floraCount = planItem.weeks_schedule.filter(w => w.stage === "floración").length;
+                    return (
+                      <div
+                        key={planItem.id}
+                        className="p-4 rounded-xl bg-black/30 border border-panel-border hover:border-emerald-500/40 flex flex-col justify-between gap-3 transition-all"
                       >
+                        <div>
+                          <div className="text-sm font-black text-foreground">{planItem.name}</div>
+                          <p className="text-[11px] font-mono text-slate-400 mt-1">{planItem.subtitle}</p>
+                          <div className="flex flex-wrap gap-2 mt-2.5 text-[10px] font-mono">
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                              🌱 {vegCount} Sem. Vegetativo
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                              🌸 {floraCount} Sem. Floración
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-blue-500/15 text-blue-300 border border-blue-500/30">
+                              💧 {planItem.water_per_plant_liters}L / Planta
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-panel-border/40">
+                          <button
+                            type="button"
+                            onClick={() => handleSaveAssignment(planItem.id, weekOffset, syncMode)}
+                            className="flex-1 py-2 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer"
+                          >
+                            <CheckCircle size={15} weight="fill" /> Asignar al Lote
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setInspectingPlanId(planItem.id)}
+                            className="py-2 px-3 rounded-lg bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-bold cursor-pointer"
+                          >
+                            👁️ Ver Tabla
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleStartEdit(planItem)}
+                            className="py-2 px-3 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 text-xs font-bold cursor-pointer"
+                          >
+                            ✏️ Editar
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* 1. Tarjetas Resumen de Configuración del Lote y Sincronización (>24h) */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-3.5">
+                {/* Selector de Plan / Asignación al Lote */}
+                <div className="p-3.5 rounded-xl bg-black/25 border border-panel-border flex flex-col justify-between gap-2">
+                  <span className="text-[10px] font-mono uppercase text-brand-slate-600 dark:text-slate-400 font-bold">
+                    {batch ? `Asignación para Lote ${batch.id}` : "Seleccionar Plan para Ver/Editar"}
+                  </span>
+                  {batch ? (
+                    <>
+                      <select
+                        value={assignedPlanId}
+                        onChange={e => handleSaveAssignment(e.target.value, weekOffset, syncMode)}
+                        className="w-full bg-panel-base border border-panel-border rounded-lg p-2 text-xs font-mono text-foreground focus:border-emerald-500 outline-none"
+                      >
+                        <option value="">-- Sin Plan Asignado (Libre) --</option>
                         {plans.map(p => (
                           <option key={p.id} value={p.id}>
-                            👁️ Ver: {p.name}
+                            {p.name}
                           </option>
                         ))}
                       </select>
-                      <button
-                        type="button"
-                        onClick={() => handleSaveAssignment(previewPlanId, weekOffset, syncMode)}
-                        className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold whitespace-nowrap cursor-pointer"
-                      >
-                        Asignar a Lote
-                      </button>
-                    </div>
+                      {!assignedPlanId ? (
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] font-mono text-amber-300 truncate">
+                            👁️ Vista previa sin asignar
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleSaveAssignment(activeViewPlan.id, weekOffset, syncMode)}
+                            className="px-2.5 py-1 rounded bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-bold whitespace-nowrap cursor-pointer"
+                          >
+                            Asignar a Lote
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-[10px] font-mono text-emerald-400">
+                          ✅ Activo • Agua/Planta: {activeViewPlan.water_per_plant_liters}L
+                        </span>
+                      )}
+                    </>
                   ) : (
-                    <span className="text-[10px] font-mono text-emerald-400">
-                      ✅ Activo • Agua/Planta: {currentPlan.water_per_plant_liters}L
-                    </span>
+                    <select
+                      value={activeViewPlan.id}
+                      onChange={e => setInspectingPlanId(e.target.value)}
+                      className="w-full bg-panel-base border border-panel-border rounded-lg p-2 text-xs font-mono text-foreground focus:border-emerald-500 outline-none"
+                    >
+                      {plans.map(p => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
                   )}
-                </>
-              ) : (
-                <select
-                  value={previewPlanId}
-                  onChange={e => setPreviewPlanId(e.target.value)}
-                  className="w-full bg-panel-base border border-panel-border rounded-lg p-2 text-xs font-mono text-foreground focus:border-emerald-500 outline-none"
-                >
-                  {plans.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-
-            {/* Estado de Días y Fotoperiodo (>24h) */}
-            <div className="p-3.5 rounded-xl bg-black/25 border border-panel-border flex flex-col justify-between gap-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase text-brand-slate-600 dark:text-slate-400 font-bold">
-                  Reloj del Lote & Fotoperiodo
-                </span>
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-300 border border-yellow-500/30 font-bold">
-                  {resolution.lightHours}L / {resolution.darkHours}O ({resolution.cycleTotalHours}h)
-                </span>
-              </div>
-              <div className="text-sm font-bold text-foreground font-mono">
-                Día {resolution.calendarDaysInStage} Calendario (Sem {resolution.calendarWeekInStage})
-              </div>
-              <div className="text-[11px] font-mono text-cyan-400">
-                ☀️ {resolution.biologicalCyclesCompleted} Ciclos Lumínicos → Sem Fenológica {resolution.biologicalWeekInStage}
-              </div>
-            </div>
-
-            {/* Modo de Sincronización (>24h) y Ajuste de Semana (Estiramiento) */}
-            <div className="p-3.5 rounded-xl bg-black/25 border border-cyan-500/30 flex flex-col justify-between gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase text-cyan-400 font-bold">
-                  Sincronización de Semana
-                </span>
-                {savingAssign && (
-                  <span className="text-[9px] font-mono text-emerald-400 animate-pulse">Guardando...</span>
-                )}
-              </div>
-              <div className="flex gap-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSyncMode("biological_cycles");
-                    if (assignedPlanId) handleSaveAssignment(assignedPlanId, weekOffset, "biological_cycles");
-                  }}
-                  className={`flex-1 py-1 px-2 rounded text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
-                    syncMode === "biological_cycles"
-                      ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50"
-                      : "bg-black/30 text-slate-400 border-panel-border"
-                  }`}
-                >
-                  Por Ciclos ({resolution.cycleTotalHours}h)
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSyncMode("calendar_days");
-                    if (assignedPlanId) handleSaveAssignment(assignedPlanId, weekOffset, "calendar_days");
-                  }}
-                  className={`flex-1 py-1 px-2 rounded text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
-                    syncMode === "calendar_days"
-                      ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50"
-                      : "bg-black/30 text-slate-400 border-panel-border"
-                  }`}
-                >
-                  Calendario (24h)
-                </button>
-              </div>
-              <div className="flex items-center justify-between gap-2 pt-0.5">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = weekOffset - 1;
-                    setWeekOffset(next);
-                    if (assignedPlanId) handleSaveAssignment(assignedPlanId, next, syncMode);
-                  }}
-                  className="px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 border border-panel-border text-xs font-mono font-bold cursor-pointer"
-                >
-                  -1 Sem
-                </button>
-                <span className="text-[11px] font-mono font-bold text-emerald-400">
-                  Activa: {resolution.activeWeek.label}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = weekOffset + 1;
-                    setWeekOffset(next);
-                    if (assignedPlanId) handleSaveAssignment(assignedPlanId, next, syncMode);
-                  }}
-                  className="px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 border border-panel-border text-xs font-mono font-bold cursor-pointer"
-                >
-                  +1 Sem
-                </button>
-              </div>
-            </div>
-
-            {/* Objetivos de la Semana Actual */}
-            <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/40 flex flex-col justify-between gap-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-mono uppercase text-emerald-400 font-bold">
-                  🎯 Meta {resolution.activeWeek.label}
-                </span>
-                <span className="text-[10px] font-mono text-emerald-300 font-bold">
-                  ~{resolution.suggestedBatchWaterLiters}L / Lote ({resolution.numPlants} pl)
-                </span>
-              </div>
-              <div className="text-xs font-bold text-foreground truncate">
-                {resolution.activeWeek.phenology}
-              </div>
-              <div className="flex flex-wrap gap-1.5 text-[10px] font-mono font-bold">
-                <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
-                  pH {resolution.activeWeek.target_ph_min === resolution.activeWeek.target_ph_max ? resolution.activeWeek.target_ph_min : `${resolution.activeWeek.target_ph_min}–${resolution.activeWeek.target_ph_max}`}
-                </span>
-                <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                  EC {resolution.activeWeek.target_ec_min === resolution.activeWeek.target_ec_max ? resolution.activeWeek.target_ec_min : `${resolution.activeWeek.target_ec_min}–${resolution.activeWeek.target_ec_max}`}
-                </span>
-                <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                  {resolution.activeWeek.target_ppm_min === resolution.activeWeek.target_ppm_max ? resolution.activeWeek.target_ppm_min : `${resolution.activeWeek.target_ppm_min}–${resolution.activeWeek.target_ppm_max}`} ppm
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {isEditingPlan && (
-            <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-xs font-mono text-amber-200 flex items-center justify-between gap-2">
-              <span>
-                🛠️ <strong>Modo Edición Activo:</strong> Hacé clic en <strong>"✏️ Editar"</strong> en cualquier fila para modificar sus productos (`g/L` o `ml/L`), pH, EC y PPM, o agregá nuevas semanas. Al finalizar presioná <strong>"Guardar Plan"</strong> arriba a la derecha.
-              </span>
-            </div>
-          )}
-
-          {/* 3. FASE 1: TABLA VEGETATIVO */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black uppercase tracking-wider text-emerald-400 flex items-center gap-2">
-                <Leaf size={16} weight="fill" /> Fase 1: Vegetativo y Desarrollo Radicular ({vegWeeks.length} Semanas)
-              </h3>
-              {isEditingPlan && (
-                <button
-                  type="button"
-                  onClick={() => handleAddWeekToDraft("vegetativo")}
-                  className="px-3 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center gap-1 cursor-pointer"
-                >
-                  <Plus size={14} weight="bold" /> + Semana Vegetativo
-                </button>
-              )}
-            </div>
-            <div className="overflow-x-auto rounded-xl border border-panel-border">
-              <table className="w-full text-left text-xs font-mono border-collapse">
-                <thead>
-                  <tr className="bg-emerald-950/40 border-b border-panel-border text-emerald-300 uppercase text-[10px]">
-                    <th className="p-2.5">Semana</th>
-                    <th className="p-2.5">Etapa / Fenología</th>
-                    <th className="p-2.5">🅰️ Nutrición Principal (Dosis/L)</th>
-                    <th className="p-2.5">Por Bidón ({currentPlan.tank_reference_liters}L)</th>
-                    <th className="p-2.5">🅱️ Riego Secundario / Intermedio</th>
-                    <th className="p-2.5 text-center">pH Obj.</th>
-                    <th className="p-2.5 text-center">EC (mS/cm)</th>
-                    <th className="p-2.5 text-center">PPM ({currentPlan.tds_scale})</th>
-                    <th className="p-2.5">Observaciones</th>
-                    {isEditingPlan && <th className="p-2.5 text-right">Acciones</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-panel-border/40">
-                  {vegWeeks.map(w => renderEditableWeekRow(w, "emerald"))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* 4. FASE 2: TABLA FLORACIÓN */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-black uppercase tracking-wider text-purple-400 flex items-center gap-2">
-                <Lightning size={16} weight="fill" /> Fase 2: Floración y Engorde de Cogollos ({floraWeeks.length} Semanas)
-              </h3>
-              {isEditingPlan && (
-                <button
-                  type="button"
-                  onClick={() => handleAddWeekToDraft("floración")}
-                  className="px-3 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold flex items-center gap-1 cursor-pointer"
-                >
-                  <Plus size={14} weight="bold" /> + Semana Floración
-                </button>
-              )}
-            </div>
-            <div className="overflow-x-auto rounded-xl border border-panel-border">
-              <table className="w-full text-left text-xs font-mono border-collapse">
-                <thead>
-                  <tr className="bg-purple-950/40 border-b border-panel-border text-purple-300 uppercase text-[10px]">
-                    <th className="p-2.5">Semana</th>
-                    <th className="p-2.5">Etapa / Fenología</th>
-                    <th className="p-2.5">🅰️ Nutrición Principal (Dosis/L)</th>
-                    <th className="p-2.5">Por Bidón ({currentPlan.tank_reference_liters}L)</th>
-                    <th className="p-2.5">🅱️ Riego Secundario / Intermedio</th>
-                    <th className="p-2.5 text-center">pH Obj.</th>
-                    <th className="p-2.5 text-center">EC (mS/cm)</th>
-                    <th className="p-2.5 text-center">PPM ({currentPlan.tds_scale})</th>
-                    <th className="p-2.5">Observaciones</th>
-                    {isEditingPlan && <th className="p-2.5 text-right">Acciones</th>}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-panel-border/40">
-                  {floraWeeks.map(w => renderEditableWeekRow(w, "purple"))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* 5. PROTOCOLOS TÉCNICOS Y REGLAS DE ORO DEL PLAN */}
-          {currentPlan.technical_protocols && currentPlan.technical_protocols.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {currentPlan.technical_protocols.map((sec, idx) => (
-                <div
-                  key={idx}
-                  className="p-4 rounded-xl bg-black/25 border border-panel-border flex flex-col gap-2"
-                >
-                  <h4 className="text-xs font-mono font-bold uppercase text-amber-400">
-                    {sec.title}
-                  </h4>
-                  <ul className="flex flex-col gap-1.5 text-xs font-mono text-slate-300">
-                    {sec.bullets.map((b, bIdx) => (
-                      <li key={bIdx} className="leading-relaxed">
-                        • {b}
-                      </li>
-                    ))}
-                  </ul>
                 </div>
-              ))}
-            </div>
+
+                {/* Estado de Días y Fotoperiodo (>24h) */}
+                <div className="p-3.5 rounded-xl bg-black/25 border border-panel-border flex flex-col justify-between gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase text-brand-slate-600 dark:text-slate-400 font-bold">
+                      Reloj del Lote & Fotoperiodo
+                    </span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-yellow-500/15 text-yellow-300 border border-yellow-500/30 font-bold">
+                      {resolution.lightHours}L / {resolution.darkHours}O ({resolution.cycleTotalHours}h)
+                    </span>
+                  </div>
+                  <div className="text-sm font-bold text-foreground font-mono">
+                    Día {resolution.calendarDaysInStage} Calendario (Sem {resolution.calendarWeekInStage})
+                  </div>
+                  <div className="text-[11px] font-mono text-cyan-400">
+                    ☀️ {resolution.biologicalCyclesCompleted} Ciclos Lumínicos → Sem Fenológica {resolution.biologicalWeekInStage}
+                  </div>
+                </div>
+
+                {/* Modo de Sincronización (>24h) y Ajuste de Semana (Estiramiento) */}
+                <div className="p-3.5 rounded-xl bg-black/25 border border-cyan-500/30 flex flex-col justify-between gap-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase text-cyan-400 font-bold">
+                      Sincronización de Semana
+                    </span>
+                    {savingAssign && (
+                      <span className="text-[9px] font-mono text-emerald-400 animate-pulse">Guardando...</span>
+                    )}
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSyncMode("biological_cycles");
+                        if (assignedPlanId) handleSaveAssignment(assignedPlanId, weekOffset, "biological_cycles");
+                      }}
+                      className={`flex-1 py-1 px-2 rounded text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
+                        syncMode === "biological_cycles"
+                          ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50"
+                          : "bg-black/30 text-slate-400 border-panel-border"
+                      }`}
+                    >
+                      Por Ciclos ({resolution.cycleTotalHours}h)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSyncMode("calendar_days");
+                        if (assignedPlanId) handleSaveAssignment(assignedPlanId, weekOffset, "calendar_days");
+                      }}
+                      className={`flex-1 py-1 px-2 rounded text-[10px] font-mono font-bold border transition-colors cursor-pointer ${
+                        syncMode === "calendar_days"
+                          ? "bg-cyan-500/20 text-cyan-300 border-cyan-500/50"
+                          : "bg-black/30 text-slate-400 border-panel-border"
+                      }`}
+                    >
+                      Calendario (24h)
+                    </button>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = weekOffset - 1;
+                        setWeekOffset(next);
+                        if (assignedPlanId) handleSaveAssignment(assignedPlanId, next, syncMode);
+                      }}
+                      className="px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 border border-panel-border text-xs font-mono font-bold cursor-pointer"
+                    >
+                      -1 Sem
+                    </button>
+                    <span className="text-[11px] font-mono font-bold text-emerald-400">
+                      Activa: {resolution.activeWeek.label}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = weekOffset + 1;
+                        setWeekOffset(next);
+                        if (assignedPlanId) handleSaveAssignment(assignedPlanId, next, syncMode);
+                      }}
+                      className="px-2 py-0.5 rounded bg-white/5 hover:bg-white/10 border border-panel-border text-xs font-mono font-bold cursor-pointer"
+                    >
+                      +1 Sem
+                    </button>
+                  </div>
+                </div>
+
+                {/* Objetivos de la Semana Actual */}
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/40 flex flex-col justify-between gap-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase text-emerald-400 font-bold">
+                      🎯 Meta {resolution.activeWeek.label}
+                    </span>
+                    <span className="text-[10px] font-mono text-emerald-300 font-bold">
+                      ~{resolution.suggestedBatchWaterLiters}L / Lote ({resolution.numPlants} pl)
+                    </span>
+                  </div>
+                  <div className="text-xs font-bold text-foreground truncate">
+                    {resolution.activeWeek.phenology}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 text-[10px] font-mono font-bold">
+                    <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      pH {resolution.activeWeek.target_ph_min === resolution.activeWeek.target_ph_max ? resolution.activeWeek.target_ph_min : `${resolution.activeWeek.target_ph_min}–${resolution.activeWeek.target_ph_max}`}
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                      EC {resolution.activeWeek.target_ec_min === resolution.activeWeek.target_ec_max ? resolution.activeWeek.target_ec_min : `${resolution.activeWeek.target_ec_min}–${resolution.activeWeek.target_ec_max}`}
+                    </span>
+                    <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                      {resolution.activeWeek.target_ppm_min === resolution.activeWeek.target_ppm_max ? resolution.activeWeek.target_ppm_min : `${resolution.activeWeek.target_ppm_min}–${resolution.activeWeek.target_ppm_max}`} ppm
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {isEditingPlan && (
+                <div className="p-3 rounded-xl bg-amber-500/15 border border-amber-500/40 text-xs font-mono text-amber-200 flex items-center justify-between gap-2">
+                  <span>
+                    🛠️ <strong>Modo Edición Activo:</strong> Hacé clic en <strong>"✏️ Editar"</strong> en cualquier fila para modificar sus productos (`g/L` o `ml/L`), pH, EC y PPM, o agregá nuevas semanas. Al finalizar presioná <strong>"Guardar Plan"</strong> arriba a la derecha.
+                  </span>
+                </div>
+              )}
+
+              {/* 3. FASE 1: TABLA VEGETATIVO */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-black uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                    <Leaf size={16} weight="fill" /> Fase 1: Vegetativo y Desarrollo Radicular ({vegWeeks.length} Semanas)
+                  </h3>
+                  {isEditingPlan && (
+                    <button
+                      type="button"
+                      onClick={() => handleAddWeekToDraft("vegetativo")}
+                      className="px-3 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus size={14} weight="bold" /> + Semana Vegetativo
+                    </button>
+                  )}
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-panel-border">
+                  <table className="w-full text-left text-xs font-mono border-collapse">
+                    <thead>
+                      <tr className="bg-emerald-950/40 border-b border-panel-border text-emerald-300 uppercase text-[10px]">
+                        <th className="p-2.5">Semana</th>
+                        <th className="p-2.5">Etapa / Fenología</th>
+                        <th className="p-2.5">🅰️ Nutrición Principal (Dosis/L)</th>
+                        <th className="p-2.5">Por Bidón ({activeViewPlan.tank_reference_liters}L)</th>
+                        <th className="p-2.5">🅱️ Riego Secundario / Intermedio</th>
+                        <th className="p-2.5 text-center">pH Obj.</th>
+                        <th className="p-2.5 text-center">EC (mS/cm)</th>
+                        <th className="p-2.5 text-center">PPM ({activeViewPlan.tds_scale})</th>
+                        <th className="p-2.5">Observaciones</th>
+                        {isEditingPlan && <th className="p-2.5 text-right">Acciones</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-panel-border/40">
+                      {vegWeeks.map(w => renderEditableWeekRow(w, "emerald"))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* 4. FASE 2: TABLA FLORACIÓN */}
+              <div className="flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-black uppercase tracking-wider text-purple-400 flex items-center gap-2">
+                    <Lightning size={16} weight="fill" /> Fase 2: Floración y Engorde de Cogollos ({floraWeeks.length} Semanas)
+                  </h3>
+                  {isEditingPlan && (
+                    <button
+                      type="button"
+                      onClick={() => handleAddWeekToDraft("floración")}
+                      className="px-3 py-1 rounded-lg bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus size={14} weight="bold" /> + Semana Floración
+                    </button>
+                  )}
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-panel-border">
+                  <table className="w-full text-left text-xs font-mono border-collapse">
+                    <thead>
+                      <tr className="bg-purple-950/40 border-b border-panel-border text-purple-300 uppercase text-[10px]">
+                        <th className="p-2.5">Semana</th>
+                        <th className="p-2.5">Etapa / Fenología</th>
+                        <th className="p-2.5">🅰️ Nutrición Principal (Dosis/L)</th>
+                        <th className="p-2.5">Por Bidón ({activeViewPlan.tank_reference_liters}L)</th>
+                        <th className="p-2.5">🅱️ Riego Secundario / Intermedio</th>
+                        <th className="p-2.5 text-center">pH Obj.</th>
+                        <th className="p-2.5 text-center">EC (mS/cm)</th>
+                        <th className="p-2.5 text-center">PPM ({activeViewPlan.tds_scale})</th>
+                        <th className="p-2.5">Observaciones</th>
+                        {isEditingPlan && <th className="p-2.5 text-right">Acciones</th>}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-panel-border/40">
+                      {floraWeeks.map(w => renderEditableWeekRow(w, "purple"))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* 5. PROTOCOLOS TÉCNICOS Y REGLAS DE ORO DEL PLAN */}
+              {activeViewPlan.technical_protocols && activeViewPlan.technical_protocols.length > 0 && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {activeViewPlan.technical_protocols.map((sec, idx) => (
+                    <div
+                      key={idx}
+                      className="p-4 rounded-xl bg-black/25 border border-panel-border flex flex-col gap-2"
+                    >
+                      <h4 className="text-xs font-mono font-bold uppercase text-amber-400">
+                        {sec.title}
+                      </h4>
+                      <ul className="flex flex-col gap-1.5 text-xs font-mono text-slate-300">
+                        {sec.bullets.map((b, bIdx) => (
+                          <li key={bIdx} className="leading-relaxed">
+                            • {b}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
