@@ -612,9 +612,9 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto flex flex-col md:flex-row">
+        <div className="flex-1 overflow-y-auto flex flex-col md:flex-row min-w-0">
           {/* Panel de Inyección (Col 1) */}
-          <div className="p-6 md:w-[54%] border-r border-panel-border/30 bg-black/10 flex flex-col">
+          <div className="p-6 md:w-[54%] min-w-0 overflow-x-hidden border-r border-panel-border/30 bg-black/10 flex flex-col">
             <div className="flex justify-between items-center mb-5">
               <h3 className="text-sm uppercase tracking-widest font-bold text-brand-slate-600 relative pl-3 border-l-2 border-emerald-500">
                 {editingEventId ? "Editar Registro" : "Nuevo Registro"}
@@ -735,15 +735,15 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
                   </div>
 
                   {/* 2. INSUMOS Y CALCULADORA DE GRAMOS POR LITRO (g/L) */}
-                  <div className="p-3.5 rounded-xl border border-panel-border bg-black/[0.03] dark:bg-black/20 flex flex-col gap-3">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-mono font-bold uppercase text-brand-slate-600 dark:text-slate-300 flex items-center gap-1.5">
-                        <Flask size={15} className="text-cyan-400" /> Insumos Diluidos en el Agua
+                  <div className="p-3.5 rounded-xl border border-panel-border bg-black/[0.03] dark:bg-black/20 flex flex-col gap-3 w-full min-w-0 overflow-hidden">
+                    <div className="flex items-center justify-between gap-2 min-w-0">
+                      <label className="text-xs font-mono font-bold uppercase text-brand-slate-600 dark:text-slate-300 flex items-center gap-1.5 truncate">
+                        <Flask size={15} className="text-cyan-400 shrink-0" /> Insumos Diluidos en el Agua
                       </label>
                       <button
                         type="button"
                         onClick={addFertRow}
-                        className="text-[11px] font-mono font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 px-2 py-1 rounded bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors"
+                        className="shrink-0 text-[11px] font-mono font-bold text-cyan-400 hover:text-cyan-300 flex items-center gap-1 px-2 py-1 rounded bg-cyan-500/10 border border-cyan-500/20 hover:bg-cyan-500/20 transition-colors cursor-pointer"
                       >
                         <Plus size={12} weight="bold" /> + Agregar Sal / Insumo
                       </button>
@@ -762,17 +762,17 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
                       return (
                         <div
                           key={idx}
-                          className={`p-3 rounded-lg border flex flex-col gap-2.5 ${
+                          className={`p-3 rounded-lg border flex flex-col gap-2.5 w-full min-w-0 overflow-hidden ${
                             isMineral && row.productName
                               ? "border-cyan-500/40 bg-cyan-950/10"
                               : "border-panel-border/60 bg-black/20"
                           }`}
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 w-full min-w-0">
                             <select
                               value={row.productName}
                               onChange={e => handleProductChange(idx, e.target.value)}
-                              className="flex-1 bg-panel-base border border-panel-border rounded-lg p-2.5 text-xs font-mono focus:border-cyan-500 outline-none truncate"
+                              className="flex-1 min-w-0 w-0 bg-panel-base border border-panel-border rounded-lg p-2.5 text-xs font-mono focus:border-cyan-500 outline-none truncate"
                             >
                               <option value="">
                                 {idx === 0
@@ -799,14 +799,18 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
                               })}
                             </select>
 
-                            {fertRows.length > 1 && (
+                            {(fertRows.length > 1 || Boolean(row.productName)) && (
                               <button
                                 type="button"
-                                onClick={() => removeFertRow(idx)}
-                                className="p-2 text-red-400 hover:bg-red-500/10 rounded-lg border border-red-500/20 transition-colors"
-                                title="Quitar de la solución"
+                                onClick={e => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  removeFertRow(idx);
+                                }}
+                                className="shrink-0 p-2.5 text-red-400 hover:text-red-300 hover:bg-red-500/20 bg-red-500/5 rounded-lg border border-red-500/30 transition-colors cursor-pointer"
+                                title={fertRows.length > 1 ? "Eliminar este insumo de la mezcla" : "Quitar producto seleccionado"}
                               >
-                                <Trash size={15} />
+                                <Trash size={15} weight="bold" />
                               </button>
                             )}
                           </div>
