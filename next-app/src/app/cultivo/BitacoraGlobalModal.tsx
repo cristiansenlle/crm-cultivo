@@ -52,6 +52,7 @@ export function BitacoraGlobalModal({
   const [phWater, setPhWater] = useState<string>("");
   const [ecWater, setEcWater] = useState<string>("");
   const [ecUnit, setEcUnit] = useState<"mS/cm" | "µS/cm" | "ppm">("mS/cm");
+  const [ppmWater, setPpmWater] = useState<string>("");
 
   const [desc, setDesc] = useState("");
   const [podaType, setPodaType] = useState("Defoliación Baja");
@@ -221,6 +222,7 @@ export function BitacoraGlobalModal({
     const waterLitersPerBatch = waterLitersTotal > 0 ? Number((waterLitersTotal / splitFactor).toFixed(2)) : 0;
     const phWaterNum = hasMineralSelected && phWater !== "" ? parseFloat(phWater) : null;
     const ecWaterNum = hasMineralSelected && ecWater !== "" ? parseFloat(ecWater) : null;
+    const ppmWaterNum = hasMineralSelected && ppmWater !== "" ? parseFloat(ppmWater) : null;
 
     const updatedInv = inventory.map(i => ({ ...i }));
 
@@ -326,6 +328,7 @@ export function BitacoraGlobalModal({
         phWater: phWaterNum,
         ecWater: ecWaterNum,
         ecUnit,
+        ppmWater: ppmWaterNum,
         recipeItems: perBatchRecipeItems,
         notes: desc,
         perBatchSuffix: true
@@ -578,12 +581,12 @@ export function BitacoraGlobalModal({
                   })}
                 </div>
 
-                {/* 3. pH y EC del Tanque (EXCLUSIVO PARA FERTILIZANTES MINERALES) */}
+                {/* 3. pH, EC y PPM del Tanque (EXCLUSIVO PARA FERTILIZANTES MINERALES) */}
                 {hasMineralSelected && (
-                  <div className="p-3.5 rounded-xl border border-purple-500/30 bg-purple-500/5 grid grid-cols-2 gap-3 animate-in fade-in duration-150">
+                  <div className="p-3.5 rounded-xl border border-purple-500/30 bg-purple-500/5 grid grid-cols-1 sm:grid-cols-3 gap-2.5 animate-in fade-in duration-150">
                     <div>
                       <label className="text-[10px] font-mono uppercase text-purple-300 font-bold block mb-1">
-                        pH Solución Tanque *
+                        pH Tanque *
                       </label>
                       <input
                         type="number"
@@ -599,7 +602,7 @@ export function BitacoraGlobalModal({
                     </div>
                     <div>
                       <label className="text-[10px] font-mono uppercase text-purple-300 font-bold block mb-1">
-                        EC Solución Tanque *
+                        EC Tanque *
                       </label>
                       <div className="flex gap-1">
                         <input
@@ -610,17 +613,35 @@ export function BitacoraGlobalModal({
                           value={ecWater}
                           onChange={e => setEcWater(e.target.value)}
                           placeholder="Ej: 1.5"
-                          className="w-full bg-black/25 border border-purple-500/40 rounded-lg p-2.5 text-sm font-mono text-foreground outline-none"
+                          className="w-full min-w-0 bg-black/25 border border-purple-500/40 rounded-lg p-2.5 text-sm font-mono text-foreground outline-none"
                         />
                         <select
                           value={ecUnit}
                           onChange={e => setEcUnit(e.target.value as any)}
-                          className="bg-black/40 border border-purple-500/30 rounded-lg px-2 text-[11px] font-mono text-purple-300 outline-none"
+                          className="bg-black/40 border border-purple-500/30 rounded-lg px-1.5 text-[10px] font-mono text-purple-300 outline-none shrink-0"
                         >
                           <option value="mS/cm">mS/cm</option>
                           <option value="µS/cm">µS/cm</option>
-                          <option value="ppm">ppm</option>
                         </select>
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-mono uppercase text-purple-300 font-bold block mb-1">
+                        PPM Tanque (TDS)
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="1"
+                          min="0"
+                          value={ppmWater}
+                          onChange={e => setPpmWater(e.target.value)}
+                          placeholder="Ej: 750"
+                          className="w-full bg-black/25 border border-purple-500/40 rounded-lg p-2.5 pr-11 text-sm font-mono text-foreground outline-none"
+                        />
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold text-purple-300">
+                          ppm
+                        </span>
                       </div>
                     </div>
                   </div>

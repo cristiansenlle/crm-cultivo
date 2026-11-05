@@ -24,9 +24,11 @@ export interface FertigationMetrics {
   ph_water: number | null;
   ec_water: number | null;
   ec_unit: 'mS/cm' | 'µS/cm' | 'ppm';
+  ppm_water: number | null;
   ec_water_base: number | null;
   ph_runoff: number | null;
   ec_runoff: number | null;
+  ppm_runoff: number | null;
   recipe_items: RecipeItemApplied[];
   raw_notes: string;
   is_mineral: boolean;
@@ -103,9 +105,11 @@ export function buildFertigationDescription(params: {
   phWater?: number | null;
   ecWater?: number | null;
   ecUnit?: string;
+  ppmWater?: number | null;
   ecWaterBase?: number | null;
   phRunoff?: number | null;
   ecRunoff?: number | null;
+  ppmRunoff?: number | null;
   recipeItems: RecipeItemApplied[];
   notes?: string;
   perBatchSuffix?: boolean;
@@ -116,15 +120,17 @@ export function buildFertigationDescription(params: {
     phWater,
     ecWater,
     ecUnit = 'mS/cm',
+    ppmWater,
     ecWaterBase,
     phRunoff,
     ecRunoff,
+    ppmRunoff,
     recipeItems,
     notes = '',
     perBatchSuffix = false
   } = params;
 
-  const hasMineral = recipeItems.some(i => i.origin_type === 'mineral' || i.dose_uom === 'g/L');
+  const hasMineral = recipeItems.some(i => i.origin_type === 'mineral');
   const headerPrefix = actionType === 'ipm'
     ? 'IPM'
     : hasMineral
@@ -150,14 +156,17 @@ export function buildFertigationDescription(params: {
   if (waterLiters && waterLiters > 0) techTags.push(`Agua: ${waterLiters}L`);
   if (phWater !== null && phWater !== undefined && !isNaN(Number(phWater))) techTags.push(`pH: ${phWater}`);
   if (ecWater !== null && ecWater !== undefined && !isNaN(Number(ecWater))) techTags.push(`EC: ${ecWater} ${ecUnit}`);
+  if (ppmWater !== null && ppmWater !== undefined && !isNaN(Number(ppmWater))) techTags.push(`PPM: ${ppmWater} ppm`);
   if (ecWaterBase !== null && ecWaterBase !== undefined && !isNaN(Number(ecWaterBase))) techTags.push(`EC Base: ${ecWaterBase}`);
   if (
     (phRunoff !== null && phRunoff !== undefined && !isNaN(Number(phRunoff))) ||
-    (ecRunoff !== null && ecRunoff !== undefined && !isNaN(Number(ecRunoff)))
+    (ecRunoff !== null && ecRunoff !== undefined && !isNaN(Number(ecRunoff))) ||
+    (ppmRunoff !== null && ppmRunoff !== undefined && !isNaN(Number(ppmRunoff)))
   ) {
     const rParts: string[] = [];
     if (phRunoff !== null && phRunoff !== undefined && !isNaN(Number(phRunoff))) rParts.push(`pH ${phRunoff}`);
     if (ecRunoff !== null && ecRunoff !== undefined && !isNaN(Number(ecRunoff))) rParts.push(`EC ${ecRunoff}`);
+    if (ppmRunoff !== null && ppmRunoff !== undefined && !isNaN(Number(ppmRunoff))) rParts.push(`PPM ${ppmRunoff}`);
     techTags.push(`Drenaje: ${rParts.join(' / ')}`);
   }
 
@@ -180,9 +189,11 @@ export function parseEventFertigationMetrics(ev: any): FertigationMetrics {
   let ph_water: number | null = ev?.ph_water !== undefined && ev?.ph_water !== null ? Number(ev.ph_water) : null;
   let ec_water: number | null = ev?.ec_water !== undefined && ev?.ec_water !== null ? Number(ev.ec_water) : null;
   let ec_unit: 'mS/cm' | 'µS/cm' | 'ppm' = (ev?.ec_unit as any) || 'mS/cm';
+  let ppm_water: number | null = ev?.ppm_water !== undefined && ev?.ppm_water !== null ? Number(ev.ppm_water) : null;
   let ec_water_base: number | null = ev?.ec_water_base !== undefined && ev?.ec_water_base !== null ? Number(ev.ec_water_base) : null;
   let ph_runoff: number | null = ev?.ph_runoff !== undefined && ev?.ph_runoff !== null ? Number(ev.ph_runoff) : null;
   let ec_runoff: number | null = ev?.ec_runoff !== undefined && ev?.ec_runoff !== null ? Number(ev.ec_runoff) : null;
+  let ppm_runoff: number | null = ev?.ppm_runoff !== undefined && ev?.ppm_runoff !== null ? Number(ev.ppm_runoff) : null;
   let recipe_items: RecipeItemApplied[] = Array.isArray(ev?.recipe_items) ? ev.recipe_items : [];
 
   // Fallback desde bloque técnico [...] en description
@@ -206,18 +217,24 @@ export function parseEventFertigationMetrics(ev: any): FertigationMetrics {
         }
       }
     }
+    if (ppm_water === null) {
+      const mPpm = content.match(/(?:^|\|\s*)PPM:\s*([0-9.]+)/i);
+      if (mPpm) ppm_water = parseFloat(mPpm[1]);
+    }
     if (ec_water_base === null) {
       const mEcBase = content.match(/EC Base:\s*([0-9.]+)/i);
       if (mEcBase) ec_water_base = parseFloat(mEcBase[1]);
     }
-    if (ph_runoff === null || ec_runoff === null) {
+    if (ph_runoff === null || ec_runoff === null || ppm_runoff === null) {
       const mRunoff = content.match(/Drenaje:\s*([^\]]+)/i);
       if (mRunoff) {
         const rStr = mRunoff[1];
         const mRPh = rStr.match(/pH\s*([0-9.]+)/i);
         const mREc = rStr.match(/EC\s*([0-9.]+)/i);
+        const mRPpm = rStr.match(/PPM\s*([0-9.]+)/i);
         if (ph_runoff === null && mRPh) ph_runoff = parseFloat(mRPh[1]);
         if (ec_runoff === null && mREc) ec_runoff = parseFloat(mREc[1]);
+        if (ppm_runoff === null && mRPpm) ppm_runoff = parseFloat(mRPpm[1]);
       }
     }
   }
@@ -293,9 +310,11 @@ export function parseEventFertigationMetrics(ev: any): FertigationMetrics {
     ph_water,
     ec_water,
     ec_unit,
+    ppm_water,
     ec_water_base,
     ph_runoff,
     ec_runoff,
+    ppm_runoff,
     recipe_items,
     raw_notes,
     is_mineral

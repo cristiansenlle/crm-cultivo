@@ -50,14 +50,16 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
     { productName: "", dosePerLiter: "", totalAmount: "" }
   ]);
 
-  // Parámetros Fisicoquímicos de la Solución (pH y EC)
+  // Parámetros Fisicoquímicos de la Solución (pH, EC y PPM)
   const [phWater, setPhWater] = useState<string>("");
   const [ecWater, setEcWater] = useState<string>("");
   const [ecUnit, setEcUnit] = useState<"mS/cm" | "µS/cm" | "ppm">("mS/cm");
+  const [ppmWater, setPpmWater] = useState<string>("");
   const [showAdvancedMetrics, setShowAdvancedMetrics] = useState<boolean>(false);
   const [ecWaterBase, setEcWaterBase] = useState<string>("");
   const [phRunoff, setPhRunoff] = useState<string>("");
   const [ecRunoff, setEcRunoff] = useState<string>("");
+  const [ppmRunoff, setPpmRunoff] = useState<string>("");
 
   // Otros estados del formulario
   const [desc, setDesc] = useState("");
@@ -298,11 +300,13 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
     setPhWater(parsed.ph_water !== null ? String(parsed.ph_water) : "");
     setEcWater(parsed.ec_water !== null ? String(parsed.ec_water) : "");
     setEcUnit(parsed.ec_unit || "mS/cm");
+    setPpmWater(parsed.ppm_water !== null ? String(parsed.ppm_water) : "");
     setEcWaterBase(parsed.ec_water_base !== null ? String(parsed.ec_water_base) : "");
     setPhRunoff(parsed.ph_runoff !== null ? String(parsed.ph_runoff) : "");
     setEcRunoff(parsed.ec_runoff !== null ? String(parsed.ec_runoff) : "");
+    setPpmRunoff(parsed.ppm_runoff !== null ? String(parsed.ppm_runoff) : "");
     setShowAdvancedMetrics(
-      parsed.ec_water_base !== null || parsed.ph_runoff !== null || parsed.ec_runoff !== null
+      parsed.ec_water_base !== null || parsed.ph_runoff !== null || parsed.ec_runoff !== null || parsed.ppm_runoff !== null
     );
 
     if (parsed.recipe_items.length > 0) {
@@ -356,9 +360,11 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
     setFertRows([{ productName: "", dosePerLiter: "", totalAmount: "" }]);
     setPhWater("");
     setEcWater("");
+    setPpmWater("");
     setEcWaterBase("");
     setPhRunoff("");
     setEcRunoff("");
+    setPpmRunoff("");
     setShowAdvancedMetrics(false);
     setHarvestCutName("Tanda 1");
     setActionType("riego");
@@ -386,9 +392,11 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
     const waterLitersNum = parseFloat(waterLiters) || 0;
     const phWaterNum = hasMineralSelected && phWater !== "" ? parseFloat(phWater) : null;
     const ecWaterNum = hasMineralSelected && ecWater !== "" ? parseFloat(ecWater) : null;
+    const ppmWaterNum = hasMineralSelected && ppmWater !== "" ? parseFloat(ppmWater) : null;
     const ecBaseNum = hasMineralSelected && ecWaterBase !== "" ? parseFloat(ecWaterBase) : null;
     const phRunoffNum = hasMineralSelected && phRunoff !== "" ? parseFloat(phRunoff) : null;
     const ecRunoffNum = hasMineralSelected && ecRunoff !== "" ? parseFloat(ecRunoff) : null;
+    const ppmRunoffNum = hasMineralSelected && ppmRunoff !== "" ? parseFloat(ppmRunoff) : null;
 
     if (actionType === "riego" || actionType === "ipm") {
       const activeRows = fertRows.filter(r => r.productName.trim() !== "");
@@ -497,9 +505,11 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
         phWater: phWaterNum,
         ecWater: ecWaterNum,
         ecUnit,
+        ppmWater: ppmWaterNum,
         ecWaterBase: ecBaseNum,
         phRunoff: phRunoffNum,
         ecRunoff: ecRunoffNum,
+        ppmRunoff: ppmRunoffNum,
         recipeItems: appliedRecipeItems,
         notes: desc
       });
@@ -906,22 +916,22 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
                     })}
                   </div>
 
-                  {/* 3. CONTROL FISICOQUÍMICO DE LA SOLUCIÓN: pH Y EC (EXCLUSIVO PARA FERTILIZANTES MINERALES) */}
+                  {/* 3. CONTROL FISICOQUÍMICO DE LA SOLUCIÓN: pH, EC Y PPM (EXCLUSIVO PARA FERTILIZANTES MINERALES) */}
                   {hasMineralSelected && (
                     <div className="p-3.5 rounded-xl border border-purple-500/30 bg-purple-500/5 flex flex-col gap-3 animate-in fade-in duration-150">
                       <div className="flex items-center justify-between">
                         <label className="text-xs font-mono font-bold uppercase text-purple-300 flex items-center gap-1.5">
-                          <Lightning size={15} weight="fill" className="text-purple-400" /> Parámetros de la Solución (pH & EC)
+                          <Lightning size={15} weight="fill" className="text-purple-400" /> Parámetros de la Solución (pH, EC & PPM)
                         </label>
                         <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">
                           Nutrición Mineral Activa
                         </span>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                         <div>
                           <label className="text-[10px] font-mono uppercase text-brand-slate-600 dark:text-slate-300 block mb-1">
-                            pH del Agua / Solución *
+                            pH Solución *
                           </label>
                           <input
                             type="number"
@@ -938,7 +948,7 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
 
                         <div>
                           <label className="text-[10px] font-mono uppercase text-brand-slate-600 dark:text-slate-300 block mb-1">
-                            EC Solución Final *
+                            EC Solución *
                           </label>
                           <div className="flex gap-1">
                             <input
@@ -949,17 +959,36 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
                               value={ecWater}
                               onChange={e => setEcWater(e.target.value)}
                               placeholder={ecUnit === "mS/cm" ? "Ej: 1.4" : "Ej: 1400"}
-                              className="w-full bg-black/25 border border-purple-500/40 rounded-lg p-2.5 text-sm font-mono text-foreground focus:border-purple-400 outline-none"
+                              className="w-full min-w-0 bg-black/25 border border-purple-500/40 rounded-lg p-2.5 text-sm font-mono text-foreground focus:border-purple-400 outline-none"
                             />
                             <select
                               value={ecUnit}
                               onChange={e => setEcUnit(e.target.value as any)}
-                              className="bg-black/40 border border-purple-500/30 rounded-lg px-2 text-[11px] font-mono text-purple-300 outline-none"
+                              className="bg-black/40 border border-purple-500/30 rounded-lg px-1.5 text-[10px] font-mono text-purple-300 outline-none shrink-0"
                             >
                               <option value="mS/cm">mS/cm</option>
                               <option value="µS/cm">µS/cm</option>
-                              <option value="ppm">ppm</option>
                             </select>
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="text-[10px] font-mono uppercase text-brand-slate-600 dark:text-slate-300 block mb-1">
+                            PPM Solución (TDS)
+                          </label>
+                          <div className="relative">
+                            <input
+                              type="number"
+                              step="1"
+                              min="0"
+                              value={ppmWater}
+                              onChange={e => setPpmWater(e.target.value)}
+                              placeholder="Ej: 700"
+                              className="w-full bg-black/25 border border-purple-500/40 rounded-lg p-2.5 pr-11 text-sm font-mono text-foreground focus:border-purple-400 outline-none"
+                            />
+                            <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold text-purple-300">
+                              ppm
+                            </span>
                           </div>
                         </div>
                       </div>
@@ -981,7 +1010,7 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
                       </button>
 
                       {showAdvancedMetrics && (
-                        <div className="grid grid-cols-3 gap-2 pt-1 animate-in fade-in duration-150">
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1 animate-in fade-in duration-150">
                           <div>
                             <label className="text-[9px] font-mono uppercase text-slate-400 block mb-1">
                               EC Agua Base
@@ -1025,8 +1054,22 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
                               className="w-full bg-black/30 border border-panel-border rounded-lg p-2 text-xs font-mono outline-none focus:border-purple-400"
                             />
                           </div>
+                          <div>
+                            <label className="text-[9px] font-mono uppercase text-slate-400 block mb-1">
+                              PPM Drenaje
+                            </label>
+                            <input
+                              type="number"
+                              step="1"
+                              min="0"
+                              value={ppmRunoff}
+                              onChange={e => setPpmRunoff(e.target.value)}
+                              placeholder="Ej: 850"
+                              className="w-full bg-black/30 border border-panel-border rounded-lg p-2 text-xs font-mono outline-none focus:border-purple-400"
+                            />
+                          </div>
                           {ecDeltaStatus && (
-                            <div className={`col-span-3 text-[10px] font-mono px-2.5 py-1 rounded border ${ecDeltaStatus.color}`}>
+                            <div className={`col-span-2 sm:col-span-4 text-[10px] font-mono px-2.5 py-1 rounded border ${ecDeltaStatus.color}`}>
                               📉 {ecDeltaStatus.label}
                             </div>
                           )}
@@ -1203,10 +1246,11 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
                         </div>
                       </div>
 
-                      {/* Píldoras Técnicas de Fertirriego (Agua, Dosis g/L, pH, EC, Drenaje) */}
+                      {/* Píldoras Técnicas de Fertirriego (Agua, Dosis g/L, pH, EC, PPM, Drenaje) */}
                       {(metrics.water_liters ||
                         metrics.ph_water !== null ||
                         metrics.ec_water !== null ||
+                        metrics.ppm_water !== null ||
                         metrics.recipe_items.length > 0) && (
                         <div className="flex flex-wrap gap-1.5 mt-1">
                           {metrics.water_liters && (
@@ -1234,12 +1278,21 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
                               ⚡ EC {metrics.ec_water} {metrics.ec_unit}
                             </span>
                           )}
-                          {(metrics.ph_runoff !== null || metrics.ec_runoff !== null) && (
+                          {metrics.ppm_water !== null && (
+                            <span className="px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 text-[10px] font-mono font-bold">
+                              🔬 {metrics.ppm_water} ppm
+                            </span>
+                          )}
+                          {(metrics.ph_runoff !== null || metrics.ec_runoff !== null || metrics.ppm_runoff !== null) && (
                             <span className="px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 text-[10px] font-mono">
                               📉 Runoff:{" "}
-                              {metrics.ph_runoff !== null ? `pH ${metrics.ph_runoff}` : ""}
-                              {metrics.ph_runoff !== null && metrics.ec_runoff !== null ? " / " : ""}
-                              {metrics.ec_runoff !== null ? `EC ${metrics.ec_runoff}` : ""}
+                              {[
+                                metrics.ph_runoff !== null ? `pH ${metrics.ph_runoff}` : null,
+                                metrics.ec_runoff !== null ? `EC ${metrics.ec_runoff}` : null,
+                                metrics.ppm_runoff !== null ? `${metrics.ppm_runoff} ppm` : null
+                              ]
+                                .filter(Boolean)
+                                .join(" / ")}
                             </span>
                           )}
                         </div>

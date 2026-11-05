@@ -445,7 +445,7 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
                             <th className="py-2 text-right">Dosis</th>
                             <th className="py-2 text-right">Total</th>
                             <th className="py-2 text-right">Agua (L)</th>
-                            <th className="py-2 text-center">pH / EC</th>
+                            <th className="py-2 text-center">pH / EC / PPM</th>
                             <th className="py-2 text-right">Costo</th>
                           </tr>
                         </thead>
@@ -461,6 +461,7 @@ export function BatchReportModal({ batch, onClose, onEditReport }: BatchReportMo
                             const phecParts: string[] = [];
                             if (m.ph_water !== null) phecParts.push(`pH ${m.ph_water}`);
                             if (m.ec_water !== null) phecParts.push(`EC ${m.ec_water} ${m.ec_unit}`);
+                            if (m.ppm_water !== null) phecParts.push(`${m.ppm_water} ppm`);
                             return (
                               <tr key={idx} className="border-b border-panel-border/20 hover:bg-black/5">
                                 <td className="py-2 whitespace-nowrap">{new Date(e.date_occurred).toLocaleDateString()}</td>
