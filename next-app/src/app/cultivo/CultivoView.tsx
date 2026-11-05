@@ -7,6 +7,14 @@ import { Info, MapPinLine, Tree, Plus, Plant, Coins, AppWindow, FloppyDisk, Penc
 import { supabase } from "../../lib/supabase";
 import { BitacoraModal } from "./BitacoraModal";
 import { BitacoraGlobalModal } from "./BitacoraGlobalModal";
+import { FertilizationPlanModal } from "./FertilizationPlanModal";
+import {
+  FertilizationPlan,
+  RED_HOT_COOKIES_FEEDING_PLAN,
+  loadFertilizationPlans,
+  getBatchPlanAssignment,
+  resolveBatchActivePlanWeek,
+} from "../../lib/agronomy/fertilizationPlanEngine";
 import { PhotoperiodChartModal } from "../../components/PhotoperiodChartModal";
 import { BatchReportModal } from "./BatchReportModal";
 import { AiHealthChartModal } from "../../components/AiHealthChartModal";
@@ -28,6 +36,9 @@ export function CultivoView() {
   
   const [activeBitacora, setActiveBitacora] = useState<any | null>(null);
   const [activeGlobalBitacora, setActiveGlobalBitacora] = useState<boolean>(false);
+  const [activeFertPlanBatch, setActiveFertPlanBatch] = useState<any | null>(null);
+  const [availableFertPlans, setAvailableFertPlans] = useState<FertilizationPlan[]>([RED_HOT_COOKIES_FEEDING_PLAN]);
+  const [fertPlanTick, setFertPlanTick] = useState<number>(0);
 
   // Machine State Modals
   const [fotoModal, setFotoModal] = useState<{isOpen: boolean, batch: any, nextStage: string}>({isOpen: false, batch: null, nextStage: ""});
@@ -154,6 +165,7 @@ export function CultivoView() {
           setAddBatchModalOpen(false);
           setNewBatch({ name: "", strain: "", num_plants: 1, origen: "Semilla" });
           fetchBatches();
+    loadFertilizationPlans(supabase).then(setAvailableFertPlans);
           fetchRooms();
       } else {
           alert("Error creando lote: " + error.message);
@@ -176,6 +188,7 @@ export function CultivoView() {
       if (!error) {
           setEditBatchModalOpen(false);
           fetchBatches();
+    loadFertilizationPlans(supabase).then(setAvailableFertPlans);
           fetchRooms();
       } else {
           alert("Error editando lote: " + error.message);
@@ -202,6 +215,7 @@ export function CultivoView() {
           alert("No se pudo eliminar el lote debido a restricciones de integridad (el lote ya cuenta con un historial económico o agrónomo):\n" + error.message);
       } else {
           fetchBatches();
+    loadFertilizationPlans(supabase).then(setAvailableFertPlans);
           fetchRooms();
       }
   };
@@ -237,6 +251,7 @@ export function CultivoView() {
 
   useEffect(() => {
     fetchBatches();
+    loadFertilizationPlans(supabase).then(setAvailableFertPlans);
   }, []);
 
   const advanceStageIndicator = (batch: any) => {
@@ -323,7 +338,8 @@ export function CultivoView() {
               }
               await fetchRooms();
           }
-          fetchBatches(); 
+          fetchBatches();
+    loadFertilizationPlans(supabase).then(setAvailableFertPlans); 
       } else {
           alert("Error crítico actualizando etapa: " + error.message);
       }
@@ -422,6 +438,7 @@ export function CultivoView() {
           await commitStage(batchId, 'finalizado', updates);
           alert("Lote finalizado y archivado. Reporte de cultivo disponible.");
           fetchBatches();
+    loadFertilizationPlans(supabase).then(setAvailableFertPlans);
       } catch (err: any) {
           alert("Error al finalizar lote: " + err.message);
       } finally {
@@ -453,6 +470,7 @@ export function CultivoView() {
           await supabase.from('core_batches').update({ light_hours: lH, dark_hours: dH }).eq('id', fotoModal.batch.id);
           await savePhotoperiodLog(fotoModal.batch, lH, dH);
           fetchBatches();
+    loadFertilizationPlans(supabase).then(setAvailableFertPlans);
       } else {
           // Si conlleva un cambio de State (ej de Veg a Flora)
           await savePhotoperiodLog(fotoModal.batch, lH, dH);
@@ -596,6 +614,7 @@ export function CultivoView() {
           await reconcileBatchHarvests(batch.id);
       } else {
           fetchBatches();
+    loadFertilizationPlans(supabase).then(setAvailableFertPlans);
       }
 
       alert("Tanda cosechada exitosamente. Stock inyectado en el POS y costos unificados por lote.");
@@ -770,6 +789,31 @@ export function CultivoView() {
             <>
               <div className={`text-sm font-bold capitalize ${stageColor}`}>{b.stage || 'Vegetativo'}</div>
               <div className="text-xs font-mono text-emerald-500/80 mt-0.5">Día {days} Activo</div>
+              {(() => {
+                void fertPlanTick;
+                const assignment = getBatchPlanAssignment(b);
+                const plan = availableFertPlans.find(p => p.id === assignment.planId) || RED_HOT_COOKIES_FEEDING_PLAN;
+                const resolved = resolveBatchActivePlanWeek(b, plan, [], { weekOffset: assignment.weekOffset, syncMode: assignment.syncMode });
+                return (
+                  <div className="mt-1.5 flex flex-col items-center gap-1">
+                    {resolved.isExtendedPhotoperiod && (
+                      <span className="px-1.5 py-0.5 rounded bg-yellow-500/15 border border-yellow-500/30 text-[9px] font-mono font-bold text-yellow-400">
+                        ☀️ Ciclo {resolved.cycleTotalHours}h • {resolved.biologicalCyclesCompleted} ciclos bio
+                      </span>
+                    )}
+                    {resolved.activeWeek && (
+                      <button
+                        type="button"
+                        onClick={() => setActiveFertPlanBatch(b)}
+                        className="px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-[9px] font-mono text-emerald-300 transition-colors cursor-pointer"
+                        title="Abrir Plan de Fertilización Semanal"
+                      >
+                        📋 Sem {resolved.activeWeek.week_number} ({resolved.activeWeek.phenology}) • EC {resolved.activeWeek.target_ec_min}-{resolved.activeWeek.target_ec_max}
+                      </button>
+                    )}
+                  </div>
+                );
+              })()}
             </>
           )}
 
@@ -852,6 +896,9 @@ export function CultivoView() {
               </button>
             )}
             <button onClick={() => setHealthChartModal({isOpen: true, batch: b})} className="btn-glow-purple px-2 py-1 border border-panel-border text-brand-slate-600 dark:text-slate-300 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1"><Activity size={12}/> IA</button>
+            <button onClick={() => setActiveFertPlanBatch(b)} className="btn-glow-emerald px-2 py-1 border border-emerald-500/30 text-emerald-400 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all flex items-center gap-1" title="Plan de Fertilización Semanal & Correlación IA">
+              📋 Plan
+            </button>
             <button onClick={() => setActiveBitacora(b)} className="btn-glow-emerald px-2 py-1 border border-panel-border text-brand-slate-600 dark:text-slate-300 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all">
               Bitácora
             </button>
@@ -1063,7 +1110,20 @@ export function CultivoView() {
       )}
 
       {activeBitacora && (
-        <BitacoraModal batch={activeBitacora} onClose={() => setActiveBitacora(null)} />
+        <BitacoraModal batch={activeBitacora} onClose={() => { setActiveBitacora(null); setFertPlanTick(t => t + 1); }} />
+      )}
+
+      {activeFertPlanBatch && (
+        <FertilizationPlanModal
+          batch={activeFertPlanBatch}
+          onClose={() => { setActiveFertPlanBatch(null); setFertPlanTick(t => t + 1); }}
+          onUpdated={() => { fetchBatches(); setFertPlanTick(t => t + 1); }}
+          onOpenBitacoraWithRecipe={() => {
+            const targetBatch = activeFertPlanBatch;
+            setActiveFertPlanBatch(null);
+            setActiveBitacora(targetBatch);
+          }}
+        />
       )}
 
       {activeGlobalBitacora && selectedRoom && (

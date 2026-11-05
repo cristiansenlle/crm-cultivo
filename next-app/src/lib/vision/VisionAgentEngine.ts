@@ -1,5 +1,11 @@
 import { createClient } from '@supabase/supabase-js';
 import { loadPlantGrid, PerPlantAnalysis } from './PlantGridStore';
+import {
+    RED_HOT_COOKIES_FEEDING_PLAN,
+    resolveBatchActivePlanWeek,
+    evaluateVisionPlanCorrelation,
+    VisionPlanCorrelation
+} from '../agronomy/fertilizationPlanEngine';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -54,6 +60,7 @@ export interface VisionAnalysisResult {
         ph_water?: number;
         ec_target?: number;
     }>;
+    fertilization_plan_correlation?: VisionPlanCorrelation;
 }
 
 export class VisionAgentEngine {
@@ -165,7 +172,7 @@ export class VisionAgentEngine {
 
         try {
             const { data: events } = await adminSupabase.from('core_agronomic_events')
-                .select('event_type, description, water_liters, date_occurred')
+                .select('event_type, description, water_liters, water_volume_liters, solution_ph, solution_ec, solution_ppm, date_occurred')
                 .eq('batch_id', resolvedBatchId)
                 .order('date_occurred', { ascending: false })
                 .limit(4);
@@ -182,6 +189,38 @@ export class VisionAgentEngine {
             }
         }
 
+        const resolvedFertPlan = activeBatch
+            ? resolveBatchActivePlanWeek(activeBatch, RED_HOT_COOKIES_FEEDING_PLAN, recentEvents || [])
+            : null;
+
+        const fertilizationPlanContext = resolvedFertPlan ? {
+            plan_name: resolvedFertPlan.plan.name,
+            photoperiod_metrics: {
+                light_hours: resolvedFertPlan.lightHours,
+                dark_hours: resolvedFertPlan.darkHours,
+                cycle_total_hours: resolvedFertPlan.cycleTotalHours,
+                is_extended_photoperiod_over_24h: resolvedFertPlan.isExtendedPhotoperiod,
+                stretch_factor: Number(resolvedFertPlan.photoperiodStretchFactor.toFixed(2)),
+                calendar_days_in_stage: resolvedFertPlan.calendarDaysInStage,
+                biological_cycles_completed: resolvedFertPlan.biologicalCyclesCompleted,
+                calendar_week_in_stage: resolvedFertPlan.calendarWeekInStage,
+                biological_week_in_stage: resolvedFertPlan.biologicalWeekInStage,
+                active_week_number: resolvedFertPlan.effectiveWeekNumber
+            },
+            active_week_target: resolvedFertPlan.activeWeek ? {
+                stage: resolvedFertPlan.activeWeek.stage,
+                week_number: resolvedFertPlan.activeWeek.week_number,
+                phenology_name: resolvedFertPlan.activeWeek.phenology,
+                target_ph_range: `${resolvedFertPlan.activeWeek.target_ph_min}-${resolvedFertPlan.activeWeek.target_ph_max}`,
+                target_ec_range_mS_cm: `${resolvedFertPlan.activeWeek.target_ec_min}-${resolvedFertPlan.activeWeek.target_ec_max}`,
+                target_ppm_500_range: `${resolvedFertPlan.activeWeek.target_ppm_min}-${resolvedFertPlan.activeWeek.target_ppm_max}`,
+                water_per_plant_liters: `${resolvedFertPlan.plan.water_per_plant_liters} L`,
+                main_mineral_irrigation: resolvedFertPlan.activeWeek.primary_nutrients,
+                secondary_irrigation: resolvedFertPlan.activeWeek.secondary_nutrients,
+                agronomic_notes: resolvedFertPlan.activeWeek.notes
+            } : null
+        } : null;
+
         const contextDossier = {
             timestamp: new Date().toISOString(),
             batch: activeBatch ? {
@@ -195,6 +234,7 @@ export class VisionAgentEngine {
                 },
                 room: roomData?.name || activeBatch.location || 'Sala Principal'
             } : 'Sin lote activo vinculado',
+            fertilization_plan_context: fertilizationPlanContext,
             spatial_plant_grid: {
                 dimensions: `${plantGrid.grid_rows} filas x ${plantGrid.grid_cols} columnas`,
                 scrog_net_installed: plantGrid.scrog_net_installed,
@@ -271,9 +311,14 @@ INSTRUCCIONES ESTRICTAS DE ANÁLISIS CENITAL v2.0 (CICLO COMPLETO E INDIVIDUALIZ
    - "estimated_yield_grams": Estimación realista en gramos secos para el lote según densidad de colas y cobertura.
    - "harvest_readiness_pct": Promedio global de maduración (0-100%).
 
-5. AUDITORÍA DE FOTOPERÍODO Y RITMO CIRCADIANO:
+5. AUDITORÍA DE FOTOPERÍODO Y RITMO CIRCADIANO (SOPORTE PARA CICLOS >24 HS):
    - "photoperiod_audit": "LIGHTS_ON_OK" si hay luz normal, "LIGHTS_OFF_OK" si está oscuro en horario nocturno, "LIGHT_LEAK_ALERT" si se detecta contaminación lumínica.
    - "circadian_turgor_state": "PEAK_PRAYING" (hojas a 45°), "NORMAL_ASSIMILATION", "CIRCADIAN_ANTICIPATION_REST" (descanso normal pre-apagado), o "STRESS_DROOP".
+   - ATENCIÓN A FOTOPERÍODOS EXTENDIDOS (>24 HS): Revisa "fertilization_plan_context.photoperiod_metrics". Si "is_extended_photoperiod_over_24h" es true (ej. 18L/12O = 30h o 24L/12O = 36h), el ciclo circadiano dura más de 24h y las fases fenológicas pueden estirarse. Evalúa el progreso de floración por los "biological_cycles_completed" y el hinchazón real de cálices, evitando recomendar el corte prematuro de Nitrógeno (Flora Sem 6) si la planta aún está en engorde floral activo debido al estiramiento del fotoperíodo.
+
+6. CORRELACIÓN CON EL PLAN DE FERTILIZACIÓN SEMANAL ("fertilization_plan_context"):
+   - Cruza la reacción visual de la planta (postura foliar PRAYING/CLAWING/DROOPING, puntas quemadas, clorosis o antocianinas) con la semana activa del Plan de Fertilización ("active_week_target": EC objetivo, pH objetivo, PPM 500, dosis de Hybrids/Short Flowering, PK Booster, Calcium y riego secundario con BioEnhancer/Big One) y los últimos riegos en "recent_events".
+   - En "diagnosis" y "recommendations", incluye explícitamente cómo está reaccionando el lote al Plan de Fertilización de la semana actual y si conviene mantener el 100% de la dosis mineral, reducirla (-20% a -25% por garras/puntas quemadas) o reforzar Ca/Mg/PK.
 
 RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
 {
@@ -429,6 +474,20 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
             staggered_harvest_advice: 'Configure sus genéticas en la pestaña Mapa de Plantas.'
         };
 
+        const planCorrelation: VisionPlanCorrelation | undefined = resolvedFertPlan
+            ? evaluateVisionPlanCorrelation(
+                  resolvedFertPlan,
+                  {
+                      health_score: finalHealthScore,
+                      leaf_posture: finalPosture,
+                      issues_detected: parsedResult.issues_detected || [],
+                      deficiencies: parsedResult.deficiencies || [],
+                      recommendations: parsedResult.recommendations || '',
+                      created_at: new Date().toISOString()
+                  }
+              )
+            : undefined;
+
         // 7. Guardar en la base de datos `core_image_analyses`
         try {
             const { data: inserted, error: insertError } = await adminSupabase.from('core_image_analyses').insert({
@@ -454,7 +513,8 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
                     lifecycle_advisors: finalAdvisors,
                     per_plant_analysis: finalPerPlant,
                     deficiencies: parsedResult.deficiencies || [],
-                    pests_detected: parsedResult.pests_detected || []
+                    pests_detected: parsedResult.pests_detected || [],
+                    fertilization_plan_correlation: planCorrelation
                 }
             }).select();
 
@@ -481,7 +541,8 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
             estimated_yield_grams: finalEstYield,
             harvest_readiness_pct: finalHarvestReadiness,
             lifecycle_advisors: finalAdvisors,
-            per_plant_analysis: finalPerPlant
+            per_plant_analysis: finalPerPlant,
+            fertilization_plan_correlation: planCorrelation
         };
     }
 

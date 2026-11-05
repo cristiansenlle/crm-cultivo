@@ -27,6 +27,7 @@ interface VisionStatusData {
     };
     plant_grid?: any;
     latest_analysis: any;
+    fertilization_plan_live?: any;
     timeline: any[];
 }
 
@@ -106,6 +107,8 @@ export default function VisionWidget() {
     const stageDetected = isCrop ? (latest?.phenological_stage_detected ?? snapshot?.phenological_stage_detected ?? 'FLOWERING_MID') : 'NONE';
     const advisors = latest?.lifecycle_advisors || snapshot?.lifecycle_advisors || null;
     const perPlantList: any[] = isCrop ? (latest?.per_plant_analysis || snapshot?.per_plant_analysis || []) : [];
+    const fertLive = data?.fertilization_plan_live || null;
+    const fertCorrelation = fertLive?.correlation || latest?.fertilization_plan_correlation || snapshot?.fertilization_plan_correlation || null;
 
     const getPostureBadge = (posture: string) => {
         switch (posture) {
@@ -358,6 +361,70 @@ export default function VisionWidget() {
                     </div>
                 </div>
             </div>
+
+            {/* Panel de Correlación Visión IA × Plan de Fertilización Semanal & Fotoperíodo (>24h) */}
+            {fertLive && fertLive.active_week && (
+                <div className={`p-3.5 rounded-xl border flex flex-col gap-2.5 ${
+                    fertCorrelation?.status === 'OVERFEEDING_ALERT' || fertCorrelation?.status === 'PH_LOCKOUT_WARNING'
+                        ? 'bg-red-950/20 border-red-500/35'
+                        : fertCorrelation?.status === 'UNDERFEEDING_DEFICIENCY' || fertCorrelation?.status === 'PHOTOPERIOD_STRETCH_HOLD'
+                        ? 'bg-amber-950/20 border-amber-500/35'
+                        : 'bg-emerald-950/20 border-emerald-500/30'
+                }`}>
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-mono font-bold uppercase">
+                                🧪 Plan Semanal × Visión IA
+                            </span>
+                            <span className="text-xs font-bold text-zinc-100">
+                                Lote {fertLive.batch_id}: {fertLive.active_week.label} ({fertLive.active_week.phenology})
+                            </span>
+                            {fertLive.is_extended_photoperiod && (
+                                <span className="px-2 py-0.5 rounded bg-yellow-500/20 text-yellow-300 border border-yellow-500/35 text-[10px] font-mono font-bold">
+                                    ☀️ Fotoperíodo Extendido {fertLive.light_hours}L/{fertLive.dark_hours}O ({fertLive.cycle_total_hours}h) • {fertLive.biological_cycles_completed} ciclos bio vs {fertLive.calendar_days_in_stage}d cal
+                                </span>
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] font-mono">
+                            <span className="px-2 py-0.5 rounded bg-black/40 border border-zinc-700 text-cyan-300">
+                                pH Obj: {fertLive.active_week.target_ph_min}-{fertLive.active_week.target_ph_max}
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-black/40 border border-zinc-700 text-amber-300">
+                                EC Obj: {fertLive.active_week.target_ec_min}-{fertLive.active_week.target_ec_max} mS/cm
+                            </span>
+                            <span className="px-2 py-0.5 rounded bg-black/40 border border-zinc-700 text-purple-300">
+                                PPM 500: {fertLive.active_week.target_ppm_min}-{fertLive.active_week.target_ppm_max}
+                            </span>
+                        </div>
+                    </div>
+
+                    {fertCorrelation && (
+                        <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-center text-[11px]">
+                            <div className="md:col-span-8 text-zinc-200 leading-relaxed">
+                                <strong className={
+                                    fertCorrelation.status === 'OVERFEEDING_ALERT' || fertCorrelation.status === 'PH_LOCKOUT_WARNING'
+                                        ? 'text-red-400'
+                                        : fertCorrelation.status === 'UNDERFEEDING_DEFICIENCY' || fertCorrelation.status === 'PHOTOPERIOD_STRETCH_HOLD'
+                                        ? 'text-amber-400'
+                                        : 'text-emerald-400'
+                                }>
+                                    {fertCorrelation.headline || fertCorrelation.badgeLabel}:
+                                </strong>{' '}
+                                {fertCorrelation.explanation}
+                            </div>
+                            <div className="md:col-span-4 p-2 rounded-lg bg-black/40 border border-zinc-800 flex flex-col gap-1 font-mono text-[10px]">
+                                <div className="flex justify-between">
+                                    <span className="text-zinc-400">Dosis recomendada IA:</span>
+                                    <strong className="text-emerald-400">{Math.round((fertCorrelation.doseMultiplier || 1) * 100)}% del plan</strong>
+                                </div>
+                                <div className="text-zinc-300 truncate" title={fertCorrelation.recommendedActionLabel}>
+                                    👉 {fertCorrelation.recommendedActionLabel}
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            )}
 
             {/* Asistentes de Ciclo Completo (SCROG, Deshoje, Flip 12/12 y Cosecha Escalonada) */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-zinc-800/80">

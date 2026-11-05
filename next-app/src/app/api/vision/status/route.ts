@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { loadPlantGrid } from '@/lib/vision/PlantGridStore';
+import {
+    RED_HOT_COOKIES_FEEDING_PLAN,
+    resolveBatchActivePlanWeek,
+    evaluateVisionPlanCorrelation
+} from '@/lib/agronomy/fertilizationPlanEngine';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -48,8 +53,71 @@ export async function GET() {
                 lifecycle_advisors: snap.lifecycle_advisors || null,
                 per_plant_analysis: isCrop && Array.isArray(snap.per_plant_analysis) ? snap.per_plant_analysis : [],
                 growth_stage_est: isCrop ? (snap.batch?.stage || 'Floración') : 'Sin cultivo',
-                image_url: latestRaw.image_urls?.[0] || null
+                image_url: latestRaw.image_urls?.[0] || null,
+                fertilization_plan_context: snap.fertilization_plan_context || null,
+                fertilization_plan_correlation: snap.fertilization_plan_correlation || null
             };
+        }
+
+        // Enriquecer en vivo con el Plan de Fertilización del lote activo para mostrar siempre la correlación actualizada
+        let liveFertilizationPlan: any = null;
+        try {
+            const targetBatchId = latestRaw?.batch_id;
+            const { data: activeBatches } = targetBatchId
+                ? await adminSupabase.from('core_batches').select('*').eq('id', targetBatchId).limit(1)
+                : await adminSupabase.from('core_batches').select('*').order('timestamp', { ascending: false }).limit(1);
+
+            const batchObj = activeBatches?.[0];
+            if (batchObj) {
+                const { data: recentEvents } = await adminSupabase
+                    .from('core_agronomic_events')
+                    .select('event_type, description, water_liters, water_volume_liters, solution_ph, solution_ec, solution_ppm, date_occurred')
+                    .eq('batch_id', batchObj.id)
+                    .order('date_occurred', { ascending: false })
+                    .limit(5);
+
+                const resolvedPlan = resolveBatchActivePlanWeek(batchObj, RED_HOT_COOKIES_FEEDING_PLAN, recentEvents || []);
+
+                const latestMeasuredIrrig = (recentEvents || []).find(
+                    (e: any) => e.solution_ph != null || e.solution_ec != null || e.solution_ppm != null
+                );
+
+                const correlation = evaluateVisionPlanCorrelation(
+                    resolvedPlan,
+                    latestAnalysis
+                        ? {
+                              health_score: latestAnalysis.health_score,
+                              leaf_posture: latestAnalysis.posture_state,
+                              issues_detected: latestAnalysis.issues_detected || [],
+                              deficiencies: latestRaw?.context_snapshot?.deficiencies || [],
+                              recommendations: latestAnalysis.recommendations || '',
+                              created_at: latestAnalysis.created_at
+                          }
+                        : null
+                );
+
+                liveFertilizationPlan = {
+                    batch_id: batchObj.id,
+                    strain: batchObj.strain,
+                    stage: batchObj.stage,
+                    plan_name: resolvedPlan.plan.name,
+                    light_hours: resolvedPlan.lightHours,
+                    dark_hours: resolvedPlan.darkHours,
+                    cycle_total_hours: resolvedPlan.cycleTotalHours,
+                    is_extended_photoperiod: resolvedPlan.isExtendedPhotoperiod,
+                    stretch_factor: Number(resolvedPlan.photoperiodStretchFactor.toFixed(2)),
+                    calendar_days_in_stage: resolvedPlan.calendarDaysInStage,
+                    biological_cycles_completed: resolvedPlan.biologicalCyclesCompleted,
+                    calendar_week_in_stage: resolvedPlan.calendarWeekInStage,
+                    biological_week_in_stage: resolvedPlan.biologicalWeekInStage,
+                    active_week_number: resolvedPlan.effectiveWeekNumber,
+                    active_week: resolvedPlan.activeWeek,
+                    latest_measured_irrigation: latestMeasuredIrrig || null,
+                    correlation
+                };
+            }
+        } catch (fertErr) {
+            console.warn('[vision/status] Error resolviendo plan de fertilización en vivo:', fertErr);
         }
 
         // Obtener histórico de las últimas 18 capturas para curvas circadianas, crecimiento y diagnósticos
@@ -93,6 +161,7 @@ export async function GET() {
             },
             plant_grid: plantGrid,
             latest_analysis: latestAnalysis,
+            fertilization_plan_live: liveFertilizationPlan,
             timeline
         });
     } catch (err: any) {

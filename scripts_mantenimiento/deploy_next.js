@@ -7,18 +7,26 @@ async function run() {
     await ssh.connect({ host: '109.199.99.126', username: 'root', password: 'FVRu0i2XiWUP93OtQfI7LvPKod' });
 
     const targetDir = '/opt/crm-cannabis-next/next-app';
-    await ssh.execCommand(`mkdir -p ${targetDir}/src/lib/agronomy`);
+    await ssh.execCommand(`mkdir -p ${targetDir}/src/lib/agronomy ${targetDir}/src/app/api/agronomy/import-sheet ${targetDir}/src/app/api/vision/status ${targetDir}/src/lib/vision ${targetDir}/src/components/vision`);
 
     const files = [
       'src/lib/agronomy/fertigationUtils.ts',
       'src/lib/agronomy/nutrientProfiles.ts',
+      'src/lib/agronomy/fertilizationPlanEngine.ts',
       'src/app/insumos/page.tsx',
+      'src/app/cultivo/CultivoView.tsx',
+      'src/app/cultivo/FertilizationPlanModal.tsx',
       'src/app/cultivo/BitacoraModal.tsx',
       'src/app/cultivo/BitacoraGlobalModal.tsx',
       'src/app/cultivo/BatchReportModal.tsx',
       'src/app/agronomy/page.tsx',
-      'src/components/AiAnalyzerModal.tsx',
-      'src/app/api/analyze-crop/route.ts'
+      'src/app/protocolos/page.tsx',
+      'src/app/api/agronomy/import-sheet/route.ts',
+      'src/app/api/analyze-crop/route.ts',
+      'src/app/api/vision/status/route.ts',
+      'src/lib/vision/VisionAgentEngine.ts',
+      'src/components/vision/VisionWidget.tsx',
+      'src/components/AiAnalyzerModal.tsx'
     ];
 
     for (const f of files) {

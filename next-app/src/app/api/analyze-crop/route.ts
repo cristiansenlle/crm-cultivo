@@ -1,5 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import {
+    RED_HOT_COOKIES_FEEDING_PLAN,
+    resolveBatchActivePlanWeek,
+    evaluateVisionPlanCorrelation
+} from '@/lib/agronomy/fertilizationPlanEngine';
 
 // Instanciar cliente de Supabase (Admin) para lectura de datos
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
@@ -77,7 +82,7 @@ export async function POST(req: NextRequest) {
 
             // Eventos agronómicos recientes
             const { data: events, error: evErr } = await adminSupabase.from('core_agronomic_events')
-                .select('event_type, description, water_liters, dosage_per_liter, dosage_uom, ph_water, ec_water, ec_unit, ph_runoff, ec_runoff, recipe_items, date_occurred, status')
+                .select('event_type, description, water_liters, water_volume_liters, dosage_per_liter, dosage_uom, solution_ph, solution_ec, solution_ppm, date_occurred')
                 .eq('batch_id', batchId)
                 .order('date_occurred', { ascending: false })
                 .limit(5);
@@ -100,7 +105,7 @@ export async function POST(req: NextRequest) {
             }
         }
 
-        // 3. Preparar contexto para la IA
+        // 3. Preparar contexto para la IA (incluyendo Plan de Fertilización Semanal y Fotoperíodos >24 hs)
         let daysInPhase: string | number = 'Desconocido';
         if (batchInfo) {
             const lastDateStr = batchInfo.last_stage_date || batchInfo.start_date || batchInfo.created_at;
@@ -108,6 +113,38 @@ export async function POST(req: NextRequest) {
                 daysInPhase = Math.max(0, Math.floor((Date.now() - new Date(lastDateStr).getTime()) / (1000 * 60 * 60 * 24)));
             }
         }
+
+        const resolvedFertPlan = batchInfo
+            ? resolveBatchActivePlanWeek(batchInfo, RED_HOT_COOKIES_FEEDING_PLAN, recentEvents || [])
+            : null;
+
+        const fertilizationPlanContext = resolvedFertPlan ? {
+            plan_name: resolvedFertPlan.plan.name,
+            photoperiod_metrics: {
+                light_hours: resolvedFertPlan.lightHours,
+                dark_hours: resolvedFertPlan.darkHours,
+                cycle_total_hours: resolvedFertPlan.cycleTotalHours,
+                is_extended_photoperiod_over_24h: resolvedFertPlan.isExtendedPhotoperiod,
+                stretch_factor: Number(resolvedFertPlan.photoperiodStretchFactor.toFixed(2)),
+                calendar_days_in_stage: resolvedFertPlan.calendarDaysInStage,
+                biological_cycles_completed: resolvedFertPlan.biologicalCyclesCompleted,
+                calendar_week_in_stage: resolvedFertPlan.calendarWeekInStage,
+                biological_week_in_stage: resolvedFertPlan.biologicalWeekInStage,
+                active_week_number: resolvedFertPlan.effectiveWeekNumber
+            },
+            active_week_target: resolvedFertPlan.activeWeek ? {
+                stage: resolvedFertPlan.activeWeek.stage,
+                week_number: resolvedFertPlan.activeWeek.week_number,
+                phenology_name: resolvedFertPlan.activeWeek.phenology,
+                target_ph_range: `${resolvedFertPlan.activeWeek.target_ph_min}-${resolvedFertPlan.activeWeek.target_ph_max}`,
+                target_ec_range_mS_cm: `${resolvedFertPlan.activeWeek.target_ec_min}-${resolvedFertPlan.activeWeek.target_ec_max}`,
+                target_ppm_500_range: `${resolvedFertPlan.activeWeek.target_ppm_min}-${resolvedFertPlan.activeWeek.target_ppm_max}`,
+                water_per_plant_liters: `${resolvedFertPlan.plan.water_per_plant_liters} L`,
+                main_mineral_irrigation: resolvedFertPlan.activeWeek.primary_nutrients,
+                secondary_irrigation: resolvedFertPlan.activeWeek.secondary_nutrients,
+                agronomic_notes: resolvedFertPlan.activeWeek.notes
+            } : null
+        } : 'No disponible';
 
         const contextDossier = {
             current_date: new Date().toISOString().split('T')[0], // CRITICAL: So AI knows what "today" is
@@ -125,6 +162,7 @@ export async function POST(req: NextRequest) {
                     dark_hours: batchInfo.dark_hours
                 }
             } : 'No disponible',
+            fertilization_plan_context: fertilizationPlanContext,
             recent_internal_climate: recentClimate || 'No disponible',
             recent_agronomic_events: recentEvents || 'No disponible',
             external_weather: externalWeather || 'No disponible (sin geolocalización)',
@@ -134,28 +172,28 @@ export async function POST(req: NextRequest) {
         console.log("--- CONTEXT DOSSIER ---", JSON.stringify(contextDossier, null, 2));
 
         const prompt = `Eres un ingeniero agrónomo senior especialista en el cultivo de cannabis indoor de alto rendimiento.
-        Analiza las imágenes adjuntas cruzando OBLIGATORIAMENTE la información visual con el siguiente contexto de datos de la base de datos (telemetría, clima externo, fotoperiodo y bitácora).
+        Analiza las imágenes adjuntas cruzando OBLIGATORIAMENTE la información visual con el siguiente contexto de datos de la base de datos (telemetría, clima externo, fotoperiodo, Plan de Fertilización Semanal y bitácora).
         
-        BASE DE CONOCIMIENTOS - TIEMPOS DEL CANNABIS:
-        - Vegetativo: Fotoperiodo 18/6. Crecimiento estructural.
-        - Floración Semanas 1-3 (Días 1-21): Estiramiento (stretch) y formación inicial de botones florales (pelos blancos). No hay resina.
-        - Floración Semanas 4-5 (Días 22-35): Engorde de cálices. Los pistilos siguen mayormente blancos. Comienza la producción visible de resina (tricomas transparentes), PERO NO HAY MADURACIÓN DE TRICOMAS AÚN.
-        - Floración Semanas 6-7 (Días 36-49): Los cálices se hinchan. Los pistilos comienzan a oxidarse (marrón/naranja). Los tricomas pasan de transparentes a lechosos.
-        - Floración Semanas 8-10+ (Días 50-70+): Maduración final. Tricomas lechosos y ámbar.
-        ¡NUNCA asumas que a los 28 días de floración debe haber maduración de tricomas! Utiliza esta guía para juzgar la coherencia temporal.
+        BASE DE CONOCIMIENTOS - TIEMPOS DEL CANNABIS Y FOTOPERÍODOS EXTENDIDOS (>24 HS):
+        - Vegetativo: Crecimiento estructural.
+        - Floración Semanas 1-3 (Ciclos 1-21): Estiramiento (stretch) y formación inicial de botones florales (pelos blancos). No hay resina.
+        - Floración Semanas 4-5 (Ciclos 22-35): Engorde de cálices. Los pistilos siguen mayormente blancos. Comienza la producción visible de resina (tricomas transparentes), PERO NO HAY MADURACIÓN DE TRICOMAS AÚN.
+        - Floración Semanas 6-7 (Ciclos 36-49): Los cálices se hinchan. Los pistilos comienzan a oxidarse (marrón/naranja). Los tricomas pasan de transparentes a lechosos.
+        - Floración Semanas 8-10+ (Ciclos 50-70+): Maduración final. Tricomas lechosos y ámbar.
+        - FOTOPERÍODOS MAYORES A 24 HS: El cultivador utiliza fotoperíodos extendidos mayores a 24 horas (ej. 18L/12O = 30h o 24L/12O = 36h). Revisa "fertilization_plan_context.photoperiod_metrics": cuando "is_extended_photoperiod_over_24h" es true, las fases del cultivo se estiran respecto al calendario de 24h ("biological_cycles_completed" y "biological_week_in_stage" reflejan la edad biológica real). Evalúa la madurez fenológica por los ciclos biológicos completados y la morfología visual de las flores, sin adelantar prematuramente el corte de Nitrógeno (Flora Sem 6).
         
         CONTEXTO DEL LOTE Y SALA:
         ${JSON.stringify(contextDossier, null, 2)}
         
         INSTRUCCIONES CRÍTICAS:
         1. TOMA NOTA DE LA FECHA ACTUAL ("current_date") en el contexto para evaluar hace cuántos días ocurrieron los "recent_agronomic_events". 
-        2. TOMA NOTA DE LOS DÍAS EN LA FASE ACTUAL ("days_in_current_stage"). Usa la Base de Conocimientos de arriba para saber exactamente qué esperar ver en la planta según esos días, y no te adelantes en el tiempo.
-        3. FOTOPERIODO EXPERIMENTAL: El cultivador utiliza a menudo fotoperiodos NO convencionales para buscar mejores resultados. Evalúa el estado de la planta sin asumir que un fotoperiodo inusual es necesariamente un error. Si ves estrés luminoso, menciónalo, pero de lo contrario asume que es una técnica controlada.
-        4. HISTORIAL DE IA ("past_ai_analyses"): Revisa tus propios análisis anteriores para este lote. Compara si los problemas ("issues_detected") que encontraste antes han mejorado o empeorado y si el "health_score" va en alza o en baja. Retroaliméntate de tu historial para no ser redundante.
-        5. CLIMA EXTERNO ACTUAL Y FUTURO ("external_weather"): Incluye en el diagnóstico ("diagnosis") un análisis obligatorio sobre cómo el clima exterior *actual* y *pronosticado* para los próximos 3 días (temperatura y lluvia) puede impactar el cultivo indoor (ej. altas humedades pronosticadas obligan a vigilar el VPD y encender deshumidificadores).
-        6. CRUCE DE DATOS INTEGRAL: Correlaciona lo que ves en las fotos con el historial de IA, "recent_agronomic_events" (riegos, nutrición), "recent_internal_climate" (VPD, Temp, Hum) y "external_weather".
-        7. Provee un score de salud del 0 al 100.
-        8. Sugiere acciones correctivas o preventivas a corto plazo.
+        2. TOMA NOTA DE LOS DÍAS Y CICLOS BIOLÓGICOS EN LA FASE ACTUAL ("days_in_current_stage" y "fertilization_plan_context.photoperiod_metrics").
+        3. FOTOPERÍODO EXTENDIDO (>24 HS): Evalúa el estado de la planta considerando que el fotoperíodo mayor a 24 hs es una técnica controlada que estira las fases.
+        4. CORRELACIÓN CON EL PLAN DE FERTILIZACIÓN SEMANAL ("fertilization_plan_context.active_week_target"): Evalúa la reacción visual de la planta al Plan de Fertilización asignado para esta semana (EC objetivo, pH objetivo, PPM 500, sales minerales Hybrids/Short Flowering, PK Booster, Calcium y riego secundario con BioEnhancer/Big One). Indica en "diagnosis" y "recommendations" si la planta asimila óptimamente el plan (hojas turgentes/praying) o si requiere ajustar la EC/dosis (-20% por sobrefertilización/puntas quemadas/garras, o refuerzo por carencia).
+        5. HISTORIAL DE IA ("past_ai_analyses"): Revisa tus propios análisis anteriores para este lote. Compara si los problemas ("issues_detected") que encontraste antes han mejorado o empeorado y si el "health_score" va en alza o en baja.
+        6. CLIMA EXTERNO ACTUAL Y FUTURO ("external_weather"): Incluye en el diagnóstico ("diagnosis") un análisis obligatorio sobre cómo el clima exterior *actual* y *pronosticado* para los próximos 3 días puede impactar el cultivo indoor.
+        7. CRUCE DE DATOS INTEGRAL: Correlaciona lo que ves en las fotos con el Plan de Fertilización Semanal, "recent_agronomic_events" (pH, EC, PPM medidos), "recent_internal_climate" (VPD, Temp, Hum) y "external_weather".
+        8. Provee un score de salud del 0 al 100 y sugiere acciones correctivas o preventivas a corto plazo.
         
         Debes responder ÚNICAMENTE con un objeto JSON válido con la siguiente estructura exacta:
         {

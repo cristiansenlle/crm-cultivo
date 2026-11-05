@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo } from "react";
+import { Sparkle as Sparkles } from "@phosphor-icons/react";
 import {
   X,
   Drop,
@@ -16,7 +17,8 @@ import {
   Leaf,
   Flask,
   CaretDown,
-  CaretUp
+  CaretUp,
+  Sun
 } from "@phosphor-icons/react";
 import { supabase } from "../../lib/supabase";
 import {
@@ -30,6 +32,18 @@ import {
   updateAgronomicEventSafe,
   RecipeItemApplied
 } from "../../lib/agronomy/fertigationUtils";
+import {
+  FertilizationPlan,
+  RED_HOT_COOKIES_FEEDING_PLAN,
+  loadFertilizationPlans,
+  getBatchPlanAssignment,
+  updateBatchPlanAssignment,
+  resolveBatchActivePlanWeek,
+  evaluateVisionPlanCorrelation,
+  matchPlanProductToInventory,
+  checkRecipeCompatibilityWarnings,
+  PlanNutrientDose
+} from "../../lib/agronomy/fertilizationPlanEngine";
 
 interface FertRowInput {
   productName: string;
@@ -71,9 +85,31 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
   const [editingOldEvent, setEditingOldEvent] = useState<any | null>(null);
 
+  // Estados del Plan de Fertilización y Correlación con Visión IA
+  const [plans, setPlans] = useState<FertilizationPlan[]>([RED_HOT_COOKIES_FEEDING_PLAN]);
+  const initialPlanAssign = getBatchPlanAssignment(batch);
+  const [selectedPlanId, setSelectedPlanId] = useState<string>(initialPlanAssign.planId);
+  const [planWeekOffset, setPlanWeekOffset] = useState<number>(initialPlanAssign.weekOffset);
+  const [planSyncMode, setPlanSyncMode] = useState<"biological_cycles" | "calendar_days">(initialPlanAssign.syncMode);
+  const [latestVisionAnalysis, setLatestVisionAnalysis] = useState<any | null>(null);
+
   useEffect(() => {
     fetchEvents();
     fetchInventory();
+    loadFertilizationPlans(supabase).then(list => {
+      if (list.length > 0) setPlans(list);
+    });
+    supabase
+      .from("core_image_analyses")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(5)
+      .then(({ data }: { data: any }) => {
+        if (data && data.length > 0) {
+          const matched = data.find((a: any) => a.batch_id === batch.id) || data[0];
+          setLatestVisionAnalysis(matched);
+        }
+      });
   }, [batch]);
 
   const fetchEvents = async () => {
@@ -574,14 +610,110 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
     setIsSubmitting(false);
   };
 
-  // Evaluación rápida de rango pH y EC para feedback visual al cultivador
+  // Evaluación rápida de rango pH, EC y PPM comparando contra la Semana Activa del Plan de Fertilización
+  const activePlanObj = useMemo(() => {
+    return plans.find(p => p.id === selectedPlanId) || RED_HOT_COOKIES_FEEDING_PLAN;
+  }, [plans, selectedPlanId]);
+
+  const planResolution = useMemo(() => {
+    return resolveBatchActivePlanWeek(batch, activePlanObj, events, {
+      weekOffset: planWeekOffset,
+      syncMode: planSyncMode
+    });
+  }, [batch, activePlanObj, events, planWeekOffset, planSyncMode]);
+
+  const visionCorrelation = useMemo(() => {
+    return evaluateVisionPlanCorrelation(planResolution, latestVisionAnalysis);
+  }, [planResolution, latestVisionAnalysis]);
+
+  const compatibilityCheck = useMemo(() => {
+    return checkRecipeCompatibilityWarnings(fertRows.map(r => r.productName));
+  }, [fertRows]);
+
+  const applyPlanNutrientsToForm = (nutrients: PlanNutrientDose[], modeLabel: string) => {
+    const targetLiters = parseFloat(waterLiters) > 0 ? parseFloat(waterLiters) : (activePlanObj.tank_reference_liters || 20);
+    if (!waterLiters || parseFloat(waterLiters) <= 0) {
+      setWaterLiters(String(targetLiters));
+    }
+
+    if (!nutrients || nutrients.length === 0) {
+      setFertRows([{ productName: "", dosePerLiter: "", totalAmount: "" }]);
+      setDesc(`Plan ${planResolution.activeWeek.label} (${modeLabel}): Sólo agua reposada.`);
+      return;
+    }
+
+    const mappedRows: FertRowInput[] = nutrients.map(n => {
+      const matchedName = matchPlanProductToInventory(n.product_name, groupedInventory.length > 0 ? groupedInventory : inventory);
+      const meta = getProductMeta(matchedName);
+      const total = calcTotalStockFromDose(targetLiters, n.dose, meta?.uom || (n.dose_uom === "g/L" ? "gr" : "ml"));
+      return {
+        productName: matchedName,
+        dosePerLiter: String(n.dose),
+        totalAmount: total > 0 ? String(total) : ""
+      };
+    });
+
+    setFertRows(mappedRows);
+    setDesc(`Plan ${planResolution.activeWeek.label} (${planResolution.activeWeek.phenology}) • ${modeLabel}.`);
+  };
+
+  const handleAdjustPlanOffset = async (delta: number) => {
+    const nextOffset = planWeekOffset + delta;
+    setPlanWeekOffset(nextOffset);
+    await updateBatchPlanAssignment(supabase, batch.id, {
+      planId: selectedPlanId,
+      weekOffset: nextOffset,
+      syncMode: planSyncMode
+    });
+  };
+
   const phStatus = useMemo(() => {
     const val = parseFloat(phWater);
     if (isNaN(val)) return null;
-    if (val >= 5.5 && val <= 6.3) return { label: "Óptimo Mineral (5.5–6.3)", color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30" };
-    if (val > 6.3 && val <= 6.8) return { label: "Rango Orgánico / Alto p/ Mineral", color: "text-amber-400 bg-amber-500/10 border-amber-500/30" };
-    return { label: "Fuera de Rango (Riesgo Bloqueo)", color: "text-red-400 bg-red-500/10 border-red-500/30" };
-  }, [phWater]);
+    const minPh = planResolution.activeWeek.target_ph_min;
+    const maxPh = planResolution.activeWeek.target_ph_max;
+    const rangeTxt = minPh === maxPh ? `${minPh}` : `${minPh}–${maxPh}`;
+    if (val >= minPh - 0.05 && val <= maxPh + 0.05) {
+      return {
+        label: `✅ En meta de ${planResolution.activeWeek.label} (Obj: pH ${rangeTxt})`,
+        color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
+      };
+    }
+    if (val >= 5.5 && val <= 6.5) {
+      return {
+        label: `⚠️ Desviado de meta ${planResolution.activeWeek.label} (Obj: pH ${rangeTxt} vs Medido: ${val})`,
+        color: "text-amber-400 bg-amber-500/10 border-amber-500/30"
+      };
+    }
+    return {
+      label: `🚨 Fuera de rango seguro (Riesgo Bloqueo • Obj ${planResolution.activeWeek.label}: pH ${rangeTxt})`,
+      color: "text-red-400 bg-red-500/10 border-red-500/30"
+    };
+  }, [phWater, planResolution]);
+
+  const ecPlanCompareStatus = useMemo(() => {
+    const val = parseFloat(ecWater);
+    if (isNaN(val) || ecUnit !== "mS/cm") return null;
+    const minEc = planResolution.activeWeek.target_ec_min;
+    const maxEc = planResolution.activeWeek.target_ec_max;
+    const rangeTxt = minEc === maxEc ? `${minEc}` : `${minEc}–${maxEc}`;
+    if (val >= minEc - 0.05 && val <= maxEc + 0.05) {
+      return {
+        label: `✅ EC dentro de meta ${planResolution.activeWeek.label} (${rangeTxt} mS/cm)`,
+        color: "text-emerald-400 bg-emerald-500/10 border-emerald-500/30"
+      };
+    }
+    if (val > maxEc + 0.05) {
+      return {
+        label: `⬆️ EC +${(val - maxEc).toFixed(2)} mS/cm sobre meta de ${planResolution.activeWeek.label} (${rangeTxt} mS/cm)`,
+        color: "text-amber-400 bg-amber-500/10 border-amber-500/30"
+      };
+    }
+    return {
+      label: `⬇️ EC -${(minEc - val).toFixed(2)} mS/cm bajo meta de ${planResolution.activeWeek.label} (${rangeTxt} mS/cm)`,
+      color: "text-cyan-300 bg-cyan-500/10 border-cyan-500/30"
+    };
+  }, [ecWater, ecUnit, planResolution]);
 
   const ecDeltaStatus = useMemo(() => {
     const inVal = parseFloat(ecWater);
@@ -705,6 +837,139 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
             <form onSubmit={handleCreateEvent} className="flex flex-col gap-4 flex-1">
               {(actionType === "riego" || actionType === "ipm") && (
                 <>
+                  {/* 0. ASISTENTE DE PLAN DE FERTILIZACIÓN SEMANAL & CORRELACIÓN VISIÓN IA */}
+                  {actionType === "riego" && (
+                    <div className="p-3.5 rounded-xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/25 via-black/30 to-cyan-950/20 flex flex-col gap-2.5 w-full min-w-0">
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="text-[10px] font-mono font-bold uppercase px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                            🎯 {planResolution.activeWeek.label}: {planResolution.activeWeek.phenology}
+                          </span>
+                          {planResolution.isExtendedPhotoperiod && (
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/30 flex items-center gap-1">
+                              <Sun size={11} weight="fill" /> {planResolution.lightHours}L/{planResolution.darkHours}O ({planResolution.cycleTotalHours}h = {planResolution.biologicalCyclesCompleted} ciclos)
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustPlanOffset(-1)}
+                            className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 border border-panel-border text-[10px] font-mono text-slate-300 cursor-pointer"
+                            title="Estirar / atrasar 1 semana del plan"
+                          >
+                            -1 Sem
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleAdjustPlanOffset(1)}
+                            className="px-1.5 py-0.5 rounded bg-white/5 hover:bg-white/10 border border-panel-border text-[10px] font-mono text-slate-300 cursor-pointer"
+                            title="Adelantar 1 semana del plan"
+                          >
+                            +1 Sem
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Metas de la semana */}
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10px] font-mono">
+                        <span className="text-slate-400">Meta Semanal:</span>
+                        <span className="px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300 border border-purple-500/30 font-bold">
+                          pH {planResolution.activeWeek.target_ph_min === planResolution.activeWeek.target_ph_max ? planResolution.activeWeek.target_ph_min : `${planResolution.activeWeek.target_ph_min}–${planResolution.activeWeek.target_ph_max}`}
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 font-bold">
+                          EC {planResolution.activeWeek.target_ec_min === planResolution.activeWeek.target_ec_max ? planResolution.activeWeek.target_ec_min : `${planResolution.activeWeek.target_ec_min}–${planResolution.activeWeek.target_ec_max}`} mS/cm
+                        </span>
+                        <span className="px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-bold">
+                          {planResolution.activeWeek.target_ppm_min === planResolution.activeWeek.target_ppm_max ? planResolution.activeWeek.target_ppm_min : `${planResolution.activeWeek.target_ppm_min}–${planResolution.activeWeek.target_ppm_max}`} ppm
+                        </span>
+                      </div>
+
+                      {/* Diagnóstico de Correlación con Visión IA */}
+                      <div className={`px-2.5 py-1.5 rounded-lg border text-[10px] font-mono flex flex-col gap-0.5 ${visionCorrelation.badgeColor}`}>
+                        <div className="flex items-center justify-between gap-1 font-bold">
+                          <span className="flex items-center gap-1">
+                            <Sparkles size={12} weight="fill" /> {visionCorrelation.badgeLabel}
+                          </span>
+                          <span>
+                            Sugerido hoy: {planResolution.recommendedMode === "primary" ? "🅰️ Principal" : "🅱️ Secundario"}
+                          </span>
+                        </div>
+                        <span className="opacity-90 leading-snug">{visionCorrelation.headline}</span>
+                      </div>
+
+                      {/* Botones de Carga Automática en 1 Clic */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            applyPlanNutrientsToForm(
+                              planResolution.activeWeek.primary_nutrients,
+                              "🅰️ Riego Principal"
+                            )
+                          }
+                          className={`p-2 rounded-lg border text-left text-[10px] font-mono transition-all cursor-pointer ${
+                            planResolution.recommendedMode === "primary"
+                              ? "bg-cyan-500/20 border-cyan-400 text-cyan-200 font-bold"
+                              : "bg-black/30 border-panel-border text-slate-300 hover:border-cyan-500/40"
+                          }`}
+                        >
+                          <div className="font-bold text-cyan-300 flex items-center justify-between">
+                            <span>⚡ Cargar 🅰️ Riego Principal</span>
+                            {planResolution.recommendedMode === "primary" && (
+                              <span className="text-[9px] px-1 rounded bg-cyan-500/30">HOY</span>
+                            )}
+                          </div>
+                          <div className="truncate opacity-85 mt-0.5">
+                            {planResolution.activeWeek.primary_summary}
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            applyPlanNutrientsToForm(
+                              planResolution.activeWeek.secondary_nutrients,
+                              "🅱️ Riego Secundario"
+                            )
+                          }
+                          className={`p-2 rounded-lg border text-left text-[10px] font-mono transition-all cursor-pointer ${
+                            planResolution.recommendedMode === "secondary"
+                              ? "bg-emerald-500/20 border-emerald-400 text-emerald-200 font-bold"
+                              : "bg-black/30 border-panel-border text-slate-300 hover:border-emerald-500/40"
+                          }`}
+                        >
+                          <div className="font-bold text-emerald-300 flex items-center justify-between">
+                            <span>🌿 Cargar 🅱️ Riego Secundario</span>
+                            {planResolution.recommendedMode === "secondary" && (
+                              <span className="text-[9px] px-1 rounded bg-emerald-500/30">HOY</span>
+                            )}
+                          </div>
+                          <div className="truncate opacity-85 mt-0.5">
+                            {planResolution.activeWeek.secondary_summary}
+                          </div>
+                        </button>
+
+                        {(visionCorrelation.doseMultiplier !== 1.0 ||
+                          visionCorrelation.status === "PHOTOPERIOD_STRETCH_HOLD") && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              applyPlanNutrientsToForm(
+                                visionCorrelation.adjustedNutrients,
+                                `🤖 Ajuste Visión IA (${(visionCorrelation.doseMultiplier * 100).toFixed(0)}%)`
+                              )
+                            }
+                            className="sm:col-span-2 p-2 rounded-lg border border-amber-500/40 bg-amber-500/15 hover:bg-amber-500/25 text-amber-200 text-[10px] font-mono font-bold flex items-center justify-between cursor-pointer"
+                          >
+                            <span>🤖 {visionCorrelation.recommendedActionLabel}</span>
+                            <span className="underline">Aplicar Ajuste IA →</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* 1. VOLUMEN DE AGUA DE DILUCIÓN */}
                   <div className="p-3.5 rounded-xl border border-blue-500/30 bg-blue-500/5 flex flex-col gap-2">
                     <div className="flex items-center justify-between">
@@ -914,6 +1179,20 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
                         </div>
                       );
                     })}
+
+                    {/* Alertas de Regla de Oro (BioEnhancer vs Sales) y Orden de Mezcla (Barrier Silicio) */}
+                    {compatibilityCheck.messages.map((msg, mIdx) => (
+                      <div
+                        key={mIdx}
+                        className={`p-2.5 rounded-lg border text-[10px] font-mono leading-relaxed ${
+                          msg.type === "error"
+                            ? "bg-red-500/15 border-red-500/40 text-red-300 font-bold"
+                            : "bg-cyan-500/10 border-cyan-500/30 text-cyan-200"
+                        }`}
+                      >
+                        {msg.text}
+                      </div>
+                    ))}
                   </div>
 
                   {/* 3. CONTROL FISICOQUÍMICO DE LA SOLUCIÓN: pH, EC Y PPM (EXCLUSIVO PARA FERTILIZANTES MINERALES) */}
@@ -995,7 +1274,12 @@ export function BitacoraModal({ batch, onClose }: { batch: any; onClose: () => v
 
                       {phStatus && (
                         <div className={`text-[10px] font-mono px-2.5 py-1 rounded border ${phStatus.color}`}>
-                          🧪 Estado pH: <strong>{phStatus.label}</strong>
+                          {phStatus.label}
+                        </div>
+                      )}
+                      {ecPlanCompareStatus && (
+                        <div className={`text-[10px] font-mono px-2.5 py-1 rounded border ${ecPlanCompareStatus.color}`}>
+                          {ecPlanCompareStatus.label}
                         </div>
                       )}
 
