@@ -20,9 +20,11 @@ import { supabase } from "../../lib/supabase";
 import {
     FertilizationPlan,
     RED_HOT_COOKIES_FEEDING_PLAN,
+    createBlankFertilizationPlan,
     loadFertilizationPlans,
     saveFertilizationPlan,
 } from "../../lib/agronomy/fertilizationPlanEngine";
+import { FertilizationPlanModal } from "../cultivo/FertilizationPlanModal";
 
 export default function ProtocolosPage() {
     const [protocols, setProtocols] = useState<any[]>([]);
@@ -33,6 +35,7 @@ export default function ProtocolosPage() {
     // Fertilization Plans & Google Sheets Importer states
     const [fertPlans, setFertPlans] = useState<FertilizationPlan[]>([RED_HOT_COOKIES_FEEDING_PLAN]);
     const [selectedFertPlan, setSelectedFertPlan] = useState<FertilizationPlan>(RED_HOT_COOKIES_FEEDING_PLAN);
+    const [isPlanEditorOpen, setIsPlanEditorOpen] = useState(false);
     const [isImportModalOpen, setIsImportModalOpen] = useState(false);
     const [sheetUrl, setSheetUrl] = useState(
         "https://docs.google.com/spreadsheets/d/1S_WwJzAy0mzaA7rRXLdDw5_05DDrF2B0UBs0AwqrLMc/edit?usp=sharing"
@@ -55,12 +58,27 @@ export default function ProtocolosPage() {
             supabase.from("core_protocols").select("*").order("created_at", { ascending: false }),
             loadFertilizationPlans(supabase),
         ]);
-        if (data && !error) setProtocols(data);
+        if (data && !error) {
+            const visibleSops = data.filter(
+                (row: any) => !["CRM_CLIENT", "FERT_PLAN", "BATCH_FERT_ASSIGN"].includes(String(row.stage || ""))
+            );
+            setProtocols(visibleSops);
+        }
         if (loadedPlans && loadedPlans.length > 0) {
             setFertPlans(loadedPlans);
-            setSelectedFertPlan(loadedPlans[0]);
+            const stillExists = loadedPlans.find((p) => p.id === selectedFertPlan?.id);
+            setSelectedFertPlan(stillExists || loadedPlans[0]);
         }
         setLoading(false);
+    };
+
+    const handleCreateBlankFertPlan = async () => {
+        const blank = createBlankFertilizationPlan("Nuevo Plan de Fertilización");
+        await saveFertilizationPlan(supabase, blank);
+        const updated = await loadFertilizationPlans(supabase);
+        setFertPlans(updated);
+        setSelectedFertPlan(blank);
+        setIsPlanEditorOpen(true);
     };
 
     useEffect(() => {
@@ -172,6 +190,12 @@ export default function ProtocolosPage() {
                 </div>
                 <div className="z-10 flex flex-wrap gap-2">
                     <button
+                        onClick={handleCreateBlankFertPlan}
+                        className="flex items-center gap-2 px-4 py-3 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-transform hover:scale-105 shadow-[0_0_20px_rgba(6,182,212,0.3)] font-bold uppercase tracking-wider text-xs cursor-pointer"
+                    >
+                        <Plus size={18} weight="bold" /> Nuevo Plan Fertilización
+                    </button>
+                    <button
                         onClick={() => setIsImportModalOpen(true)}
                         className="flex items-center gap-2 px-4 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-transform hover:scale-105 shadow-[0_0_20px_rgba(16,185,129,0.3)] font-bold uppercase tracking-wider text-xs cursor-pointer"
                     >
@@ -200,7 +224,7 @@ export default function ProtocolosPage() {
                             Sincronización automática con días transcurridos, fotoperíodos extendidos (&gt;24 hs) y Visión IA
                         </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                         <select
                             value={selectedFertPlan.id}
                             onChange={(e) => {
@@ -215,6 +239,12 @@ export default function ProtocolosPage() {
                                 </option>
                             ))}
                         </select>
+                        <button
+                            onClick={() => setIsPlanEditorOpen(true)}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-200 text-xs font-bold cursor-pointer"
+                        >
+                            <PencilSimple size={15} weight="bold" /> Editar Semanas / Parámetros
+                        </button>
                     </div>
                 </div>
 
@@ -525,6 +555,22 @@ export default function ProtocolosPage() {
                         </div>
                     </GlassCard>
                 </div>
+            )}
+
+            {/* Modal Editor Completo de Planes de Fertilización */}
+            {isPlanEditorOpen && (
+                <FertilizationPlanModal
+                    batch={null}
+                    initialPlanToInspect={selectedFertPlan}
+                    startInEditMode={true}
+                    onClose={() => {
+                        setIsPlanEditorOpen(false);
+                        loadProtocols();
+                    }}
+                    onUpdated={() => {
+                        loadProtocols();
+                    }}
+                />
             )}
         </div>
     );

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { loadPlantGrid } from '@/lib/vision/PlantGridStore';
 import {
-    RED_HOT_COOKIES_FEEDING_PLAN,
+    loadFertilizationPlans,
     resolveBatchActivePlanWeek,
     evaluateVisionPlanCorrelation
 } from '@/lib/agronomy/fertilizationPlanEngine';
@@ -69,52 +69,89 @@ export async function GET() {
 
             const batchObj = activeBatches?.[0];
             if (batchObj) {
-                const { data: recentEvents } = await adminSupabase
-                    .from('core_agronomic_events')
-                    .select('event_type, description, water_liters, water_volume_liters, solution_ph, solution_ec, solution_ppm, date_occurred')
-                    .eq('batch_id', batchObj.id)
-                    .order('date_occurred', { ascending: false })
-                    .limit(5);
+                const { data: assignRows } = await adminSupabase
+                    .from('core_protocols')
+                    .select('content')
+                    .eq('stage', 'BATCH_FERT_ASSIGN')
+                    .eq('topic', String(batchObj.id))
+                    .limit(1);
 
-                const resolvedPlan = resolveBatchActivePlanWeek(batchObj, RED_HOT_COOKIES_FEEDING_PLAN, recentEvents || []);
+                let assignedPlanId = batchObj.fertilization_plan_id ? String(batchObj.fertilization_plan_id) : '';
+                let assignedOffset = Number(batchObj.fertilization_week_offset) || 0;
+                let assignedSyncMode: 'biological_cycles' | 'calendar_days' = 'biological_cycles';
 
-                const latestMeasuredIrrig = (recentEvents || []).find(
-                    (e: any) => e.solution_ph != null || e.solution_ec != null || e.solution_ppm != null
-                );
+                if (assignRows && assignRows.length > 0 && assignRows[0].content) {
+                    try {
+                        const parsedAssign = JSON.parse(assignRows[0].content);
+                        if (parsedAssign.planId !== undefined) assignedPlanId = String(parsedAssign.planId);
+                        if (parsedAssign.weekOffset !== undefined) assignedOffset = Number(parsedAssign.weekOffset) || 0;
+                        if (parsedAssign.syncMode === 'calendar_days') assignedSyncMode = 'calendar_days';
+                    } catch {
+                        // Ignore parse errors
+                    }
+                }
 
-                const correlation = evaluateVisionPlanCorrelation(
-                    resolvedPlan,
-                    latestAnalysis
-                        ? {
-                              health_score: latestAnalysis.health_score,
-                              leaf_posture: latestAnalysis.posture_state,
-                              issues_detected: latestAnalysis.issues_detected || [],
-                              deficiencies: latestRaw?.context_snapshot?.deficiencies || [],
-                              recommendations: latestAnalysis.recommendations || '',
-                              created_at: latestAnalysis.created_at
-                          }
-                        : null
-                );
+                if (assignedPlanId) {
+                    const allPlans = await loadFertilizationPlans(adminSupabase);
+                    const matchedPlan = allPlans.find((p) => p.id === assignedPlanId);
 
-                liveFertilizationPlan = {
-                    batch_id: batchObj.id,
-                    strain: batchObj.strain,
-                    stage: batchObj.stage,
-                    plan_name: resolvedPlan.plan.name,
-                    light_hours: resolvedPlan.lightHours,
-                    dark_hours: resolvedPlan.darkHours,
-                    cycle_total_hours: resolvedPlan.cycleTotalHours,
-                    is_extended_photoperiod: resolvedPlan.isExtendedPhotoperiod,
-                    stretch_factor: Number(resolvedPlan.photoperiodStretchFactor.toFixed(2)),
-                    calendar_days_in_stage: resolvedPlan.calendarDaysInStage,
-                    biological_cycles_completed: resolvedPlan.biologicalCyclesCompleted,
-                    calendar_week_in_stage: resolvedPlan.calendarWeekInStage,
-                    biological_week_in_stage: resolvedPlan.biologicalWeekInStage,
-                    active_week_number: resolvedPlan.effectiveWeekNumber,
-                    active_week: resolvedPlan.activeWeek,
-                    latest_measured_irrigation: latestMeasuredIrrig || null,
-                    correlation
-                };
+                    if (matchedPlan) {
+                        const { data: recentEvents } = await adminSupabase
+                            .from('core_agronomic_events')
+                            .select('event_type, description, water_liters, water_volume_liters, solution_ph, solution_ec, solution_ppm, date_occurred')
+                            .eq('batch_id', batchObj.id)
+                            .order('date_occurred', { ascending: false })
+                            .limit(5);
+
+                        const resolvedPlan = resolveBatchActivePlanWeek(
+                            batchObj,
+                            matchedPlan,
+                            recentEvents || [],
+                            {
+                                weekOffset: assignedOffset,
+                                syncMode: assignedSyncMode
+                            }
+                        );
+
+                        const latestMeasuredIrrig = (recentEvents || []).find(
+                            (e: any) => e.solution_ph != null || e.solution_ec != null || e.solution_ppm != null
+                        );
+
+                        const correlation = evaluateVisionPlanCorrelation(
+                            resolvedPlan,
+                            latestAnalysis
+                                ? {
+                                      health_score: latestAnalysis.health_score,
+                                      leaf_posture: latestAnalysis.posture_state,
+                                      issues_detected: latestAnalysis.issues_detected || [],
+                                      deficiencies: latestRaw?.context_snapshot?.deficiencies || [],
+                                      recommendations: latestAnalysis.recommendations || '',
+                                      created_at: latestAnalysis.created_at
+                                  }
+                                : null
+                        );
+
+                        liveFertilizationPlan = {
+                            batch_id: batchObj.id,
+                            strain: batchObj.strain,
+                            stage: batchObj.stage,
+                            plan_name: resolvedPlan.plan.name,
+                            light_hours: resolvedPlan.lightHours,
+                            dark_hours: resolvedPlan.darkHours,
+                            cycle_total_hours: resolvedPlan.cycleTotalHours,
+                            is_extended_photoperiod: resolvedPlan.isExtendedPhotoperiod,
+                            stretch_factor: Number(resolvedPlan.photoperiodStretchFactor.toFixed(2)),
+                            calendar_days_in_stage: resolvedPlan.calendarDaysInStage,
+                            biological_cycles_completed: resolvedPlan.biologicalCyclesCompleted,
+                            calendar_week_in_stage: resolvedPlan.calendarWeekInStage,
+                            biological_week_in_stage: resolvedPlan.biologicalWeekInStage,
+                            active_week_number: resolvedPlan.effectiveWeekNumber,
+                            active_week: resolvedPlan.activeWeek,
+                            latest_measured_irrigation: latestMeasuredIrrig || null,
+                            correlation
+                        };
+                    }
+                }
             }
         } catch (fertErr) {
             console.warn('[vision/status] Error resolviendo plan de fertilización en vivo:', fertErr);

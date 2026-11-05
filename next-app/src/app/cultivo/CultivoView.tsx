@@ -792,6 +792,7 @@ export function CultivoView() {
               {(() => {
                 void fertPlanTick;
                 const assignment = getBatchPlanAssignment(b);
+                const hasAssignedPlan = Boolean(assignment.planId);
                 const plan = availableFertPlans.find(p => p.id === assignment.planId) || RED_HOT_COOKIES_FEEDING_PLAN;
                 const resolved = resolveBatchActivePlanWeek(b, plan, [], { weekOffset: assignment.weekOffset, syncMode: assignment.syncMode });
                 return (
@@ -801,14 +802,23 @@ export function CultivoView() {
                         ☀️ Ciclo {resolved.cycleTotalHours}h • {resolved.biologicalCyclesCompleted} ciclos bio
                       </span>
                     )}
-                    {resolved.activeWeek && (
+                    {hasAssignedPlan && resolved.activeWeek ? (
                       <button
                         type="button"
                         onClick={() => setActiveFertPlanBatch(b)}
                         className="px-2 py-0.5 rounded bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 text-[9px] font-mono text-emerald-300 transition-colors cursor-pointer"
-                        title="Abrir Plan de Fertilización Semanal"
+                        title="Abrir Plan de Fertilización Asignado"
                       >
-                        📋 Sem {resolved.activeWeek.week_number} ({resolved.activeWeek.phenology}) • EC {resolved.activeWeek.target_ec_min}-{resolved.activeWeek.target_ec_max}
+                        📋 {resolved.activeWeek.label} ({resolved.activeWeek.phenology}) • EC {resolved.activeWeek.target_ec_min}-{resolved.activeWeek.target_ec_max}
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setActiveFertPlanBatch(b)}
+                        className="px-2 py-0.5 rounded bg-white/5 hover:bg-emerald-500/15 border border-panel-border hover:border-emerald-500/30 text-[9px] font-mono text-slate-400 hover:text-emerald-300 transition-colors cursor-pointer"
+                        title="Asignar o crear un Plan de Fertilización para este lote"
+                      >
+                        📋 Sin Plan (Asignar / Editar)
                       </button>
                     )}
                   </div>

@@ -112,7 +112,7 @@ export interface VisionPlanCorrelation {
  */
 export const RED_HOT_COOKIES_FEEDING_PLAN: FertilizationPlan = {
   id: 'plan-red-hot-cookies-feeding',
-  name: 'Programa Red Hot Cookies • Green House Feeding + Top Crop',
+  name: 'Plan Piloto • Red Hot Cookies (Green House Feeding + Top Crop)',
   subtitle: 'Green House Feeding (Sales Minerales) + Aditivos Top Crop | Sustrato con Perlita | Bidón 20L',
   strain_target: 'Red Hot Cookies (Sweet Seeds • 4 Sem Veg + 8 Sem Flora)',
   substrate_type: 'Sustrato con Perlita (Macetas 20L)',
@@ -431,9 +431,314 @@ export const RED_HOT_COOKIES_FEEDING_PLAN: FertilizationPlan = {
   ]
 };
 
+export const TOP_CROP_27H_EXPERIMENTAL_PLAN: FertilizationPlan = {
+  id: 'plan-top-crop-27h-experimental',
+  name: 'Protocolo Experimental 27h (13L/14O → 10L/17O) • Top Crop + Vamp',
+  subtitle: 'Línea Orgánico-Mineral Top Crop (Top Bloom / Top Bud / Top Candy / Barrier) + Big One & Vamp Poción',
+  strain_target: 'Fotoperíodo Extendido 27h (Fase 1: 13L/14O • Fase 2: 10L/17O)',
+  substrate_type: 'Sustrato Tierra / Turba con Perlita',
+  tank_reference_liters: 20,
+  water_per_plant_liters: 2.0,
+  base_water_ec: 0.38,
+  base_water_ppm: 181,
+  tds_scale: 500,
+  nutrition_strategy: 'Base Top Crop + Foliar alternado Big One / Vamp Poción en inicio de oscuridad',
+  weeks_schedule: [
+    {
+      week_id: 'vegetativo-1',
+      stage: 'vegetativo',
+      week_number: 1,
+      label: 'Semana 1',
+      phenology: 'Enraizamiento y Trasplante',
+      primary_nutrients: [
+        { product_name: 'Deeper Underground', dose: 1.5, dose_uom: 'ml/L', origin_type: 'organico' }
+      ],
+      primary_summary: 'Deeper Underground 1.5 ml/L',
+      secondary_nutrients: [],
+      secondary_summary: 'Solo Agua declorada',
+      target_ph_min: 6.0,
+      target_ph_max: 6.2,
+      target_ec_min: 0.6,
+      target_ec_max: 0.8,
+      target_ppm_min: 300,
+      target_ppm_max: 400,
+      notes: 'Riego suave post-trasplante.'
+    },
+    {
+      week_id: 'vegetativo-2',
+      stage: 'vegetativo',
+      week_number: 2,
+      label: 'Semana 2',
+      phenology: 'Desarrollo Vegetativo',
+      primary_nutrients: [
+        { product_name: 'Barrier', dose: 0.5, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Deeper Underground', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' }
+      ],
+      primary_summary: 'Barrier 0.5 ml/L + Deeper Underground 2.0 ml/L',
+      secondary_nutrients: [],
+      secondary_summary: 'Solo Agua',
+      target_ph_min: 6.0,
+      target_ph_max: 6.2,
+      target_ec_min: 0.8,
+      target_ec_max: 1.0,
+      target_ppm_min: 400,
+      target_ppm_max: 500,
+      notes: 'Fortalecimiento estructural antes de floración.'
+    },
+    {
+      week_id: 'floración-1',
+      stage: 'floración',
+      week_number: 1,
+      label: 'Flora Sem 1',
+      phenology: 'Arranque Floración (13L/14O)',
+      primary_nutrients: [
+        { product_name: 'Barrier', dose: 0.5, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Bloom', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Candy', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' }
+      ],
+      primary_summary: 'Barrier 0.5 ml/L + Top Bloom 2 ml/L + Top Candy 2 ml/L',
+      secondary_nutrients: [
+        { product_name: 'Big One', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Alg-A-Mic', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' }
+      ],
+      secondary_summary: 'Foliar Big One 2 ml/L + Alg-A-Mic 2 ml/L (alternar con Vamp Poción)',
+      target_ph_min: 6.0,
+      target_ph_max: 6.3,
+      target_ec_min: 1.2,
+      target_ec_max: 1.4,
+      target_ppm_min: 600,
+      target_ppm_max: 700,
+      notes: 'Fase 1 (13L/14O). Foliar al inicio de la fase oscura.'
+    },
+    {
+      week_id: 'floración-2',
+      stage: 'floración',
+      week_number: 2,
+      label: 'Flora Sem 2',
+      phenology: 'Pre-Floración Activa (13L/14O)',
+      primary_nutrients: [
+        { product_name: 'Barrier', dose: 0.5, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Bloom', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Candy', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' }
+      ],
+      primary_summary: 'Barrier 0.5 ml/L + Top Bloom 2 ml/L + Top Candy 2 ml/L',
+      secondary_nutrients: [
+        { product_name: 'Big One', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' }
+      ],
+      secondary_summary: 'Agua + Foliar alternado Big One / Vamp Poción',
+      target_ph_min: 6.0,
+      target_ph_max: 6.3,
+      target_ec_min: 1.3,
+      target_ec_max: 1.5,
+      target_ppm_min: 650,
+      target_ppm_max: 750,
+      notes: 'Sostener fotoperíodo 13L/14O (27h).'
+    },
+    {
+      week_id: 'floración-3',
+      stage: 'floración',
+      week_number: 3,
+      label: 'Flora Sem 3',
+      phenology: 'Desarrollo Floral Activo (13L/14O)',
+      primary_nutrients: [
+        { product_name: 'Barrier', dose: 0.5, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Bloom', dose: 3.0, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Candy', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Bud', dose: 0.5, dose_uom: 'ml/L', origin_type: 'organico' }
+      ],
+      primary_summary: 'Barrier 0.5 ml/L + Top Bloom 3 ml/L + Top Candy 2 ml/L + Top Bud 0.5 ml/L',
+      secondary_nutrients: [
+        { product_name: 'Big One', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' }
+      ],
+      secondary_summary: 'Agua + Foliar Big One 2 ml/L',
+      target_ph_min: 6.1,
+      target_ph_max: 6.3,
+      target_ec_min: 1.5,
+      target_ec_max: 1.7,
+      target_ppm_min: 750,
+      target_ppm_max: 850,
+      notes: 'Incorporación de Top Bud 0.5 ml/L.'
+    },
+    {
+      week_id: 'floración-4',
+      stage: 'floración',
+      week_number: 4,
+      label: 'Flora Sem 4',
+      phenology: 'Cierre de Estimulación (13L/14O)',
+      primary_nutrients: [
+        { product_name: 'Barrier', dose: 0.5, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Bloom', dose: 3.0, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Candy', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Bud', dose: 0.5, dose_uom: 'ml/L', origin_type: 'organico' }
+      ],
+      primary_summary: 'Barrier 0.5 ml/L + Top Bloom 3 ml/L + Top Candy 2 ml/L + Top Bud 0.5 ml/L',
+      secondary_nutrients: [],
+      secondary_summary: 'Solo Agua (Última aplicación de Big One)',
+      target_ph_min: 6.1,
+      target_ph_max: 6.4,
+      target_ec_min: 1.6,
+      target_ec_max: 1.8,
+      target_ppm_min: 800,
+      target_ppm_max: 900,
+      notes: 'Big One se suspende al finalizar la semana 4.'
+    },
+    {
+      week_id: 'floración-5',
+      stage: 'floración',
+      week_number: 5,
+      label: 'Flora Sem 5',
+      phenology: 'Engorde Floral Pleno (13L/14O)',
+      primary_nutrients: [
+        { product_name: 'Barrier', dose: 0.5, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Bloom', dose: 3.0, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Candy', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Bud', dose: 0.5, dose_uom: 'ml/L', origin_type: 'organico' }
+      ],
+      primary_summary: 'Barrier 0.5 ml/L + Top Bloom 3 ml/L + Top Candy 2 ml/L + Top Bud 0.5 ml/L',
+      secondary_nutrients: [],
+      secondary_summary: 'Solo Agua',
+      target_ph_min: 6.2,
+      target_ph_max: 6.4,
+      target_ec_min: 1.6,
+      target_ec_max: 1.8,
+      target_ppm_min: 800,
+      target_ppm_max: 900,
+      notes: 'Monitoreo semanal de tricomas y % pistilos oxidados.'
+    },
+    {
+      week_id: 'floración-6',
+      stage: 'floración',
+      week_number: 6,
+      label: 'Flora Sem 6',
+      phenology: 'Transición a Fase 2 (10L/17O)',
+      primary_nutrients: [
+        { product_name: 'Barrier', dose: 0.5, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Bloom', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Bud', dose: 1.0, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Candy', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' }
+      ],
+      primary_summary: 'Barrier 0.5 ml/L + Top Bloom 2 ml/L + Top Bud 1 ml/L + Top Candy 2 ml/L',
+      secondary_nutrients: [],
+      secondary_summary: 'Solo Agua',
+      target_ph_min: 6.2,
+      target_ph_max: 6.4,
+      target_ec_min: 1.4,
+      target_ec_max: 1.6,
+      target_ppm_min: 700,
+      target_ppm_max: 800,
+      notes: 'Al ver 70-80% pistilos oxidados, cortar luz a 10L/17O y escalar Top Bud a 1 ml/L.'
+    },
+    {
+      week_id: 'floración-7',
+      stage: 'floración',
+      week_number: 7,
+      label: 'Flora Sem 7',
+      phenology: 'Maduración Terminal Cero N (10L/17O)',
+      primary_nutrients: [
+        { product_name: 'Barrier', dose: 0.5, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Bud', dose: 1.0, dose_uom: 'ml/L', origin_type: 'organico' },
+        { product_name: 'Top Candy', dose: 2.0, dose_uom: 'ml/L', origin_type: 'organico' }
+      ],
+      primary_summary: 'Barrier 0.5 ml/L + Top Bud 1 ml/L + Top Candy 2 ml/L (Sin Top Bloom)',
+      secondary_nutrients: [],
+      secondary_summary: 'Solo Agua',
+      target_ph_min: 6.2,
+      target_ph_max: 6.5,
+      target_ec_min: 1.0,
+      target_ec_max: 1.2,
+      target_ppm_min: 500,
+      target_ppm_max: 600,
+      notes: 'Top Bloom suspendido. Cierre de formación de cálices.'
+    },
+    {
+      week_id: 'floración-8',
+      stage: 'floración',
+      week_number: 8,
+      label: 'Flora Sem 8',
+      phenology: 'Lavado de Raíces Final',
+      primary_nutrients: [],
+      primary_summary: '0 ml/L (Agua Limpia pH 6.0-6.5)',
+      secondary_nutrients: [],
+      secondary_summary: 'Solo Agua Limpia',
+      target_ph_min: 6.0,
+      target_ph_max: 6.5,
+      target_ec_min: 0.4,
+      target_ec_max: 0.4,
+      target_ppm_min: 180,
+      target_ppm_max: 200,
+      notes: 'Lavado de raíces 7 a 10 días previos al corte.'
+    }
+  ],
+  technical_protocols: [
+    {
+      title: '1. Indicadores de Transición a Fase 2 (13L/14O → 10L/17O)',
+      bullets: [
+        'Generación de pistilos blancos claramente reducida y 70-80% de pistilos oxidados.',
+        'Sostener diferencial térmico de 8°C entre luz y oscuridad (17-18°C nocturno).'
+      ]
+    }
+  ]
+};
+
 export const DEFAULT_FERTILIZATION_PLANS: FertilizationPlan[] = [
-  RED_HOT_COOKIES_FEEDING_PLAN
+  RED_HOT_COOKIES_FEEDING_PLAN,
+  TOP_CROP_27H_EXPERIMENTAL_PLAN
 ];
+
+export function createBlankFertilizationPlan(customName = 'Nuevo Plan de Fertilización', strainTarget = 'General'): FertilizationPlan {
+  return {
+    id: `plan-custom-${Date.now()}`,
+    name: customName,
+    subtitle: 'Plan personalizado configurable por semana',
+    strain_target: strainTarget,
+    substrate_type: 'Sustrato con Perlita',
+    tank_reference_liters: 20,
+    water_per_plant_liters: 2.0,
+    base_water_ec: 0.38,
+    base_water_ppm: 181,
+    tds_scale: 500,
+    nutrition_strategy: 'Configuración personalizada',
+    weeks_schedule: [
+      {
+        week_id: 'vegetativo-1',
+        stage: 'vegetativo',
+        week_number: 1,
+        label: 'Semana 1',
+        phenology: 'Inicio Vegetativo',
+        primary_nutrients: [],
+        primary_summary: 'Sin productos asignados',
+        secondary_nutrients: [],
+        secondary_summary: 'Solo Agua',
+        target_ph_min: 5.8,
+        target_ph_max: 6.0,
+        target_ec_min: 0.8,
+        target_ec_max: 1.0,
+        target_ppm_min: 400,
+        target_ppm_max: 500,
+        notes: ''
+      },
+      {
+        week_id: 'floración-1',
+        stage: 'floración',
+        week_number: 1,
+        label: 'Flora Sem 1',
+        phenology: 'Pre-Floración',
+        primary_nutrients: [],
+        primary_summary: 'Sin productos asignados',
+        secondary_nutrients: [],
+        secondary_summary: 'Solo Agua',
+        target_ph_min: 6.0,
+        target_ph_max: 6.2,
+        target_ec_min: 1.2,
+        target_ec_max: 1.5,
+        target_ppm_min: 600,
+        target_ppm_max: 750,
+        notes: ''
+      }
+    ],
+    technical_protocols: []
+  };
+}
 
 /**
  * Empareja el nombre de un producto del Plan (ej. "Top Barrier", "Short Flowering", "Booster PK", "Deeper Underg.")
@@ -1005,46 +1310,98 @@ export function parseFertilizationPlanFromCsv(
   };
 }
 
+// Caché en memoria de asignaciones de planes por lote sincronizadas con Supabase (core_protocols stage='BATCH_FERT_ASSIGN')
+const batchPlanAssignmentsMemoryCache: Record<
+  string,
+  { planId: string; weekOffset: number; syncMode: 'biological_cycles' | 'calendar_days' }
+> = {};
+
 /**
- * Carga la lista de planes disponibles desde Supabase (`core_fertilization_plans` o fallback local)
- * garantizando que siempre esté disponible el plan maestro `RED_HOT_COOKIES_FEEDING_PLAN`.
+ * Carga la lista de planes disponibles desde Supabase (`core_protocols` con stage='FERT_PLAN',
+ * `core_fertilization_plans` o caché local) e hidrata las asignaciones por lote.
  */
 export async function loadFertilizationPlans(supabaseClient: any): Promise<FertilizationPlan[]> {
   const plansMap = new Map<string, FertilizationPlan>();
-  plansMap.set(RED_HOT_COOKIES_FEEDING_PLAN.id, RED_HOT_COOKIES_FEEDING_PLAN);
+  for (const defPlan of DEFAULT_FERTILIZATION_PLANS) {
+    plansMap.set(defPlan.id, defPlan);
+  }
 
-  try {
-    const { data, error } = await supabaseClient
-      .from('core_fertilization_plans')
-      .select('*')
-      .order('created_at', { ascending: false });
+  if (supabaseClient) {
+    // 1. Cargar planes y asignaciones guardadas en `core_protocols` (tabla nativa activa en Supabase)
+    try {
+      const { data: protoRows, error: protoErr } = await supabaseClient
+        .from('core_protocols')
+        .select('*')
+        .in('stage', ['FERT_PLAN', 'BATCH_FERT_ASSIGN'])
+        .order('created_at', { ascending: true });
 
-    if (!error && Array.isArray(data)) {
-      for (const row of data) {
-        if (row.id && Array.isArray(row.weeks_schedule) && row.weeks_schedule.length > 0) {
-          plansMap.set(row.id, {
-            id: row.id,
-            name: row.name,
-            subtitle: row.subtitle || '',
-            strain_target: row.strain_target || 'General',
-            substrate_type: row.substrate_type || 'Sustrato con Perlita',
-            tank_reference_liters: Number(row.tank_reference_liters || 20),
-            water_per_plant_liters: Number(row.water_per_plant_liters || 2.4),
-            base_water_ec: Number(row.base_water_ec || 0.38),
-            base_water_ppm: Number(row.base_water_ppm || 181),
-            tds_scale: Number(row.tds_scale || 500),
-            nutrition_strategy: row.nutrition_strategy || '',
-            source_sheet_url: row.source_sheet_url || undefined,
-            weeks_schedule: row.weeks_schedule,
-            technical_protocols: Array.isArray(row.technical_protocols)
-              ? row.technical_protocols
-              : RED_HOT_COOKIES_FEEDING_PLAN.technical_protocols
-          });
+      if (!protoErr && Array.isArray(protoRows)) {
+        for (const r of protoRows) {
+          if (r.stage === 'FERT_PLAN' && r.content) {
+            try {
+              const parsedPlan: FertilizationPlan = JSON.parse(r.content);
+              if (parsedPlan && parsedPlan.id && Array.isArray(parsedPlan.weeks_schedule)) {
+                plansMap.set(parsedPlan.id, parsedPlan);
+              }
+            } catch {
+              // Ignore malformed JSON
+            }
+          } else if (r.stage === 'BATCH_FERT_ASSIGN' && r.title && r.content) {
+            try {
+              const parsedAssign = JSON.parse(r.content);
+              const normalized = {
+                planId: parsedAssign.planId ?? '',
+                weekOffset: Number(parsedAssign.weekOffset || 0),
+                syncMode: (parsedAssign.syncMode || 'biological_cycles') as 'biological_cycles' | 'calendar_days'
+              };
+              batchPlanAssignmentsMemoryCache[r.title] = normalized;
+              if (typeof window !== 'undefined') {
+                window.localStorage.setItem(`crm_batch_plan_v2_${r.title}`, JSON.stringify(normalized));
+              }
+            } catch {
+              // Ignore malformed JSON
+            }
+          }
         }
       }
+    } catch {
+      // Ignore
     }
-  } catch {
-    // Fallback silencioso si la tabla aún no fue creada
+
+    // 2. Intentar también desde `core_fertilization_plans` por si la tabla dedicada existe
+    try {
+      const { data, error } = await supabaseClient
+        .from('core_fertilization_plans')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (!error && Array.isArray(data)) {
+        for (const row of data) {
+          if (row.id && Array.isArray(row.weeks_schedule) && row.weeks_schedule.length > 0) {
+            plansMap.set(row.id, {
+              id: row.id,
+              name: row.name,
+              subtitle: row.subtitle || '',
+              strain_target: row.strain_target || 'General',
+              substrate_type: row.substrate_type || 'Sustrato con Perlita',
+              tank_reference_liters: Number(row.tank_reference_liters || 20),
+              water_per_plant_liters: Number(row.water_per_plant_liters || 2.4),
+              base_water_ec: Number(row.base_water_ec || 0.38),
+              base_water_ppm: Number(row.base_water_ppm || 181),
+              tds_scale: Number(row.tds_scale || 500),
+              nutrition_strategy: row.nutrition_strategy || '',
+              source_sheet_url: row.source_sheet_url || undefined,
+              weeks_schedule: row.weeks_schedule,
+              technical_protocols: Array.isArray(row.technical_protocols)
+                ? row.technical_protocols
+                : RED_HOT_COOKIES_FEEDING_PLAN.technical_protocols
+            });
+          }
+        }
+      }
+    } catch {
+      // Fallback silencioso
+    }
   }
 
   if (typeof window !== 'undefined') {
@@ -1067,7 +1424,7 @@ export async function loadFertilizationPlans(supabaseClient: any): Promise<Ferti
 }
 
 /**
- * Guarda un Plan de Fertilización en Supabase (`core_fertilization_plans`) y en caché local.
+ * Guarda o actualiza un Plan de Fertilización en Supabase (`core_protocols` stage='FERT_PLAN') y en caché local.
  */
 export async function saveFertilizationPlan(supabaseClient: any, plan: FertilizationPlan): Promise<void> {
   if (typeof window !== 'undefined') {
@@ -1080,6 +1437,33 @@ export async function saveFertilizationPlan(supabaseClient: any, plan: Fertiliza
     } catch {
       // Ignore
     }
+  }
+
+  if (!supabaseClient) return;
+
+  // Guardar en `core_protocols` (stage = 'FERT_PLAN', topic = plan.id)
+  try {
+    const { data: existing } = await supabaseClient
+      .from('core_protocols')
+      .select('id')
+      .eq('stage', 'FERT_PLAN')
+      .eq('topic', plan.id)
+      .limit(1);
+
+    const payload = {
+      title: plan.name,
+      stage: 'FERT_PLAN',
+      topic: plan.id,
+      content: JSON.stringify(plan)
+    };
+
+    if (existing && existing.length > 0) {
+      await supabaseClient.from('core_protocols').update(payload).eq('id', existing[0].id);
+    } else {
+      await supabaseClient.from('core_protocols').insert([payload]);
+    }
+  } catch {
+    // Ignore
   }
 
   try {
@@ -1108,18 +1492,46 @@ export async function saveFertilizationPlan(supabaseClient: any, plan: Fertiliza
 }
 
 /**
- * Obtiene y guarda la configuración de plan asignado a un lote (`fertilization_plan_id`, `plan_week_offset`, `plan_sync_mode`)
- * tanto en `core_batches` como en localStorage para máxima resiliencia.
+ * Elimina un Plan de Fertilización personalizado.
+ */
+export async function deleteFertilizationPlan(supabaseClient: any, planId: string): Promise<void> {
+  if (typeof window !== 'undefined') {
+    try {
+      const existingRaw = window.localStorage.getItem('crm_custom_fertilization_plans');
+      if (existingRaw) {
+        const list: FertilizationPlan[] = JSON.parse(existingRaw);
+        const filtered = list.filter(p => p.id !== planId);
+        window.localStorage.setItem('crm_custom_fertilization_plans', JSON.stringify(filtered));
+      }
+    } catch {
+      // Ignore
+    }
+  }
+
+  if (!supabaseClient) return;
+  try {
+    await supabaseClient.from('core_protocols').delete().eq('stage', 'FERT_PLAN').eq('topic', planId);
+  } catch {
+    // Ignore
+  }
+}
+
+/**
+ * Obtiene la configuración de plan asignado a un lote.
+ * IMPORTANTE: Por defecto un lote NO tiene ningún plan asignado (`planId: ''`)
+ * hasta que el usuario le asigne explícitamente un plan a ese lote.
  */
 export function getBatchPlanAssignment(batch: any): {
   planId: string;
   weekOffset: number;
   syncMode: 'biological_cycles' | 'calendar_days';
 } {
-  let localOverride: any = null;
-  if (typeof window !== 'undefined' && batch?.id) {
+  const batchId = batch?.id;
+  let localOverride: any = batchId ? batchPlanAssignmentsMemoryCache[batchId] : null;
+
+  if (!localOverride && typeof window !== 'undefined' && batchId) {
     try {
-      const raw = window.localStorage.getItem(`crm_batch_plan_${batch.id}`);
+      const raw = window.localStorage.getItem(`crm_batch_plan_v2_${batchId}`);
       if (raw) localOverride = JSON.parse(raw);
     } catch {
       // Ignore
@@ -1127,7 +1539,7 @@ export function getBatchPlanAssignment(batch: any): {
   }
 
   return {
-    planId: batch?.fertilization_plan_id || localOverride?.planId || RED_HOT_COOKIES_FEEDING_PLAN.id,
+    planId: batch?.fertilization_plan_id ?? localOverride?.planId ?? '',
     weekOffset:
       batch?.plan_week_offset !== undefined && batch?.plan_week_offset !== null
         ? Number(batch.plan_week_offset)
@@ -1148,24 +1560,52 @@ export async function updateBatchPlanAssignment(
     syncMode: 'biological_cycles' | 'calendar_days';
   }
 ): Promise<void> {
+  batchPlanAssignmentsMemoryCache[batchId] = assignment;
   if (typeof window !== 'undefined') {
     try {
-      window.localStorage.setItem(`crm_batch_plan_${batchId}`, JSON.stringify(assignment));
+      window.localStorage.setItem(`crm_batch_plan_v2_${batchId}`, JSON.stringify(assignment));
     } catch {
       // Ignore
     }
+  }
+
+  if (!supabaseClient) return;
+
+  // Persistir en `core_protocols` (stage = 'BATCH_FERT_ASSIGN', title = batchId)
+  try {
+    const { data: existing } = await supabaseClient
+      .from('core_protocols')
+      .select('id')
+      .eq('stage', 'BATCH_FERT_ASSIGN')
+      .eq('title', batchId)
+      .limit(1);
+
+    const payload = {
+      title: batchId,
+      stage: 'BATCH_FERT_ASSIGN',
+      topic: assignment.planId || 'NONE',
+      content: JSON.stringify(assignment)
+    };
+
+    if (existing && existing.length > 0) {
+      await supabaseClient.from('core_protocols').update(payload).eq('id', existing[0].id);
+    } else {
+      await supabaseClient.from('core_protocols').insert([payload]);
+    }
+  } catch {
+    // Ignore
   }
 
   try {
     await supabaseClient
       .from('core_batches')
       .update({
-        fertilization_plan_id: assignment.planId,
+        fertilization_plan_id: assignment.planId || null,
         plan_week_offset: assignment.weekOffset,
         plan_sync_mode: assignment.syncMode
       })
       .eq('id', batchId);
   } catch {
-    // Fallback local activo
+    // Fallback activo
   }
 }
