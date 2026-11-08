@@ -4,6 +4,7 @@ import {
     loadPlantGrid,
     savePlantGrid,
     getDefaultGridLayout,
+    getTemplateGridLayout,
     PlantGridLayout,
     DEFAULT_SOIL_SENSORS,
     SoilSensorOption
@@ -114,6 +115,58 @@ export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
 
+        if (body.action === 'template') {
+            const tpl = body.template as 'staggered_5' | 'staggered_7' | 'staggered_10' | 'perimeter_8';
+            const current = loadPlantGrid();
+            const fresh = getTemplateGridLayout(tpl);
+
+            const usedSensorIds = new Set<string>();
+            const usedBioChannels = new Set<string>();
+
+            const mergedZones = fresh.zones.map(newZone => {
+                const existing = current.zones.find(z => z.zone_id === newZone.zone_id);
+                if (existing) {
+                    const sensorId = existing.soil_sensor_id || '';
+                    const isDuplicateSensor = sensorId && usedSensorIds.has(sensorId);
+                    const finalSensorId = isDuplicateSensor ? newZone.soil_sensor_id : existing.soil_sensor_id;
+                    const finalSensorPin = isDuplicateSensor ? newZone.soil_sensor_pin : existing.soil_sensor_pin;
+                    if (finalSensorId) usedSensorIds.add(finalSensorId);
+
+                    const bioCh = existing.bio_channel || 'NONE';
+                    const isDuplicateBio = bioCh !== 'NONE' && usedBioChannels.has(bioCh);
+                    const finalBio = isDuplicateBio ? 'NONE' : bioCh;
+                    if (finalBio !== 'NONE') usedBioChannels.add(finalBio);
+
+                    return {
+                        ...existing,
+                        row: newZone.row,
+                        col: newZone.col,
+                        x_pct: newZone.x_pct,
+                        y_pct: newZone.y_pct,
+                        w_pct: newZone.w_pct,
+                        h_pct: newZone.h_pct,
+                        soil_sensor_id: finalSensorId,
+                        soil_sensor_pin: finalSensorPin,
+                        bio_channel: finalBio,
+                        active: true
+                    };
+                }
+                if (newZone.soil_sensor_id) usedSensorIds.add(newZone.soil_sensor_id);
+                if (newZone.bio_channel !== 'NONE') usedBioChannels.add(newZone.bio_channel);
+                return newZone;
+            });
+
+            const updated = savePlantGrid({
+                ...current,
+                layout_mode: fresh.layout_mode,
+                grid_rows: fresh.grid_rows,
+                grid_cols: fresh.grid_cols,
+                zones: mergedZones
+            });
+
+            return NextResponse.json({ success: true, grid: updated });
+        }
+
         if (body.action === 'resize') {
             const rows = Math.min(6, Math.max(1, Number(body.rows) || 2));
             const cols = Math.min(6, Math.max(1, Number(body.cols) || 3));
@@ -147,6 +200,10 @@ export async function POST(req: NextRequest) {
                         ...existing,
                         row: newZone.row,
                         col: newZone.col,
+                        x_pct: newZone.x_pct,
+                        y_pct: newZone.y_pct,
+                        w_pct: newZone.w_pct,
+                        h_pct: newZone.h_pct,
                         soil_sensor_id: finalSensorId,
                         soil_sensor_pin: finalSensorPin,
                         bio_channel: finalBio,
@@ -160,6 +217,7 @@ export async function POST(req: NextRequest) {
 
             const updated = savePlantGrid({
                 ...current,
+                layout_mode: 'grid',
                 grid_rows: rows,
                 grid_cols: cols,
                 zones: mergedZones

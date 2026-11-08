@@ -16,6 +16,10 @@ export interface PlantZoneConfig {
     zone_id: string;
     row: number;
     col: number;
+    x_pct: number; // 0-100% desde la izquierda del fotograma
+    y_pct: number; // 0-100% desde arriba del fotograma
+    w_pct: number; // Ancho relativo (5-100%)
+    h_pct: number; // Alto relativo (5-100%)
     plant_id: string;
     plant_name: string;
     strain: string;
@@ -31,6 +35,7 @@ export interface PlantZoneConfig {
 
 export interface PlantGridLayout {
     room_name: string;
+    layout_mode?: 'grid' | 'staggered' | 'perimeter' | 'freeform';
     grid_rows: number;
     grid_cols: number;
     scrog_net_installed: boolean;
@@ -153,6 +158,15 @@ export const DEFAULT_SOIL_SENSORS: SoilSensorOption[] = [
 const PROD_GRID_PATH = '/var/www/captures/crop_vision/plant_grid.json';
 const LOCAL_GRID_PATH = path.join(process.cwd(), 'public', 'captures', 'plant_grid.json');
 
+const DEFAULT_STRAINS = [
+    { strain: 'Nicole Punch', biotype: 'INDICA_DOMINANT' as const, antho: true, days: 60 },
+    { strain: 'Nicole Punch', biotype: 'INDICA_DOMINANT' as const, antho: true, days: 60 },
+    { strain: 'Nicole Punch', biotype: 'INDICA_DOMINANT' as const, antho: true, days: 60 },
+    { strain: 'Tropicanna WFC', biotype: 'HYBRID_50_50' as const, antho: true, days: 65 },
+    { strain: 'Tropicanna WFC', biotype: 'HYBRID_50_50' as const, antho: true, days: 65 },
+    { strain: 'Red Hot Cookies', biotype: 'SATIVA_DOMINANT' as const, antho: true, days: 63 }
+];
+
 export function getDefaultGridLayout(rows = 2, cols = 3, activeCount?: number): PlantGridLayout {
     const rowLabels = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
     const totalCells = rows * cols;
@@ -161,14 +175,8 @@ export function getDefaultGridLayout(rows = 2, cols = 3, activeCount?: number): 
             ? Math.min(totalCells, Math.max(1, activeCount))
             : totalCells;
 
-    const defaultStrains = [
-        { strain: 'Nicole Punch', biotype: 'INDICA_DOMINANT' as const, antho: true, days: 60 },
-        { strain: 'Nicole Punch', biotype: 'INDICA_DOMINANT' as const, antho: true, days: 60 },
-        { strain: 'Nicole Punch', biotype: 'INDICA_DOMINANT' as const, antho: true, days: 60 },
-        { strain: 'Tropicanna WFC', biotype: 'HYBRID_50_50' as const, antho: true, days: 65 },
-        { strain: 'Tropicanna WFC', biotype: 'HYBRID_50_50' as const, antho: true, days: 65 },
-        { strain: 'Red Hot Cookies', biotype: 'SATIVA_DOMINANT' as const, antho: true, days: 63 }
-    ];
+    const cellW = Number((100 / cols).toFixed(1));
+    const cellH = Number((100 / rows).toFixed(1));
 
     const zones: PlantZoneConfig[] = [];
     let index = 0;
@@ -176,13 +184,17 @@ export function getDefaultGridLayout(rows = 2, cols = 3, activeCount?: number): 
     for (let r = 0; r < rows; r++) {
         for (let c = 0; c < cols; c++) {
             const zoneId = `${rowLabels[r] || 'Z'}${c + 1}`;
-            const preset = defaultStrains[index % defaultStrains.length];
+            const preset = DEFAULT_STRAINS[index % DEFAULT_STRAINS.length];
             const sensorOption = DEFAULT_SOIL_SENSORS[index];
 
             zones.push({
                 zone_id: zoneId,
                 row: r,
                 col: c,
+                x_pct: Number((c * cellW).toFixed(1)),
+                y_pct: Number((r * cellH).toFixed(1)),
+                w_pct: cellW,
+                h_pct: cellH,
                 plant_id: `PL-${String(index + 1).padStart(2, '0')}`,
                 plant_name: `${preset.strain} #${(index % 3) + 1}`,
                 strain: preset.strain,
@@ -201,6 +213,120 @@ export function getDefaultGridLayout(rows = 2, cols = 3, activeCount?: number): 
 
     return {
         room_name: 'Carpa 2 (Principal)',
+        layout_mode: 'grid',
+        grid_rows: rows,
+        grid_cols: cols,
+        scrog_net_installed: true,
+        target_flip_coverage_pct: 72,
+        updated_at: new Date().toISOString(),
+        zones
+    };
+}
+
+export function getTemplateGridLayout(
+    template: 'staggered_5' | 'staggered_7' | 'staggered_10' | 'perimeter_8'
+): PlantGridLayout {
+    interface BoxCoord {
+        zone_id: string;
+        row: number;
+        col: number;
+        x_pct: number;
+        y_pct: number;
+        w_pct: number;
+        h_pct: number;
+    }
+
+    let coords: BoxCoord[] = [];
+    let rows = 2;
+    let cols = 3;
+    let mode: PlantGridLayout['layout_mode'] = 'staggered';
+
+    if (template === 'staggered_5') {
+        // Tresbolillo 3 arriba + 2 abajo intercaladas
+        rows = 2;
+        cols = 3;
+        coords = [
+            { zone_id: 'A1', row: 0, col: 0, x_pct: 2, y_pct: 3, w_pct: 30, h_pct: 45 },
+            { zone_id: 'A2', row: 0, col: 1, x_pct: 35, y_pct: 3, w_pct: 30, h_pct: 45 },
+            { zone_id: 'A3', row: 0, col: 2, x_pct: 68, y_pct: 3, w_pct: 30, h_pct: 45 },
+            { zone_id: 'B1', row: 1, col: 0, x_pct: 18, y_pct: 52, w_pct: 31, h_pct: 45 },
+            { zone_id: 'B2', row: 1, col: 1, x_pct: 52, y_pct: 52, w_pct: 31, h_pct: 45 }
+        ];
+    } else if (template === 'staggered_7') {
+        // Tresbolillo 4 arriba + 3 abajo intercaladas
+        rows = 2;
+        cols = 4;
+        coords = [
+            { zone_id: 'A1', row: 0, col: 0, x_pct: 1.5, y_pct: 3, w_pct: 23, h_pct: 45 },
+            { zone_id: 'A2', row: 0, col: 1, x_pct: 26, y_pct: 3, w_pct: 23, h_pct: 45 },
+            { zone_id: 'A3', row: 0, col: 2, x_pct: 50.5, y_pct: 3, w_pct: 23, h_pct: 45 },
+            { zone_id: 'A4', row: 0, col: 3, x_pct: 75, y_pct: 3, w_pct: 23, h_pct: 45 },
+            { zone_id: 'B1', row: 1, col: 0, x_pct: 13.5, y_pct: 52, w_pct: 24, h_pct: 45 },
+            { zone_id: 'B2', row: 1, col: 1, x_pct: 38.5, y_pct: 52, w_pct: 24, h_pct: 45 },
+            { zone_id: 'B3', row: 1, col: 2, x_pct: 63.5, y_pct: 52, w_pct: 24, h_pct: 45 }
+        ];
+    } else if (template === 'staggered_10') {
+        // Tresbolillo 5+5 Zig-Zag (10 sensores)
+        rows = 2;
+        cols = 5;
+        coords = [
+            { zone_id: 'A1', row: 0, col: 0, x_pct: 1, y_pct: 3, w_pct: 18.5, h_pct: 44 },
+            { zone_id: 'A2', row: 0, col: 1, x_pct: 20, y_pct: 3, w_pct: 18.5, h_pct: 44 },
+            { zone_id: 'A3', row: 0, col: 2, x_pct: 39, y_pct: 3, w_pct: 18.5, h_pct: 44 },
+            { zone_id: 'A4', row: 0, col: 3, x_pct: 58, y_pct: 3, w_pct: 18.5, h_pct: 44 },
+            { zone_id: 'A5', row: 0, col: 4, x_pct: 77, y_pct: 3, w_pct: 18.5, h_pct: 44 },
+            { zone_id: 'B1', row: 1, col: 0, x_pct: 4.5, y_pct: 52, w_pct: 18.5, h_pct: 45 },
+            { zone_id: 'B2', row: 1, col: 1, x_pct: 23.5, y_pct: 52, w_pct: 18.5, h_pct: 45 },
+            { zone_id: 'B3', row: 1, col: 2, x_pct: 42.5, y_pct: 52, w_pct: 18.5, h_pct: 45 },
+            { zone_id: 'B4', row: 1, col: 3, x_pct: 61.5, y_pct: 52, w_pct: 18.5, h_pct: 45 },
+            { zone_id: 'B5', row: 1, col: 4, x_pct: 80.5, y_pct: 52, w_pct: 18.5, h_pct: 45 }
+        ];
+    } else {
+        // Perimetral / Herradura 8 plantas (Centro libre para equipos)
+        rows = 3;
+        cols = 3;
+        mode = 'perimeter';
+        coords = [
+            { zone_id: 'A1', row: 0, col: 0, x_pct: 2, y_pct: 2, w_pct: 30, h_pct: 30 },
+            { zone_id: 'A2', row: 0, col: 1, x_pct: 35, y_pct: 2, w_pct: 30, h_pct: 30 },
+            { zone_id: 'A3', row: 0, col: 2, x_pct: 68, y_pct: 2, w_pct: 30, h_pct: 30 },
+            { zone_id: 'B1', row: 1, col: 0, x_pct: 2, y_pct: 35, w_pct: 30, h_pct: 30 },
+            { zone_id: 'B2', row: 1, col: 2, x_pct: 68, y_pct: 35, w_pct: 30, h_pct: 30 },
+            { zone_id: 'C1', row: 2, col: 0, x_pct: 2, y_pct: 68, w_pct: 30, h_pct: 30 },
+            { zone_id: 'C2', row: 2, col: 1, x_pct: 35, y_pct: 68, w_pct: 30, h_pct: 30 },
+            { zone_id: 'C3', row: 2, col: 2, x_pct: 68, y_pct: 68, w_pct: 30, h_pct: 30 }
+        ];
+    }
+
+    const zones: PlantZoneConfig[] = coords.map((box, index) => {
+        const preset = DEFAULT_STRAINS[index % DEFAULT_STRAINS.length];
+        const sensorOption = DEFAULT_SOIL_SENSORS[index];
+
+        return {
+            zone_id: box.zone_id,
+            row: box.row,
+            col: box.col,
+            x_pct: box.x_pct,
+            y_pct: box.y_pct,
+            w_pct: box.w_pct,
+            h_pct: box.h_pct,
+            plant_id: `PL-${String(index + 1).padStart(2, '0')}`,
+            plant_name: `${preset.strain} #${(index % 3) + 1}`,
+            strain: preset.strain,
+            biotype: preset.biotype,
+            natural_anthocyanins: preset.antho,
+            expected_flowering_days: preset.days,
+            soil_sensor_id: sensorOption ? sensorOption.id : undefined,
+            soil_sensor_pin: sensorOption ? sensorOption.label : 'Monitoreo Visual por IA',
+            bio_channel: index === 0 ? 'CH1' : index === 3 ? 'CH2' : 'NONE',
+            active: true,
+            notes: index === 0 ? 'Planta centinela con electrodos CH1' : ''
+        };
+    });
+
+    return {
+        room_name: 'Carpa 2 (Principal)',
+        layout_mode: mode,
         grid_rows: rows,
         grid_cols: cols,
         scrog_net_installed: true,
@@ -214,9 +340,29 @@ function normalizeLegacySensors(layout: PlantGridLayout): PlantGridLayout {
     if (!layout?.zones) return layout;
     const seenSensorIds = new Set<string>();
     const seenBioChannels = new Set<string>();
+    const rows = Math.max(1, layout.grid_rows || 2);
+    const cols = Math.max(1, layout.grid_cols || 3);
+    const defaultW = Number((100 / cols).toFixed(1));
+    const defaultH = Number((100 / rows).toFixed(1));
 
     const zones = layout.zones.map((z, idx) => {
         let updated = { ...z };
+
+        // Garantizar coordenadas relativas (x_pct, y_pct, w_pct, h_pct) si venían de versión anterior
+        if (
+            typeof updated.x_pct !== 'number' ||
+            typeof updated.y_pct !== 'number' ||
+            typeof updated.w_pct !== 'number' ||
+            typeof updated.h_pct !== 'number'
+        ) {
+            const r = typeof updated.row === 'number' ? updated.row : Math.floor(idx / cols);
+            const c = typeof updated.col === 'number' ? updated.col : idx % cols;
+            updated.x_pct = Number((c * defaultW).toFixed(1));
+            updated.y_pct = Number((r * defaultH).toFixed(1));
+            updated.w_pct = defaultW;
+            updated.h_pct = defaultH;
+        }
+
         if (
             updated.soil_sensor_pin === 'Pin 1 (Suelo CH1)' ||
             updated.soil_sensor_pin === 'Pin 2 (Suelo CH2)' ||
@@ -243,7 +389,7 @@ function normalizeLegacySensors(layout: PlantGridLayout): PlantGridLayout {
         }
         return updated;
     });
-    return { ...layout, zones };
+    return { ...layout, layout_mode: layout.layout_mode || 'grid', zones };
 }
 
 export function loadPlantGrid(): PlantGridLayout {

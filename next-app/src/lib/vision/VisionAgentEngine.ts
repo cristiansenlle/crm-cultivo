@@ -240,9 +240,11 @@ export class VisionAgentEngine {
                 scrog_net_installed: plantGrid.scrog_net_installed,
                 target_flip_coverage_pct: plantGrid.target_flip_coverage_pct,
                 previous_canopy_coverage_pct: prevCanopyCoverage,
+                layout_mode: plantGrid.layout_mode || 'grid',
                 mapped_plants: activeZones.map(z => ({
                     zone_id: z.zone_id,
-                    position: `Fila ${z.row + 1} (${z.row === 0 ? 'Superior/Norte' : z.row === plantGrid.grid_rows - 1 ? 'Inferior/Sur' : 'Centro'}), Columna ${z.col + 1} (${z.col === 0 ? 'Izquierda/Oeste' : z.col === plantGrid.grid_cols - 1 ? 'Derecha/Este' : 'Centro'})`,
+                    bounding_box_pct: `X: ${Math.round(z.x_pct ?? 0)}% a ${Math.round((z.x_pct ?? 0) + (z.w_pct ?? 33))}%, Y: ${Math.round(z.y_pct ?? 0)}% a ${Math.round((z.y_pct ?? 0) + (z.h_pct ?? 50))}% del encuadre`,
+                    position: `Región (${Math.round(z.x_pct ?? 0)}%-${Math.round((z.x_pct ?? 0) + (z.w_pct ?? 33))}% horiz, ${Math.round(z.y_pct ?? 0)}%-${Math.round((z.y_pct ?? 0) + (z.h_pct ?? 50))}% vert)`,
                     plant_name: z.plant_name,
                     strain: z.strain,
                     biotype: z.biotype,
@@ -291,9 +293,9 @@ INSTRUCCIONES ESTRICTAS DE ANÁLISIS CENITAL v2.0 (CICLO COMPLETO E INDIVIDUALIZ
    - Calcula "canopy_coverage_pct" (0 a 100%) de área verde sobre el total de la malla/carpa.
    - Calcula "daily_growth_delta_pct": tasa de expansión diaria estimada según el vigor o comparando con previous_canopy_coverage_pct.
 
-2. MAPEO INDIVIDUAL DE PLANTAS POR CUADRÍCULA (per_plant_analysis):
-   - Divide mentalmente la imagen en la cuadrícula indicada en spatial_plant_grid (${plantGrid.grid_rows} filas x ${plantGrid.grid_cols} columnas: fila A arriba, fila B abajo; columna 1 izquierda, columna ${plantGrid.grid_cols} derecha).
-   - Para CADA planta listada en mapped_plants, evalúa su cuadrante específico:
+2. MAPEO INDIVIDUAL DE PLANTAS POR COORDENADAS ESPACIALES (per_plant_analysis):
+   - Cada planta en mapped_plants tiene su recuadro exacto en porcentaje sobre el fotograma ("bounding_box_pct", donde X: 0%-100% va de izquierda a derecha e Y: 0%-100% va de arriba a abajo, soportando grillas, tresbolillo/zig-zag o zonas libres).
+   - Para CADA planta listada en mapped_plants, inspecciona exclusivamente su región "bounding_box_pct":
      * Estado de salud individual (0-100), % de su cuadrante cubierto (canopy_share_pct), postura foliar ("PRAYING", "TURGID", "DROOPING", "CLAWING").
      * DIFERENCIACIÓN MULTIGENÉTICA: Observa el ancho de foliolos (Indica ancha vs Sativa fina), estiramiento (stretch) y pigmentación.
      * REGLA DE ANTOCIANINAS: Si "natural_anthocyanins_purple" es true para esa planta (ej. Nicole Punch o Tropicanna), los tonos morados/púrpura en hojas superiores durante floración avanzada deben clasificarse como "anthocyanin_expression": "GENETIC_NORMAL" (salud alta) y NO como deficiencia de fósforo. Si es false y hay morado severo, clasifícalo como "STRESS_INDUCED".

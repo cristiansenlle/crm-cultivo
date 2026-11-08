@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     Grid,
     Leaf,
@@ -8,12 +8,13 @@ import {
     CheckCircle2,
     Cpu,
     Droplets,
-    Scissors,
-    Award,
-    AlertTriangle,
     Layers,
     RefreshCw,
-    Eye
+    Eye,
+    Move,
+    Plus,
+    Trash2,
+    Maximize2
 } from 'lucide-react';
 import type {
     PlantGridLayout,
@@ -37,9 +38,23 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
     const [saving, setSaving] = useState(false);
     const [saveMessage, setSaveMessage] = useState('');
     const [showOverlayMetrics, setShowOverlayMetrics] = useState(true);
+    const [freeformEditMode, setFreeformEditMode] = useState(true);
+
     const [customRows, setCustomRows] = useState<number>(2);
     const [customCols, setCustomCols] = useState<number>(3);
     const [customPlantCount, setCustomPlantCount] = useState<number>(6);
+
+    const viewportRef = useRef<HTMLDivElement | null>(null);
+    const [dragState, setDragState] = useState<{
+        zoneId: string;
+        mode: 'move' | 'resize';
+        startX: number;
+        startY: number;
+        initialX: number;
+        initialY: number;
+        initialW: number;
+        initialH: number;
+    } | null>(null);
 
     const fetchGridData = async () => {
         setLoading(true);
@@ -52,24 +67,40 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                     : [];
                 setSoilSensors(sensorsList);
 
-                // Migrar etiquetas antiguas si alguna zona tenía 'Pin 1 (Suelo CH1)' o 'Pin 2 (Suelo CH2)'
                 if (data.grid?.zones) {
+                    const rows = Math.max(1, data.grid.grid_rows || 2);
+                    const cols = Math.max(1, data.grid.grid_cols || 3);
+                    const defaultW = Number((100 / cols).toFixed(1));
+                    const defaultH = Number((100 / rows).toFixed(1));
+
                     const normalizedZones = data.grid.zones.map((z: PlantZoneConfig, idx: number) => {
+                        let updated = { ...z };
                         if (
-                            z.soil_sensor_pin === 'Pin 1 (Suelo CH1)' ||
-                            z.soil_sensor_pin === 'Pin 2 (Suelo CH2)' ||
-                            z.soil_sensor_pin === 'Monitoreo Visual'
+                            typeof updated.x_pct !== 'number' ||
+                            typeof updated.y_pct !== 'number' ||
+                            typeof updated.w_pct !== 'number' ||
+                            typeof updated.h_pct !== 'number'
+                        ) {
+                            const r = typeof updated.row === 'number' ? updated.row : Math.floor(idx / cols);
+                            const c = typeof updated.col === 'number' ? updated.col : idx % cols;
+                            updated.x_pct = Number((c * defaultW).toFixed(1));
+                            updated.y_pct = Number((r * defaultH).toFixed(1));
+                            updated.w_pct = defaultW;
+                            updated.h_pct = defaultH;
+                        }
+
+                        if (
+                            updated.soil_sensor_pin === 'Pin 1 (Suelo CH1)' ||
+                            updated.soil_sensor_pin === 'Pin 2 (Suelo CH2)' ||
+                            updated.soil_sensor_pin === 'Monitoreo Visual'
                         ) {
                             const mappedSensor = sensorsList[idx];
                             if (mappedSensor) {
-                                return {
-                                    ...z,
-                                    soil_sensor_id: mappedSensor.id,
-                                    soil_sensor_pin: mappedSensor.label
-                                };
+                                updated.soil_sensor_id = mappedSensor.id;
+                                updated.soil_sensor_pin = mappedSensor.label;
                             }
                         }
-                        return z;
+                        return updated;
                     });
                     const loadedGrid = { ...data.grid, zones: normalizedZones };
                     setGrid(loadedGrid);
@@ -96,6 +127,49 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
     useEffect(() => {
         fetchGridData();
     }, []);
+
+    // Manejo de Drag & Resize sobre el contenedor cenital
+    useEffect(() => {
+        if (!dragState) return;
+
+        const handlePointerMove = (e: PointerEvent) => {
+            if (!viewportRef.current || !grid) return;
+            const rect = viewportRef.current.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+
+            const deltaXPct = ((e.clientX - dragState.startX) / rect.width) * 100;
+            const deltaYPct = ((e.clientY - dragState.startY) / rect.height) * 100;
+
+            setGrid(prev => {
+                if (!prev) return prev;
+                const nextZones = prev.zones.map(z => {
+                    if (z.zone_id !== dragState.zoneId) return z;
+
+                    if (dragState.mode === 'move') {
+                        const newX = Math.max(0, Math.min(100 - z.w_pct, Number((dragState.initialX + deltaXPct).toFixed(1))));
+                        const newY = Math.max(0, Math.min(100 - z.h_pct, Number((dragState.initialY + deltaYPct).toFixed(1))));
+                        return { ...z, x_pct: newX, y_pct: newY };
+                    } else {
+                        const newW = Math.max(10, Math.min(100 - z.x_pct, Number((dragState.initialW + deltaXPct).toFixed(1))));
+                        const newH = Math.max(14, Math.min(100 - z.y_pct, Number((dragState.initialH + deltaYPct).toFixed(1))));
+                        return { ...z, w_pct: newW, h_pct: newH };
+                    }
+                });
+                return { ...prev, layout_mode: 'freeform', zones: nextZones };
+            });
+        };
+
+        const handlePointerUp = () => {
+            setDragState(null);
+        };
+
+        window.addEventListener('pointermove', handlePointerMove);
+        window.addEventListener('pointerup', handlePointerUp);
+        return () => {
+            window.removeEventListener('pointermove', handlePointerMove);
+            window.removeEventListener('pointerup', handlePointerUp);
+        };
+    }, [dragState, grid]);
 
     const handleResizeGrid = async (rows: number, cols: number, activeCount?: number) => {
         const safeRows = Math.min(6, Math.max(1, Number(rows) || 1));
@@ -126,9 +200,9 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                 setCustomPlantCount(data.grid.zones.filter((z: PlantZoneConfig) => z.active).length);
                 setSelectedZoneId(data.grid.zones[0]?.zone_id || 'A1');
                 setSaveMessage(
-                    `Cuadrícula personalizada a ${safeRows}×${safeCols} (${targetActive} ${
+                    `Cuadrícula ajustada a ${safeRows}×${safeCols} (${targetActive} ${
                         targetActive === 1 ? 'planta activa' : 'plantas activas'
-                    } de ${maxCells} cuadrantes)`
+                    } de ${maxCells} zonas)`
                 );
                 setTimeout(() => setSaveMessage(''), 4000);
             }
@@ -139,11 +213,35 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
         }
     };
 
+    const handleApplyTemplate = async (template: 'staggered_5' | 'staggered_7' | 'staggered_10' | 'perimeter_8', label: string) => {
+        setSaving(true);
+        try {
+            const res = await fetch('/api/vision/grid', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: 'template', template })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                setGrid(data.grid);
+                setCustomRows(data.grid.grid_rows);
+                setCustomCols(data.grid.grid_cols);
+                setCustomPlantCount(data.grid.zones.filter((z: PlantZoneConfig) => z.active).length);
+                setSelectedZoneId(data.grid.zones[0]?.zone_id || 'A1');
+                setSaveMessage(`✨ Disposición "${label}" aplicada. Puedes arrastrar o redimensionar cada planta libremente.`);
+                setTimeout(() => setSaveMessage(''), 4500);
+            }
+        } catch (err) {
+            console.error('Error aplicando plantilla:', err);
+        } finally {
+            setSaving(false);
+        }
+    };
+
     const handleApplyPlantCount = (newCount: number) => {
         const count = Math.min(36, Math.max(1, Number(newCount) || 1));
         setCustomPlantCount(count);
 
-        // Si el número de plantas supera la cuadrícula actual, calcular filas×columnas óptimas automáticamente
         let r = customRows;
         let c = customCols;
         if (count > r * c) {
@@ -164,6 +262,58 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
         handleResizeGrid(r, c, count);
     };
 
+    const handleAddFreeZone = () => {
+        if (!grid) return;
+        const idx = grid.zones.length;
+        const newZoneId = `P${idx + 1}`;
+        const usedSensorIds = new Set(grid.zones.map(z => z.soil_sensor_id).filter(Boolean));
+        const freeSensor = soilSensors.find(s => !usedSensorIds.has(s.id)) || soilSensors[idx % Math.max(1, soilSensors.length)];
+
+        const newZone: PlantZoneConfig = {
+            zone_id: newZoneId,
+            row: 0,
+            col: idx,
+            x_pct: Math.min(72, 10 + (idx * 7) % 60),
+            y_pct: Math.min(68, 12 + (idx * 9) % 55),
+            w_pct: 24,
+            h_pct: 36,
+            plant_id: `PL-${String(idx + 1).padStart(2, '0')}`,
+            plant_name: `Planta #${idx + 1}`,
+            strain: availableStrains[0] || 'Nicole Punch',
+            biotype: 'INDICA_DOMINANT',
+            natural_anthocyanins: true,
+            expected_flowering_days: 60,
+            soil_sensor_id: freeSensor ? freeSensor.id : undefined,
+            soil_sensor_pin: freeSensor ? freeSensor.label : 'Monitoreo Visual por IA',
+            bio_channel: 'NONE',
+            active: true,
+            notes: 'Zona libre personalizada'
+        };
+
+        const updatedZones = [...grid.zones, newZone];
+        setGrid({
+            ...grid,
+            layout_mode: 'freeform',
+            zones: updatedZones
+        });
+        setSelectedZoneId(newZoneId);
+        setCustomPlantCount(updatedZones.filter(z => z.active).length);
+        setSaveMessage(`➕ Zona libre ${newZoneId} agregada. Arrástrala sobre la maceta en la imagen y pulsa Guardar Mapa.`);
+        setTimeout(() => setSaveMessage(''), 4000);
+    };
+
+    const handleRemoveSelectedZone = () => {
+        if (!grid || grid.zones.length <= 1) return;
+        const filtered = grid.zones.filter(z => z.zone_id !== selectedZoneId);
+        setGrid({
+            ...grid,
+            layout_mode: 'freeform',
+            zones: filtered
+        });
+        setSelectedZoneId(filtered[0]?.zone_id || 'A1');
+        setCustomPlantCount(filtered.filter(z => z.active).length);
+    };
+
     const handleSaveGrid = async () => {
         if (!grid) return;
         setSaving(true);
@@ -176,7 +326,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
             if (res.ok) {
                 const data = await res.json();
                 setGrid(data.grid);
-                setSaveMessage('✅ Mapa de plantas y genéticas guardado en el Agente de Visión');
+                setSaveMessage('✅ Mapa espacial (posiciones libres, sensores y genéticas) guardado en el Agente de Visión');
                 setTimeout(() => setSaveMessage(''), 4000);
             }
         } catch (err) {
@@ -209,7 +359,6 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
     const selectedZone = grid.zones.find(z => z.zone_id === selectedZoneId) || grid.zones[0];
     const selectedPlantAnalysis = perPlantResults.find(p => p.zone_id === selectedZone?.zone_id);
 
-    // Agrupar por genética para resumen multigenética
     const strainGroups = grid.zones
         .filter(z => z.active)
         .reduce((acc: Record<string, PlantZoneConfig[]>, z) => {
@@ -255,14 +404,36 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                     <div>
                         <h2 className="text-lg font-bold text-zinc-100 flex items-center gap-2">
                             <Grid className="w-5 h-5 text-emerald-400" />
-                            <span>Mapeo Espacial de Plantas Individuales y Multigenética</span>
+                            <span>Mapeo Espacial Libre, Tresbolillo y Multigenética</span>
                         </h2>
                         <p className="text-xs text-zinc-400 mt-0.5">
-                            Divide la vista cenital de 120° en cuadrantes fijos o personaliza el número exacto de filas, columnas y plantas activas en la sala.
+                            Usa una plantilla rápida (Grilla, Tresbolillo o Perimetral) y <strong>arrastra o estira cada recuadro</strong> directamente sobre la foto cenital para calzar cualquier disposición real de macetas.
                         </p>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2.5">
+                    <div className="flex flex-wrap items-center gap-2">
+                        <button
+                            onClick={() => setFreeformEditMode(!freeformEditMode)}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold border transition-all cursor-pointer ${
+                                freeformEditMode
+                                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 shadow-sm'
+                                    : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 border-zinc-700'
+                            }`}
+                            title="Habilita arrastrar y cambiar el tamaño de cada zona con el mouse sobre la imagen"
+                        >
+                            <Move className="w-3.5 h-3.5" />
+                            <span>{freeformEditMode ? 'Edición Libre Activa (Arrastrar/Estirar)' : 'Mover / Redimensionar'}</span>
+                        </button>
+
+                        <button
+                            onClick={handleAddFreeZone}
+                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 text-xs font-semibold border border-cyan-500/40 transition-colors cursor-pointer"
+                            title="Agrega una maceta suelta en cualquier posición"
+                        >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Agregar Planta</span>
+                        </button>
+
                         <button
                             onClick={() => setShowOverlayMetrics(!showOverlayMetrics)}
                             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-medium border border-zinc-700 transition-colors cursor-pointer"
@@ -282,41 +453,66 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                     </div>
                 </div>
 
-                {/* Segunda fila: Presets Rápidos + Personalizador Libre de Filas × Columnas y N° de Plantas */}
+                {/* Fila 2: Presets de Grilla + Plantillas No-Cuadradas (Tresbolillo / Perimetral) + Personalizador */}
                 <div className="pt-3 border-t border-zinc-800/80 flex flex-wrap items-center justify-between gap-3">
-                    {/* Presets Rápidos */}
-                    <div className="flex flex-wrap items-center gap-1 bg-zinc-950 border border-zinc-800 rounded-xl p-1 text-xs">
-                        <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-zinc-500">
-                            Presets:
-                        </span>
-                        {[
-                            { r: 1, c: 2, p: 2, label: '1×2 (2 pl)' },
-                            { r: 2, c: 2, p: 4, label: '2×2 (4 pl)' },
-                            { r: 2, c: 3, p: 6, label: '2×3 (6 pl)' },
-                            { r: 3, c: 3, p: 9, label: '3×3 (9 pl)' },
-                            { r: 2, c: 5, p: 10, label: '2×5 (10 pl)' },
-                            { r: 3, c: 4, p: 12, label: '3×4 (12 pl)' }
-                        ].map(preset => {
-                            const activeCountNow = grid.zones.filter(z => z.active).length;
-                            const active =
-                                grid.grid_rows === preset.r &&
-                                grid.grid_cols === preset.c &&
-                                activeCountNow === preset.p;
-                            return (
+                    <div className="flex flex-wrap items-center gap-2">
+                        {/* Grillas Uniformes */}
+                        <div className="flex flex-wrap items-center gap-1 bg-zinc-950 border border-zinc-800 rounded-xl p-1 text-xs">
+                            <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-zinc-500">
+                                Grillas:
+                            </span>
+                            {[
+                                { r: 1, c: 2, p: 2, label: '1×2 (2)' },
+                                { r: 2, c: 2, p: 4, label: '2×2 (4)' },
+                                { r: 2, c: 3, p: 6, label: '2×3 (6)' },
+                                { r: 3, c: 3, p: 9, label: '3×3 (9)' },
+                                { r: 2, c: 5, p: 10, label: '2×5 (10)' },
+                                { r: 3, c: 4, p: 12, label: '3×4 (12)' }
+                            ].map(preset => {
+                                const activeCountNow = grid.zones.filter(z => z.active).length;
+                                const active =
+                                    grid.layout_mode === 'grid' &&
+                                    grid.grid_rows === preset.r &&
+                                    grid.grid_cols === preset.c &&
+                                    activeCountNow === preset.p;
+                                return (
+                                    <button
+                                        key={preset.label}
+                                        onClick={() => handleResizeGrid(preset.r, preset.c, preset.p)}
+                                        disabled={saving}
+                                        className={`px-2 py-1 rounded-lg font-mono transition-all cursor-pointer ${
+                                            active
+                                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
+                                                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
+                                        }`}
+                                    >
+                                        {preset.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+
+                        {/* Plantillas No-Cuadradas (Tresbolillo / Zig-Zag / Perimetral) */}
+                        <div className="flex flex-wrap items-center gap-1 bg-zinc-950 border border-purple-500/30 rounded-xl p-1 text-xs">
+                            <span className="px-2 text-[10px] font-mono uppercase tracking-wider text-purple-300">
+                                Disposición Libre:
+                            </span>
+                            {[
+                                { id: 'staggered_5' as const, label: 'Tresbolillo 3+2 (5 pl)' },
+                                { id: 'staggered_7' as const, label: 'Tresbolillo 4+3 (7 pl)' },
+                                { id: 'staggered_10' as const, label: 'Zig-Zag 5+5 (10 pl)' },
+                                { id: 'perimeter_8' as const, label: 'Perimetral (8 pl)' }
+                            ].map(tpl => (
                                 <button
-                                    key={preset.label}
-                                    onClick={() => handleResizeGrid(preset.r, preset.c, preset.p)}
+                                    key={tpl.id}
+                                    onClick={() => handleApplyTemplate(tpl.id, tpl.label)}
                                     disabled={saving}
-                                    className={`px-2.5 py-1.5 rounded-lg font-mono transition-all cursor-pointer ${
-                                        active
-                                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
-                                            : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60'
-                                    }`}
+                                    className="px-2.5 py-1 rounded-lg font-mono text-purple-200 hover:bg-purple-500/20 hover:text-white transition-all cursor-pointer"
                                 >
-                                    {preset.label}
+                                    {tpl.label}
                                 </button>
-                            );
-                        })}
+                            ))}
+                        </div>
                     </div>
 
                     {/* Personalizador Numérico Libre */}
@@ -337,14 +533,14 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                     setCustomRows(r);
                                     setCustomPlantCount(Math.min(r * customCols, customPlantCount));
                                 }}
-                                className="w-12 px-1.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 font-mono font-bold text-center focus:border-emerald-500 outline-none"
+                                className="w-11 px-1 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 font-mono font-bold text-center focus:border-emerald-500 outline-none"
                             />
                         </div>
 
                         <span className="text-zinc-500 font-mono">×</span>
 
                         <div className="flex items-center gap-1">
-                            <span className="text-zinc-400">Columnas</span>
+                            <span className="text-zinc-400">Cols</span>
                             <input
                                 type="number"
                                 min={1}
@@ -355,14 +551,14 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                     setCustomCols(c);
                                     setCustomPlantCount(Math.min(customRows * c, customPlantCount));
                                 }}
-                                className="w-12 px-1.5 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 font-mono font-bold text-center focus:border-emerald-500 outline-none"
+                                className="w-11 px-1 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 font-mono font-bold text-center focus:border-emerald-500 outline-none"
                             />
                         </div>
 
                         <div className="h-4 w-px bg-zinc-800 mx-0.5" />
 
                         <div className="flex items-center gap-1">
-                            <span className="text-zinc-400">N° Plantas:</span>
+                            <span className="text-zinc-400">Plantas:</span>
                             <input
                                 type="number"
                                 min={1}
@@ -377,8 +573,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                         handleApplyPlantCount(customPlantCount);
                                     }
                                 }}
-                                className="w-14 px-1.5 py-1 rounded-lg bg-zinc-900 border border-emerald-500/40 text-emerald-300 font-mono font-bold text-center focus:border-emerald-400 outline-none"
-                                title="Cantidad exacta de plantas activas en la sala"
+                                className="w-12 px-1 py-1 rounded-lg bg-zinc-900 border border-emerald-500/40 text-emerald-300 font-mono font-bold text-center focus:border-emerald-400 outline-none"
                             />
                         </div>
 
@@ -391,7 +586,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                 }
                             }}
                             disabled={saving}
-                            className="px-3 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-semibold transition-all cursor-pointer"
+                            className="px-2.5 py-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 font-semibold transition-all cursor-pointer"
                         >
                             Aplicar
                         </button>
@@ -406,48 +601,70 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                 </div>
             )}
 
-            {/* Cuerpo Principal: Imagen Cenital con Grilla Interactiva + Editor de Planta */}
+            {/* Cuerpo Principal: Imagen Cenital con Zonas Libres Arrastrables + Editor de Planta */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-                {/* Columna Izquierda (7 cols): Visor Cenital con Cuadrícula Superpuesta */}
+                {/* Columna Izquierda (7 cols): Visor Cenital con Zonas Posicionables */}
                 <div className="lg:col-span-7 flex flex-col gap-3">
-                    <div className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black border border-zinc-800 shadow-2xl">
+                    <div
+                        ref={viewportRef}
+                        className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black border border-zinc-800 shadow-2xl select-none"
+                    >
                         <img
                             src={latestImageUrl || '/captures/cenital_2026-09-17T23-55-54-760Z.jpg'}
-                            alt="Vista Cenital con Cuadrícula de Plantas"
-                            className="w-full h-full object-cover opacity-85"
+                            alt="Vista Cenital con Zonas de Plantas"
+                            className="w-full h-full object-cover opacity-85 pointer-events-none"
+                            draggable={false}
                         />
 
-                        {/* Grilla Espacial Interactiva */}
-                        <div
-                            className="absolute inset-0 grid"
-                            style={{
-                                gridTemplateRows: `repeat(${grid.grid_rows}, minmax(0, 1fr))`,
-                                gridTemplateColumns: `repeat(${grid.grid_cols}, minmax(0, 1fr))`
-                            }}
-                        >
+                        {/* Lienzo de Zonas Espaciales (Posicionamiento por Coordenadas % X, Y, Ancho, Alto) */}
+                        <div className="absolute inset-0">
                             {grid.zones.map(zone => {
                                 const isSelected = zone.zone_id === selectedZone?.zone_id;
+                                const isDraggingThis = dragState?.zoneId === zone.zone_id;
                                 const plantDiag = perPlantResults.find(p => p.zone_id === zone.zone_id);
                                 const assignedSensor = soilSensors.find(
                                     s => s.id === zone.soil_sensor_id || s.label === zone.soil_sensor_pin
                                 );
-                                const isCompact = grid.grid_cols >= 4;
+                                const isCompact = (zone.w_pct || 25) <= 24;
 
                                 return (
                                     <div
                                         key={zone.zone_id}
                                         onClick={() => setSelectedZoneId(zone.zone_id)}
-                                        className={`relative border transition-all cursor-pointer flex flex-col justify-between overflow-hidden min-w-0 select-none ${
-                                            isCompact ? 'p-1.5' : 'p-2.5'
-                                        } ${
+                                        onPointerDown={e => {
+                                            setSelectedZoneId(zone.zone_id);
+                                            if (!freeformEditMode) return;
+                                            if ((e.target as HTMLElement).dataset.resizeHandle === 'true') return;
+                                            e.stopPropagation();
+                                            setDragState({
+                                                zoneId: zone.zone_id,
+                                                mode: 'move',
+                                                startX: e.clientX,
+                                                startY: e.clientY,
+                                                initialX: zone.x_pct ?? 0,
+                                                initialY: zone.y_pct ?? 0,
+                                                initialW: zone.w_pct ?? 33,
+                                                initialH: zone.h_pct ?? 50
+                                            });
+                                        }}
+                                        style={{
+                                            left: `${zone.x_pct ?? 0}%`,
+                                            top: `${zone.y_pct ?? 0}%`,
+                                            width: `${zone.w_pct ?? 33}%`,
+                                            height: `${zone.h_pct ?? 50}%`,
+                                            zIndex: isDraggingThis ? 30 : isSelected ? 20 : 10
+                                        }}
+                                        className={`absolute rounded-xl border transition-colors flex flex-col justify-between overflow-hidden min-w-0 select-none ${
+                                            freeformEditMode ? 'cursor-move' : 'cursor-pointer'
+                                        } ${isCompact ? 'p-1.5' : 'p-2'} ${
                                             isSelected
                                                 ? 'border-2 border-emerald-400 bg-emerald-500/15 shadow-[inset_0_0_25px_rgba(16,185,129,0.25)]'
                                                 : zone.active
-                                                ? 'border-white/20 bg-black/20 hover:bg-emerald-950/30 hover:border-emerald-400/60'
-                                                : 'border-white/10 bg-black/60 opacity-50'
+                                                ? 'border-white/30 bg-black/20 hover:bg-emerald-950/30 hover:border-emerald-400/60'
+                                                : 'border-dashed border-white/15 bg-black/60 opacity-45'
                                         }`}
                                     >
-                                        {/* Cabecera del Cuadrante: Zona + Nombre de Planta + Indicadores */}
+                                        {/* Cabecera de la Zona */}
                                         <div className="flex items-center justify-between gap-1 bg-zinc-950/85 backdrop-blur-md border border-white/10 rounded-lg px-1.5 py-1 min-w-0 shadow-sm">
                                             <div className="flex items-center gap-1.5 min-w-0 flex-1">
                                                 <span
@@ -474,7 +691,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                                     {zone.natural_anthocyanins && (
                                                         <span
                                                             className="px-1 py-0.5 rounded bg-purple-950/90 border border-purple-500/40 text-purple-300 text-[9px] font-mono leading-none"
-                                                            title="Genética con antocianinas naturales (tonos púrpura normales en flora)"
+                                                            title="Genética con antocianinas naturales"
                                                         >
                                                             {isCompact ? '💜' : '💜 Antocianina'}
                                                         </span>
@@ -491,11 +708,17 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                             )}
                                         </div>
 
-                                        {/* Pie del Cuadrante: Genética Completa + Suelo / Telemetría en Filas Separadas */}
+                                        {/* Indicador de Coordenadas en Vivo al Arrastrar / Redimensionar */}
+                                        {isDraggingThis && (
+                                            <div className="m-auto px-2 py-1 rounded-lg bg-amber-500 text-zinc-950 font-mono font-black text-[10px] shadow-lg">
+                                                X:{Math.round(zone.x_pct)}% Y:{Math.round(zone.y_pct)}% • {Math.round(zone.w_pct)}×{Math.round(zone.h_pct)}%
+                                            </div>
+                                        )}
+
+                                        {/* Pie de la Zona: Genética + Sensor de Suelo */}
                                         {zone.active && showOverlayMetrics ? (
-                                            <div className="flex flex-col gap-1 mt-auto min-w-0">
+                                            <div className="flex flex-col gap-1 mt-auto min-w-0 pr-3">
                                                 <div className="flex flex-col gap-1 bg-zinc-950/85 backdrop-blur-md px-2 py-1.5 rounded-lg border border-white/10 min-w-0 shadow-md">
-                                                    {/* Fila 1: Genética completa sin truncamiento agresivo */}
                                                     <div className="flex items-center justify-between gap-1 min-w-0">
                                                         <span
                                                             className="text-[10px] font-mono font-semibold text-emerald-300 truncate min-w-0"
@@ -505,7 +728,6 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                                         </span>
                                                     </div>
 
-                                                    {/* Fila 2: Sensor de Suelo + Porcentaje de Humedad */}
                                                     <div className="flex items-center justify-between gap-1 pt-0.5 border-t border-white/10 min-w-0">
                                                         {assignedSensor ? (
                                                             <>
@@ -551,9 +773,34 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                             </div>
                                         ) : !zone.active ? (
                                             <div className="m-auto text-[10px] font-mono text-zinc-400 bg-zinc-950/80 border border-zinc-800 px-2 py-1 rounded-lg truncate max-w-full">
-                                                Cuadrante Vacío
+                                                Zona Vacía
                                             </div>
                                         ) : null}
+
+                                        {/* Tirador de Redimensionamiento Libre (Esquina Inferior Derecha) */}
+                                        {freeformEditMode && (
+                                            <div
+                                                data-resize-handle="true"
+                                                onPointerDown={e => {
+                                                    e.stopPropagation();
+                                                    setSelectedZoneId(zone.zone_id);
+                                                    setDragState({
+                                                        zoneId: zone.zone_id,
+                                                        mode: 'resize',
+                                                        startX: e.clientX,
+                                                        startY: e.clientY,
+                                                        initialX: zone.x_pct ?? 0,
+                                                        initialY: zone.y_pct ?? 0,
+                                                        initialW: zone.w_pct ?? 33,
+                                                        initialH: zone.h_pct ?? 50
+                                                    });
+                                                }}
+                                                title="Arrastra esta esquina para agrandar o achicar la zona de la planta"
+                                                className="absolute bottom-1 right-1 w-5 h-5 rounded-md bg-emerald-500/90 hover:bg-emerald-400 text-zinc-950 flex items-center justify-center cursor-nwse-resize shadow-md"
+                                            >
+                                                <Maximize2 className="w-3 h-3 rotate-90 pointer-events-none" />
+                                            </div>
+                                        )}
                                     </div>
                                 );
                             })}
@@ -597,27 +844,98 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                 </span>
                                 <div>
                                     <h3 className="text-sm font-bold text-zinc-100">
-                                        Ficha Individual de Planta y Genética
+                                        Ficha Individual de Planta y Posición
                                     </h3>
-                                    <p className="text-[11px] text-zinc-400">
-                                        Fila {selectedZone.row + 1}, Columna {selectedZone.col + 1} en la vista cenital
+                                    <p className="text-[11px] text-zinc-400 font-mono">
+                                        X:{Math.round(selectedZone.x_pct ?? 0)}% Y:{Math.round(selectedZone.y_pct ?? 0)}% • Tamaño {Math.round(selectedZone.w_pct ?? 33)}%×{Math.round(selectedZone.h_pct ?? 50)}%
                                     </p>
                                 </div>
                             </div>
 
-                            <label className="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={selectedZone.active}
-                                    onChange={e => updateSelectedZone({ active: e.target.checked })}
-                                    className="rounded border-zinc-700 bg-zinc-800 text-emerald-500"
-                                />
-                                <span>Activa</span>
-                            </label>
+                            <div className="flex items-center gap-2">
+                                <label className="flex items-center gap-1.5 text-xs text-zinc-300 cursor-pointer">
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedZone.active}
+                                        onChange={e => updateSelectedZone({ active: e.target.checked })}
+                                        className="rounded border-zinc-700 bg-zinc-800 text-emerald-500"
+                                    />
+                                    <span>Activa</span>
+                                </label>
+
+                                {grid.zones.length > 1 && (
+                                    <button
+                                        onClick={handleRemoveSelectedZone}
+                                        className="p-1.5 rounded-lg bg-red-500/15 hover:bg-red-500/25 text-red-300 border border-red-500/30 transition-colors cursor-pointer"
+                                        title="Eliminar este recuadro de planta del mapa"
+                                    >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                    </button>
+                                )}
+                            </div>
                         </div>
 
                         {selectedZone.active ? (
                             <div className="flex flex-col gap-3.5 text-xs">
+                                {/* Ajuste fino de posición y tamaño en cámara */}
+                                <div className="p-2.5 rounded-xl bg-zinc-950/90 border border-zinc-800 flex flex-col gap-2">
+                                    <div className="flex items-center justify-between text-[11px]">
+                                        <span className="font-semibold text-amber-300 flex items-center gap-1">
+                                            <Move className="w-3.5 h-3.5" />
+                                            <span>Posición y Área en Cámara (% de la toma)</span>
+                                        </span>
+                                        <span className="text-zinc-500 font-mono text-[10px]">
+                                            Arrastra en la foto o ajusta aquí
+                                        </span>
+                                    </div>
+                                    <div className="grid grid-cols-4 gap-2">
+                                        <div className="flex flex-col gap-0.5">
+                                            <label className="text-[10px] text-zinc-400">Pos X (%)</label>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                max={90}
+                                                value={Math.round(selectedZone.x_pct ?? 0)}
+                                                onChange={e => updateSelectedZone({ x_pct: Math.max(0, Math.min(90, Number(e.target.value) || 0)) })}
+                                                className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 font-mono text-center"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <label className="text-[10px] text-zinc-400">Pos Y (%)</label>
+                                            <input
+                                                type="number"
+                                                min={0}
+                                                max={90}
+                                                value={Math.round(selectedZone.y_pct ?? 0)}
+                                                onChange={e => updateSelectedZone({ y_pct: Math.max(0, Math.min(90, Number(e.target.value) || 0)) })}
+                                                className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-zinc-100 font-mono text-center"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <label className="text-[10px] text-zinc-400">Ancho (%)</label>
+                                            <input
+                                                type="number"
+                                                min={10}
+                                                max={100}
+                                                value={Math.round(selectedZone.w_pct ?? 33)}
+                                                onChange={e => updateSelectedZone({ w_pct: Math.max(10, Math.min(100, Number(e.target.value) || 25)) })}
+                                                className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-emerald-300 font-mono text-center"
+                                            />
+                                        </div>
+                                        <div className="flex flex-col gap-0.5">
+                                            <label className="text-[10px] text-zinc-400">Alto (%)</label>
+                                            <input
+                                                type="number"
+                                                min={12}
+                                                max={100}
+                                                value={Math.round(selectedZone.h_pct ?? 50)}
+                                                onChange={e => updateSelectedZone({ h_pct: Math.max(12, Math.min(100, Number(e.target.value) || 40)) })}
+                                                className="px-2 py-1 rounded-lg bg-zinc-900 border border-zinc-700 text-emerald-300 font-mono text-center"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="flex flex-col gap-1">
                                         <label className="text-zinc-400 font-medium">Nombre / Etiqueta de Planta</label>
@@ -795,7 +1113,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                     ) : (
                                         <p className="text-[11px] text-zinc-400">
                                             {cropDetected
-                                                ? 'Guarda el mapa y dispara una nueva captura para generar el reporte individual de este cuadrante.'
+                                                ? 'Guarda el mapa y dispara una nueva captura para generar el reporte individual de esta zona.'
                                                 : 'Cámara actualmente fuera de sala de cultivo. Al enfocarse el dosel, aquí verás el diagnóstico individual de esta planta.'}
                                         </p>
                                     )}
@@ -803,7 +1121,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                             </div>
                         ) : (
                             <div className="py-12 text-center text-zinc-500 text-xs">
-                                Este cuadrante está marcado como vacío (sin maceta). Activa la casilla superior si colocas una planta en esta posición.
+                                Esta zona está marcada como vacía (sin maceta). Activa la casilla superior si colocas una planta en esta posición.
                             </div>
                         )}
                     </div>
@@ -814,7 +1132,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                         className="w-full py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs shadow-lg transition-all cursor-pointer flex items-center justify-center gap-2"
                     >
                         <Save className="w-4 h-4" />
-                        <span>Guardar Cambios de Cuadrícula y Genéticas</span>
+                        <span>Guardar Posiciones Libres y Genéticas</span>
                     </button>
                 </div>
             </div>
@@ -828,7 +1146,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                             <span>Distribución Multigenética y Planificador de Cosecha Escalonada</span>
                         </h3>
                         <p className="text-xs text-zinc-400">
-                            Comparativa morfológica y ventana de corte por variedad según los cuadrantes asignados en la sala.
+                            Comparativa morfológica y ventana de corte por variedad según las zonas asignadas en la sala.
                         </p>
                     </div>
                     <span className="text-xs font-mono text-emerald-400 bg-emerald-950/60 border border-emerald-500/30 px-3 py-1 rounded-xl">
@@ -869,7 +1187,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
 
                                     <div className="text-xs text-zinc-400 flex flex-col gap-1 mt-1">
                                         <div className="flex justify-between">
-                                            <span>Cuadrantes asignados:</span>
+                                            <span>Zonas asignadas:</span>
                                             <span className="font-mono text-emerald-400 font-bold">
                                                 {zones.map(z => z.zone_id).join(', ')}
                                             </span>
