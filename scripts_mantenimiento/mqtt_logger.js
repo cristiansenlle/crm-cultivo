@@ -71,6 +71,120 @@ const scriptTimers = {};
 const pendingNotifications = {};
 const lastNotifiedState = {};
 
+// ==========================================
+// ESTADO Y EVALUADOR DE CLIMATIZACIÓN AUTOMÁTICA
+// ==========================================
+let isLightOn = true;
+let lastKnownTC = null;
+let lastKnownRH = null;
+let lastKnownVPD = null;
+let lastAutomationEval = 0;
+const ruleCooldowns = {};
+
+async function initPhotoperiodState() {
+  try {
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/device_logs?source=eq.mqtt_logger&order=created_at.desc&limit=10`, {
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${SUPABASE_ANON_KEY}` }
+    });
+    if (res.ok) {
+      const logs = await res.json();
+      const lightLog = logs?.find(l => l.event === 'on' || l.event === 'off');
+      if (lightLog) {
+        isLightOn = lightLog.event === 'on';
+        console.log(`[CLIMA AUTO] 💡 Fotoperiodo inicial recuperado de BD: ${isLightOn ? 'DÍA (Luces ON)' : 'NOCHE (Luces OFF)'}`);
+      }
+    }
+  } catch (e) {
+    console.error("[CLIMA AUTO] Error al recuperar fotoperiodo inicial:", e.message);
+  }
+}
+initPhotoperiodState();
+
+async function evaluateClimateAutomation(tC, rh, vpdLeaf) {
+  const now = Date.now();
+  if (now - lastAutomationEval < 10000) return; // Debounce mínimo 10s
+  lastAutomationEval = now;
+
+  try {
+    const { data: profiles } = await getSupabase('climate_profiles');
+    const activeProfile = profiles?.find(p => p.is_active);
+    if (!activeProfile) return;
+
+    const { data: rules } = await getSupabase('climate_automation_rules');
+    const activeRules = rules?.filter(r => r.is_active) || [];
+    if (activeRules.length === 0) return;
+
+    const { data: commands } = await getSupabase('broadlink_commands');
+
+    const mode = isLightOn ? 'day' : 'night';
+
+    for (const rule of activeRules) {
+      if (rule.mode !== 'both' && rule.mode !== mode) continue;
+
+      const lastTrigger = ruleCooldowns[rule.id] || (rule.last_triggered_at ? new Date(rule.last_triggered_at).getTime() : 0);
+      const cooldownMs = (rule.cooldown_minutes || 10) * 60 * 1000;
+      if (now - lastTrigger < cooldownMs) continue;
+
+      let valToCompare = 0;
+      if (rule.target_parameter === 'temperature') valToCompare = tC;
+      else if (rule.target_parameter === 'humidity') valToCompare = rh;
+      else if (rule.target_parameter === 'vpd') valToCompare = vpdLeaf;
+
+      let conditionMet = false;
+      if (rule.condition === 'greater_than' && valToCompare > rule.threshold_value) {
+        conditionMet = true;
+      } else if (rule.condition === 'less_than' && valToCompare < rule.threshold_value) {
+        conditionMet = true;
+      }
+
+      if (conditionMet) {
+        const matchedCmd = commands?.find(c => c.id === rule.command_id);
+        if (!matchedCmd) continue;
+
+        console.log(`[CLIMA AUTO] 🚨 Disparando regla: ${rule.name} (Modo: ${mode}, Valor: ${valToCompare}, Umbral: ${rule.threshold_value}) -> Comando: ${matchedCmd.name}`);
+
+        ruleCooldowns[rule.id] = now;
+
+        if (matchedCmd.hex_code.startsWith('MACRO:')) {
+          try {
+            const seq = JSON.parse(matchedCmd.hex_code.replace('MACRO:', ''));
+            for (let i = 0; i < seq.length; i++) {
+              client.publish('cultivo/broadlink/command', JSON.stringify({ code: seq[i], name: `${matchedCmd.name} (Paso ${i+1})` }));
+              if (i < seq.length - 1) await new Promise(r => setTimeout(r, 2000));
+            }
+          } catch (e) {
+            console.error("[CLIMA AUTO] Error ejecutando macro:", e);
+          }
+        } else {
+          client.publish('cultivo/broadlink/command', JSON.stringify({ code: matchedCmd.hex_code, name: matchedCmd.name }));
+        }
+
+        await insertSupabase('climate_automation_logs', {
+          rule_id: rule.id,
+          event_description: `Regla ${rule.name}: ${rule.target_parameter} ${rule.condition === 'greater_than' ? '>' : '<'} ${rule.threshold_value}`,
+          triggered_value: valToCompare,
+          mode: mode,
+          command_name: matchedCmd.name
+        });
+
+        await fetch(`${SUPABASE_URL}/rest/v1/climate_automation_rules?id=eq.${rule.id}`, {
+          method: 'PATCH',
+          headers: {
+            'apikey': SUPABASE_ANON_KEY,
+            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ last_triggered_at: new Date().toISOString() })
+        });
+
+        break;
+      }
+    }
+  } catch (e) {
+    console.error("[CLIMA AUTO] Error en motor de automatización:", e.message);
+  }
+}
+
 async function notifyWhatsApp(deviceId, eventStr, state = null) {
   try {
     const deviceName = deviceNames[deviceId] || deviceId;
@@ -279,6 +393,22 @@ client.on('message', async (topic, message) => {
                 const { error } = await insertSupabase('device_logs', { device_ip: deviceId, event: eventStr, source: 'mqtt_logger' });
                 if (error) console.error("Error al guardar en Supabase:", error.message);
 
+                // Detectar cambio de fotoperiodo (Luces ON = DÍA, OFF = NOCHE)
+                const devName = (deviceNames[deviceId] || '').toLowerCase();
+                const isLightDevice = devName.includes('luz') || devName.includes('iluminac') ||
+                                      deviceId === 'shellyplus1-8813bf9fc354' ||
+                                      (!devName.includes('extractor') && !devName.includes('riego') && !devName.includes('bomba'));
+                
+                if (isLightDevice) {
+                    const prevMode = isLightOn;
+                    isLightOn = state.output;
+                    console.log(`[CLIMA AUTO] 💡 Fotoperiodo actualizado: ${isLightOn ? 'DÍA (Luces ON)' : 'NOCHE (Luces OFF)'} por ${deviceId} (${deviceNames[deviceId] || 'Shelly'})`);
+                    
+                    if (prevMode !== isLightOn && lastKnownTC !== null && lastKnownRH !== null && lastKnownVPD !== null) {
+                        evaluateClimateAutomation(lastKnownTC, lastKnownRH, lastKnownVPD);
+                    }
+                }
+
                 if (pendingNotifications[deviceId]) {
                     clearTimeout(pendingNotifications[deviceId]);
                     delete pendingNotifications[deviceId];
@@ -310,6 +440,10 @@ client.on('message', async (topic, message) => {
                 const vpdLeaf_kpa = Number((svpLeaf - avpAir).toFixed(2));
                 const vpdAmbient_kpa = Number((svpAir - avpAir).toFixed(2));
 
+                lastKnownTC = tC;
+                lastKnownRH = rh;
+                lastKnownVPD = vpdLeaf_kpa;
+
                 const { data: sensors } = await getSupabase('core_sensors');
                 if (sensors) {
                     const matchedSensor = sensors.find(s => s.name && s.name.includes(deviceId));
@@ -329,6 +463,9 @@ client.on('message', async (topic, message) => {
                         console.log(`[Warn] No hay sensor en BD mapeado a (${deviceId}). Usando ID como nombre.`);
                     }
                 }
+
+                // Evaluar reglas de automatización climática Broadlink (Temp, Humedad, VPD)
+                await evaluateClimateAutomation(tC, rh, vpdLeaf_kpa);
             }
         }
     }
