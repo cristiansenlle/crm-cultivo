@@ -1,7 +1,17 @@
 #include <WiFi.h>
+#include <WiFiMulti.h>
 #include <WiFiManager.h>
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
+
+// ==========================================
+// REDES MULTI-WIFI PRECONFIGURADAS (Casa + Cultivo)
+// ==========================================
+WiFiMulti wifiMulti;
+const char* WIFI_CASA_SSID    = "WiFi-000-2.4GHz";
+const char* WIFI_CASA_PASS    = "0043117534";
+const char* WIFI_CULTIVO_SSID = "ClaroSM";
+const char* WIFI_CULTIVO_PASS = "12563478";
 
 const char* mqtt_server = "109.199.99.126";
 const int mqtt_port = 1883;
@@ -25,48 +35,81 @@ unsigned long lastMsg = 0;
 // Publicar cada 5 minutos (5 * 60 * 1000 milisegundos)
 const unsigned long PUBLISH_INTERVAL = 5 * 60 * 1000; 
 
+void connectWiFi() {
+  WiFi.mode(WIFI_STA);
+  wifiMulti.addAP(WIFI_CASA_SSID, WIFI_CASA_PASS);
+  wifiMulti.addAP(WIFI_CULTIVO_SSID, WIFI_CULTIVO_PASS);
+
+  Serial.println("Buscando redes conocidas (WiFi-000-2.4GHz / ClaroSM)...");
+  int attempts = 0;
+  while (wifiMulti.run() != WL_CONNECTED && attempts < 15) {
+    delay(500);
+    Serial.print(".");
+    attempts++;
+  }
+
+  if (WiFi.status() == WL_CONNECTED) {
+    Serial.println("\n¡Conectado por Multi-WiFi a: " + WiFi.SSID() + "!");
+    return;
+  }
+
+  // Fallback a WiFiManager por si se usa en otra red distinta
+  Serial.println("\nIniciando WiFiManager de respaldo...");
+  WiFiManager wm;
+  wm.setConfigPortalTimeout(180); // 3 minutos máximo de portal cautivo antes de reiniciar
+  bool res = wm.autoConnect("ESP32-Suelo");
+  if (!res) {
+    Serial.println("Fallo al conectar WiFi o se agotó el tiempo. Reiniciando...");
+    delay(2000);
+    ESP.restart();
+  }
+}
+
 void setup() {
   Serial.begin(115200);
-  
-  // WiFiManager
-  WiFiManager wm;
-  // wm.resetSettings(); // Descomentar esta línea una vez si querés borrar el WiFi guardado
-  
-  Serial.println("Iniciando WiFiManager...");
-  Serial.println("Si la placa no conoce el WiFi, conectate a la red 'ESP32-Suelo' desde tu celular.");
-  
-  // Intentará conectarse al WiFi guardado. Si no puede, creará el punto de acceso
-  bool res = wm.autoConnect("ESP32-Suelo"); 
-  
-  if(!res) {
-    Serial.println("Fallo al conectar WiFi o se agotó el tiempo");
-    ESP.restart(); // Reiniciar si falla
-  } 
+  delay(500);
+
+  connectWiFi();
   
   Serial.println("¡WiFi Conectado Exitosamente!");
   macAddr = WiFi.macAddress();
   Serial.print("Dirección MAC: ");
   Serial.println(macAddr);
+  Serial.print("IP Local: ");
+  Serial.println(WiFi.localIP());
 
   client.setServer(mqtt_server, mqtt_port);
 }
 
 void reconnect() {
+  int retries = 0;
   // Loop hasta que estemos conectados
   while (!client.connected()) {
+    // Si el WiFi se cayó mientras intentábamos reconectar MQTT, salir y reiniciar
+    if (WiFi.status() != WL_CONNECTED) {
+      Serial.println("¡Se perdió la conexión WiFi durante reconexión MQTT! Reiniciando placa...");
+      delay(2000);
+      ESP.restart();
+    }
+
     Serial.print("Intentando conexión MQTT a Contabo...");
     
-    // Crear un ID de cliente aleatorio
+    // CREAMOS UN CLIENT ID ÚNICO USANDO LA MAC DE ESTA PLACA FÍSICA
     String clientId = "ESP32-Suelo-";
-    clientId += String(random(0xffff), HEX);
+    clientId += macAddr;
     
     // Intentar conectar
     if (client.connect(clientId.c_str())) {
       Serial.println("¡Conectado a MQTT!");
     } else {
+      retries++;
       Serial.print("Falló, código de error = ");
       Serial.print(client.state());
       Serial.println(" intentando de nuevo en 5 segundos...");
+      if (retries >= 12) { // Tras 1 minuto sin lograr conectar MQTT, reiniciar limpiamente
+        Serial.println("Demasiados intentos fallidos de MQTT. Reiniciando placa...");
+        ESP.restart();
+      }
       delay(5000);
     }
   }
@@ -120,6 +163,13 @@ void publishData() {
 }
 
 void loop() {
+  // Comprobar si el WiFi se desconectó
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("¡Se perdió la conexión WiFi! Reiniciando placa para reconectar...");
+    delay(2000);
+    ESP.restart();
+  }
+
   if (!client.connected()) {
     reconnect();
   }
