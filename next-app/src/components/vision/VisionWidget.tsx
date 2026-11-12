@@ -156,8 +156,36 @@ export default function VisionWidget() {
     const photoperiodAudit = latest?.photoperiod_audit ?? snapshot?.photoperiod_audit ?? 'LIGHTS_ON_OK';
     const circadianState = isCrop ? (latest?.circadian_turgor_state ?? snapshot?.circadian_turgor_state ?? 'NORMAL_ASSIMILATION') : 'NONE';
     const stageDetected = isCrop ? (latest?.phenological_stage_detected ?? snapshot?.phenological_stage_detected ?? 'FLOWERING_MID') : 'NONE';
+    const isSeedlingOrVeg = ['SEEDLING', 'VEGETATIVE_EARLY', 'VEGETATIVE_SCROG'].includes(stageDetected);
     const advisors = latest?.lifecycle_advisors || snapshot?.lifecycle_advisors || null;
-    const perPlantList: any[] = isCrop ? (latest?.per_plant_analysis || snapshot?.per_plant_analysis || []) : [];
+    const rawPerPlant: any[] = isCrop ? (latest?.per_plant_analysis || snapshot?.per_plant_analysis || []) : [];
+    const activeZones: any[] = Array.isArray(data?.plant_grid?.zones)
+        ? data.plant_grid.zones.filter((z: any) => z.active)
+        : [];
+    const targetFlipPct = data?.plant_grid?.target_flip_coverage_pct || 72;
+
+    const perPlantList: any[] = isCrop
+        ? (activeZones.length > 0
+              ? activeZones.map((z: any) => {
+                    const match = rawPerPlant.find(
+                        (p: any) => p && String(p.zone_id).toUpperCase() === String(z.zone_id).toUpperCase()
+                    );
+                    const pinMatch = typeof z.soil_sensor_pin === 'string' ? z.soil_sensor_pin.match(/Pin\s*(\d+)/i) : null;
+                    const sensorShort = pinMatch ? `💧 Pin ${pinMatch[1]}` : '👁️ Visual IA';
+                    return {
+                        zone_id: z.zone_id,
+                        plant_name: z.plant_name || match?.plant_name || `Planta ${z.zone_id}`,
+                        strain: z.strain || match?.strain || 'Sin especificar',
+                        health_score: match?.health_score ?? healthScore ?? 78,
+                        canopy_share_pct: match?.canopy_share_pct ?? 8,
+                        bud_count: isSeedlingOrVeg ? 0 : (match?.bud_count ?? 0),
+                        maturity_pct: isSeedlingOrVeg ? 0 : (match?.maturity_pct ?? 0),
+                        specific_diagnosis: match?.specific_diagnosis || `En seguimiento activo (${z.strain})`,
+                        sensor_short: sensorShort
+                    };
+                })
+              : rawPerPlant)
+        : [];
     const fertLive = data?.fertilization_plan_live || null;
     const fertCorrelation = fertLive?.correlation || latest?.fertilization_plan_correlation || snapshot?.fertilization_plan_correlation || null;
     const shellyLink = data?.shelly_link || null;
@@ -587,32 +615,59 @@ export default function VisionWidget() {
                 </div>
             </div>
 
-            {/* Si hay resultados por planta individual, mostrarlos resumidos */}
+            {/* Si hay resultados por planta individual, mostrarlos resumidos y sincronizados con el mapa */}
             {isCrop && perPlantList.length > 0 && (
                 <div className="pt-2 border-t border-zinc-800/80 flex flex-col gap-2.5">
-                    <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
-                        <Leaf className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Estado en Vivo por Planta Individual Mapeada</span>
-                    </span>
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                        <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                            <Leaf className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>Estado en Vivo por Planta Individual Mapeada ({perPlantList.length} activas)</span>
+                        </span>
+                        <span className="text-[11px] font-mono text-zinc-400">
+                            Etapa actual: <strong className="text-emerald-400">{getStageLabel(stageDetected)}</strong>
+                        </span>
+                    </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
                         {perPlantList.map((pl: any) => (
                             <div
                                 key={pl.zone_id}
-                                className="p-2.5 rounded-xl bg-zinc-950/80 border border-zinc-800 flex flex-col gap-1 text-[11px]"
+                                className="p-2.5 rounded-xl bg-zinc-950/80 border border-zinc-800/90 hover:border-emerald-500/40 transition-colors flex flex-col justify-between gap-1.5 text-[11px]"
+                                title={pl.specific_diagnosis || ''}
                             >
-                                <div className="flex items-center justify-between">
-                                    <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold text-[10px]">
-                                        {pl.zone_id}
+                                <div className="flex flex-col gap-0.5">
+                                    <div className="flex items-center justify-between">
+                                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono font-bold text-[10px]">
+                                            {pl.zone_id}
+                                        </span>
+                                        <span className="font-mono font-bold text-emerald-400">
+                                            {pl.health_score}/100
+                                        </span>
+                                    </div>
+                                    <span className="font-bold text-zinc-100 truncate mt-0.5">
+                                        {pl.plant_name}
                                     </span>
-                                    <span className="font-mono font-bold text-emerald-400">
-                                        {pl.health_score}/100
+                                    <span className="text-[10px] text-emerald-300/90 font-medium truncate">
+                                        {pl.strain}
                                     </span>
+                                    {pl.specific_diagnosis && (
+                                        <p className="text-[10px] text-zinc-400 line-clamp-2 leading-tight mt-0.5">
+                                            {pl.specific_diagnosis}
+                                        </p>
+                                    )}
                                 </div>
-                                <span className="font-bold text-zinc-200 truncate">{pl.plant_name}</span>
-                                <span className="text-[10px] text-zinc-400 truncate">{pl.strain}</span>
-                                <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 pt-1 border-t border-zinc-800/80">
-                                    <span>🌸 {pl.bud_count ?? 0} colas</span>
-                                    <span className="text-amber-300">{pl.maturity_pct ?? 0}%</span>
+
+                                <div className="flex items-center justify-between text-[10px] font-mono text-zinc-400 pt-1.5 border-t border-zinc-800/80">
+                                    {isSeedlingOrVeg || (pl.bud_count ?? 0) === 0 ? (
+                                        <>
+                                            <span className="text-cyan-300 truncate">{pl.sensor_short || '🌱 Plántula'}</span>
+                                            <span className="text-emerald-300">🌿 {pl.canopy_share_pct ?? 8}%</span>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <span>🌸 {pl.bud_count ?? 0} colas</span>
+                                            <span className="text-amber-300">{pl.maturity_pct ?? 0}%</span>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         ))}

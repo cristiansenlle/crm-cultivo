@@ -267,7 +267,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
         const idx = grid.zones.length;
         const newZoneId = `P${idx + 1}`;
         const usedSensorIds = new Set(grid.zones.map(z => z.soil_sensor_id).filter(Boolean));
-        const freeSensor = soilSensors.find(s => !usedSensorIds.has(s.id)) || soilSensors[idx % Math.max(1, soilSensors.length)];
+        const freeSensor = soilSensors.find(s => !usedSensorIds.has(s.id));
 
         const newZone: PlantZoneConfig = {
             zone_id: newZoneId,
@@ -321,13 +321,19 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
             const res = await fetch('/api/vision/grid', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ grid })
+                body: JSON.stringify({ grid, current_per_plant: perPlantResults })
             });
             if (res.ok) {
                 const data = await res.json();
                 setGrid(data.grid);
-                setSaveMessage('✅ Mapa espacial (posiciones libres, sensores y genéticas) guardado en el Agente de Visión');
-                setTimeout(() => setSaveMessage(''), 4000);
+                if (Array.isArray(data.reconciled_per_plant)) {
+                    setPerPlantResults(data.reconciled_per_plant);
+                }
+                setSaveMessage('✅ Mapa guardado y sincronizado. Re-analizando diagnósticos individuales con IA...');
+                setTimeout(() => {
+                    fetchGridData();
+                    setSaveMessage('');
+                }, 4500);
             }
         } catch (err) {
             console.error('Error guardando mapa:', err);
@@ -688,7 +694,12 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
 
                                             {zone.active && showOverlayMetrics && (
                                                 <div className="flex items-center gap-1 shrink-0">
-                                                    {zone.natural_anthocyanins && (
+                                                    {isCompact && plantDiag && (
+                                                        <span className="px-1 py-0.5 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 text-[9px] font-mono font-bold leading-none">
+                                                            ♥{plantDiag.health_score}%
+                                                        </span>
+                                                    )}
+                                                    {zone.natural_anthocyanins && !isCompact && (
                                                         <span
                                                             className="px-1 py-0.5 rounded bg-purple-950/90 border border-purple-500/40 text-purple-300 text-[9px] font-mono leading-none"
                                                             title="Genética con antocianinas naturales"
@@ -757,17 +768,25 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                                     </div>
                                                 </div>
 
-                                                {cropDetected && plantDiag && (
+                                                {cropDetected && plantDiag && !isCompact && (
                                                     <div className="flex items-center justify-between gap-1 bg-emerald-950/90 px-2 py-1 rounded-lg border border-emerald-500/30 text-[9px] font-mono min-w-0">
                                                         <span className="text-emerald-300 font-bold truncate">
                                                             ♥ {plantDiag.health_score}%
                                                         </span>
-                                                        <span className="text-cyan-300 shrink-0">
-                                                            🌸 {plantDiag.bud_count}
-                                                        </span>
-                                                        <span className="text-amber-300 shrink-0">
-                                                            ⏳ {plantDiag.maturity_pct}%
-                                                        </span>
+                                                        {(plantDiag.bud_count ?? 0) > 0 ? (
+                                                            <>
+                                                                <span className="text-cyan-300 shrink-0">
+                                                                    🌸 {plantDiag.bud_count}
+                                                                </span>
+                                                                <span className="text-amber-300 shrink-0">
+                                                                    ⏳ {plantDiag.maturity_pct}%
+                                                                </span>
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-teal-300 shrink-0">
+                                                                🌱 Vigor OK
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 )}
                                             </div>

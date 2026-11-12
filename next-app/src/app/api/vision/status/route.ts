@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { loadPlantGrid } from '@/lib/vision/PlantGridStore';
+import { loadPlantGrid, reconcilePerPlantAnalysis } from '@/lib/vision/PlantGridStore';
 import { getShellyCameraLinkStatus } from '@/lib/vision/ShellyLightCheck';
 import {
     loadFertilizationPlans,
@@ -52,7 +52,13 @@ export async function GET() {
                 estimated_yield_grams: isCrop ? (snap.estimated_yield_grams ?? 0) : 0,
                 harvest_readiness_pct: isCrop ? (snap.harvest_readiness_pct ?? 0) : 0,
                 lifecycle_advisors: snap.lifecycle_advisors || null,
-                per_plant_analysis: isCrop && Array.isArray(snap.per_plant_analysis) ? snap.per_plant_analysis : [],
+                per_plant_analysis: isCrop
+                    ? reconcilePerPlantAnalysis(plantGrid, snap.per_plant_analysis, {
+                          stage: snap.phenological_stage_detected || 'SEEDLING',
+                          health_score: latestRaw.health_score ?? 78,
+                          crop_detected: isCrop
+                      })
+                    : [],
                 growth_stage_est: isCrop ? (snap.batch?.stage || 'Floración') : 'Sin cultivo',
                 image_url: latestRaw.image_urls?.[0] || null,
                 fertilization_plan_context: snap.fertilization_plan_context || null,

@@ -102,6 +102,14 @@ export async function POST(req: NextRequest) {
             });
         }
 
+        if (action === 'restart_camera' || action === 'reboot_rpi') {
+            await sendMqttCommand('cultivo/rpi/admin', {
+                action,
+                requested_at: new Date().toISOString()
+            });
+            return NextResponse.json({ status: action + '_requested' });
+        }
+
         return NextResponse.json({ error: 'Acción no válida' }, { status: 400 });
     } catch (err: any) {
         return NextResponse.json({ error: err.message }, { status: 500 });

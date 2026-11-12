@@ -229,6 +229,14 @@ export async function getShellyCameraLinkStatus(
     };
 
     const captureEnabled = !onlyWhenOn || linkedObj.is_on;
+    // Si la foto fue tomada hoy con el Shelly ya encendido o el Shelly está encendido y no hubo evento off posterior
+    if (linkedObj.is_on && latestPhotoCreatedAt) {
+        const photoTime = new Date(latestPhotoCreatedAt).getTime();
+        const lastEvtTime = linkedObj.last_event_at ? new Date(linkedObj.last_event_at).getTime() : 0;
+        if (photoTime >= lastEvtTime) {
+            photoTakenWhileOff = false;
+        }
+    }
 
     return {
         linked_shelly_device_id: linkedObj.device_id,

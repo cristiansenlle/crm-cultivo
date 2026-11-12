@@ -1,5 +1,7 @@
 import { createClient } from '@supabase/supabase-js';
-import { loadPlantGrid, PerPlantAnalysis } from './PlantGridStore';
+import fs from 'fs';
+import path from 'path';
+import { loadPlantGrid, reconcilePerPlantAnalysis, PerPlantAnalysis } from './PlantGridStore';
 import {
     RED_HOT_COOKIES_FEEDING_PLAN,
     resolveBatchActivePlanWeek,
@@ -295,6 +297,8 @@ INSTRUCCIONES ESTRICTAS DE ANÁLISIS CENITAL v2.0 (CICLO COMPLETO E INDIVIDUALIZ
 
 2. MAPEO INDIVIDUAL DE PLANTAS POR COORDENADAS ESPACIALES (per_plant_analysis):
    - Cada planta en mapped_plants tiene su recuadro exacto en porcentaje sobre el fotograma ("bounding_box_pct", donde X: 0%-100% va de izquierda a derecha e Y: 0%-100% va de arriba a abajo, soportando grillas, tresbolillo/zig-zag o zonas libres).
+   - OBLIGATORIO: "per_plant_analysis" DEBE contener exactamente ${activeZones.length} elementos, uno por cada planta en mapped_plants (${activeZones.map(z => z.zone_id).join(', ')}), respetando exactamente su "zone_id", "plant_name" y "strain". No omitas ninguna zona mapeada.
+   - Si la etapa es "SEEDLING", "VEGETATIVE_EARLY" o "VEGETATIVE_SCROG", asigna obligatoriamente "bud_count": 0, "maturity_pct": 0, "estimated_yield_grams": 0, "harvest_readiness_pct": 0 y "harvest_status": "VEGETATIVE".
    - Para CADA planta listada en mapped_plants, inspecciona exclusivamente su región "bounding_box_pct":
      * Estado de salud individual (0-100), % de su cuadrante cubierto (canopy_share_pct), postura foliar ("PRAYING", "TURGID", "DROOPING", "CLAWING").
      * DIFERENCIACIÓN MULTIGENÉTICA: Observa el ancho de foliolos (Indica ancha vs Sativa fina), estiramiento (stretch) y pigmentación.
@@ -467,7 +471,13 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
         const finalBudCount = isCrop ? (parsedResult.bud_sites_count ?? 0) : 0;
         const finalEstYield = isCrop ? (parsedResult.estimated_yield_grams ?? 0) : 0;
         const finalHarvestReadiness = isCrop ? (parsedResult.harvest_readiness_pct ?? 0) : 0;
-        const finalPerPlant = isCrop && Array.isArray(parsedResult.per_plant_analysis) ? parsedResult.per_plant_analysis : [];
+        const finalPerPlant = isCrop
+            ? reconcilePerPlantAnalysis(plantGrid, parsedResult.per_plant_analysis, {
+                  stage: finalStage,
+                  health_score: finalHealthScore,
+                  crop_detected: isCrop
+              })
+            : [];
         const finalAdvisors: LifecycleAdvisors = isCrop && parsedResult.lifecycle_advisors ? parsedResult.lifecycle_advisors : {
             topping_lst_advice: 'Sin cultivo detectado en escena.',
             scrog_tucking_advice: 'Posicione la cámara sobre la malla SCROG para recibir guías de entrenamiento.',
@@ -546,6 +556,41 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
             per_plant_analysis: finalPerPlant,
             fertilization_plan_correlation: planCorrelation
         };
+    }
+
+    /**
+     * Re-analiza la captura cenital más reciente en disco utilizando el mapa espacial actual (plant_grid.json).
+     */
+    static async reanalyzeLatestCaptureWithCurrentGrid(): Promise<VisionAnalysisResult | null> {
+        try {
+            const capturesDir = fs.existsSync('/var/www/captures/crop_vision')
+                ? '/var/www/captures/crop_vision'
+                : path.join(process.cwd(), 'public', 'captures');
+
+            if (!fs.existsSync(capturesDir)) return null;
+
+            const files = fs.readdirSync(capturesDir)
+                .filter(f => (f.endsWith('.jpg') || f.endsWith('.jpeg') || f.endsWith('.png')) && f !== 'foto_prueba.jpg')
+                .map(f => ({
+                    name: f,
+                    fullPath: path.join(capturesDir, f),
+                    mtime: fs.statSync(path.join(capturesDir, f)).mtime.getTime()
+                }))
+                .sort((a, b) => b.mtime - a.mtime);
+
+            if (files.length === 0) return null;
+
+            const latestFile = files[0];
+            const buffer = fs.readFileSync(latestFile.fullPath);
+            const base64Data = `data:image/jpeg;base64,${buffer.toString('base64')}`;
+            const publicUrl = `/captures/${latestFile.name}`;
+
+            console.log(`[VisionAgentEngine] 🔄 Re-analizando captura ${latestFile.name} con el mapa espacial actualizado...`);
+            return await this.analyzeCenitalCapture(base64Data, publicUrl);
+        } catch (err: any) {
+            console.error('[VisionAgentEngine] Error en reanalyzeLatestCaptureWithCurrentGrid:', err.message);
+            return null;
+        }
     }
 
     private static async fallbackGemini(prompt: string, base64Url: string, apiKey: string): Promise<VisionAnalysisResult> {

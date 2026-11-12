@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getShellyCameraLinkStatus, KNOWN_SHELLY_RELAYS } from '@/lib/vision/ShellyLightCheck';
+import { VisionAgentEngine } from '@/lib/vision/VisionAgentEngine';
 import {
     loadPlantGrid,
     savePlantGrid,
+    reconcilePerPlantAnalysis,
     getDefaultGridLayout,
     getTemplateGridLayout,
     PlantGridLayout,
@@ -91,8 +93,16 @@ export async function GET() {
                         (latest.health_score ?? 0) > 0 &&
                         (latest.context_snapshot?.canopy_coverage_pct ?? 0) > 0
                     );
-                    if (Array.isArray(latest.context_snapshot?.per_plant_analysis)) {
-                        latestPerPlant = latest.context_snapshot.per_plant_analysis;
+                    if (cropDetected) {
+                        latestPerPlant = reconcilePerPlantAnalysis(
+                            grid,
+                            latest.context_snapshot?.per_plant_analysis,
+                            {
+                                stage: latest.context_snapshot?.phenological_stage_detected || 'SEEDLING',
+                                health_score: latest.health_score ?? 78,
+                                crop_detected: cropDetected
+                            }
+                        );
                     }
                 }
             } catch (e) {
@@ -251,10 +261,30 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: true, grid: updated });
         }
 
+        if (body.action === 'reanalyze') {
+            const analysis = await VisionAgentEngine.reanalyzeLatestCaptureWithCurrentGrid();
+            const current = loadPlantGrid();
+            return NextResponse.json({
+                success: true,
+                grid: current,
+                latest_per_plant: analysis?.per_plant_analysis || reconcilePerPlantAnalysis(current, []),
+                analysis
+            });
+        }
+
         if (body.grid) {
             const layout: PlantGridLayout = body.grid;
             const saved = savePlantGrid(layout);
-            return NextResponse.json({ success: true, grid: saved });
+            const normalized = loadPlantGrid();
+            // Disparar re-análisis en segundo plano con las nuevas coordenadas y genéticas
+            VisionAgentEngine.reanalyzeLatestCaptureWithCurrentGrid().catch(e =>
+                console.warn('[Grid POST] Re-analysis background warning:', e)
+            );
+            return NextResponse.json({
+                success: true,
+                grid: normalized,
+                reconciled_per_plant: reconcilePerPlantAnalysis(normalized, body.current_per_plant || [])
+            });
         }
 
         return NextResponse.json({ error: 'Payload inválido' }, { status: 400 });

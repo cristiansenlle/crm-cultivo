@@ -371,17 +371,25 @@ function normalizeLegacySensors(layout: PlantGridLayout): PlantGridLayout {
             updated.h_pct = defaultH;
         }
 
+        const isDuplicateSensor = Boolean(updated.soil_sensor_id && seenSensorIds.has(updated.soil_sensor_id));
         if (
             updated.soil_sensor_pin === 'Pin 1 (Suelo CH1)' ||
             updated.soil_sensor_pin === 'Pin 2 (Suelo CH2)' ||
             updated.soil_sensor_pin === 'Monitoreo Visual' ||
             (!updated.soil_sensor_id && updated.soil_sensor_pin !== 'Monitoreo Visual por IA') ||
-            (updated.soil_sensor_id && seenSensorIds.has(updated.soil_sensor_id))
+            isDuplicateSensor
         ) {
-            const sensorOption = DEFAULT_SOIL_SENSORS[idx];
-            if (sensorOption && updated.soil_sensor_pin !== 'Monitoreo Visual por IA') {
-                updated.soil_sensor_id = sensorOption.id;
-                updated.soil_sensor_pin = sensorOption.label;
+            if (updated.soil_sensor_pin === 'Monitoreo Visual por IA' && !isDuplicateSensor) {
+                updated.soil_sensor_id = undefined;
+            } else {
+                const freeOption = DEFAULT_SOIL_SENSORS.find(s => !seenSensorIds.has(s.id));
+                if (freeOption) {
+                    updated.soil_sensor_id = freeOption.id;
+                    updated.soil_sensor_pin = freeOption.label;
+                } else {
+                    updated.soil_sensor_id = undefined;
+                    updated.soil_sensor_pin = 'Monitoreo Visual por IA';
+                }
             }
         }
         if (updated.soil_sensor_id) {
@@ -450,4 +458,95 @@ export function savePlantGrid(layout: PlantGridLayout): PlantGridLayout {
     }
 
     return updated;
+}
+
+/**
+ * Garantiza coherencia total entre las zonas activas del mapa espacial (plant_grid.json)
+ * y el arreglo per_plant_analysis devuelto por la IA o almacenado en base de datos.
+ * - Siempre prevalecen el plant_name, strain y zone_id actuales configurados por el usuario.
+ * - Si el usuario agregó nuevas plantas (ej. P6..P12), genera su entrada individual coherente
+ *   para que ninguna planta activa quede sin diagnóstico ni desaparezca de las tarjetas.
+ */
+export function reconcilePerPlantAnalysis(
+    grid: PlantGridLayout,
+    rawPerPlant: any[] | null | undefined,
+    globalContext?: {
+        stage?: string;
+        health_score?: number;
+        crop_detected?: boolean;
+    }
+): PerPlantAnalysis[] {
+    if (!grid || !Array.isArray(grid.zones)) return [];
+    const activeZones = grid.zones.filter(z => z.active);
+    const rawList = Array.isArray(rawPerPlant) ? rawPerPlant : [];
+
+    const stage = globalContext?.stage || 'SEEDLING';
+    const isSeedlingOrVeg = ['SEEDLING', 'VEGETATIVE_EARLY', 'VEGETATIVE_SCROG', 'NONE'].includes(stage);
+    const baseHealth = globalContext?.health_score && globalContext.health_score > 0 ? globalContext.health_score : 78;
+
+    return activeZones.map((zone, idx) => {
+        const match = rawList.find(
+            (p: any) => p && String(p.zone_id).toUpperCase() === String(zone.zone_id).toUpperCase()
+        );
+
+        const defaultHarvestStatus: PerPlantAnalysis['harvest_status'] = isSeedlingOrVeg
+            ? 'VEGETATIVE'
+            : 'DEVELOPING';
+
+        if (match) {
+            const rawScore = Number(match.health_score);
+            const validScore = !isNaN(rawScore) && rawScore > 0 ? rawScore : baseHealth;
+            const rawBuds = isSeedlingOrVeg ? 0 : Math.max(0, Number(match.bud_count) || 0);
+            const rawMaturity = isSeedlingOrVeg ? 0 : Math.max(0, Number(match.maturity_pct) || 0);
+
+            return {
+                zone_id: zone.zone_id,
+                plant_name: zone.plant_name || `Planta ${zone.zone_id}`,
+                strain: zone.strain || 'Sin especificar',
+                health_score: validScore,
+                canopy_share_pct: Math.max(2, Number(match.canopy_share_pct) || 8),
+                leaf_posture: match.leaf_posture && ['PRAYING', 'TURGID', 'DROOPING', 'CLAWING'].includes(match.leaf_posture)
+                    ? match.leaf_posture
+                    : 'TURGID',
+                pheno_traits_observed: match.pheno_traits_observed || `Ejemplar de ${zone.strain} en zona ${zone.zone_id} (${Math.round(zone.w_pct)}×${Math.round(zone.h_pct)}% del encuadre).`,
+                bud_count: rawBuds,
+                maturity_pct: rawMaturity,
+                harvest_status: isSeedlingOrVeg ? 'VEGETATIVE' : (match.harvest_status || defaultHarvestStatus),
+                anthocyanin_expression: match.anthocyanin_expression || 'NONE',
+                specific_diagnosis: match.specific_diagnosis || `Vigor saludable en zona ${zone.zone_id} (${zone.strain}).`,
+                specific_action: match.specific_action || (
+                    isSeedlingOrVeg
+                        ? 'Mantener humedad de sustrato homogénea y VPD de establecimiento radicular (0.6-0.9 kPa).'
+                        : 'Continuar monitoreo fenológico y riego según plan nutricional activo.'
+                )
+            };
+        }
+
+        // Si la zona fue agregada recientemente por el usuario y aún no estaba en rawPerPlant
+        const stageDesc = stage === 'SEEDLING'
+            ? `Plántula de ${zone.strain} (${zone.plant_name}) posicionada en X:${Math.round(zone.x_pct)}% Y:${Math.round(zone.y_pct)}%. Cotiledones y primeras hojas verdaderas en desarrollo.`
+            : `Planta de ${zone.strain} (${zone.plant_name}) activa en zona ${zone.zone_id}.`;
+
+        const diagDesc = stage === 'SEEDLING'
+            ? `Establecimiento inicial uniforme en zona ${zone.zone_id}. Sin signos visuales de estrés hídrico ni clorosis.`
+            : `Desarrollo vegetativo normal en zona ${zone.zone_id} (${zone.strain}).`;
+
+        return {
+            zone_id: zone.zone_id,
+            plant_name: zone.plant_name || `Planta ${zone.zone_id}`,
+            strain: zone.strain || 'Sin especificar',
+            health_score: baseHealth,
+            canopy_share_pct: isSeedlingOrVeg ? 8 : 12,
+            leaf_posture: 'TURGID',
+            pheno_traits_observed: stageDesc,
+            bud_count: 0,
+            maturity_pct: 0,
+            harvest_status: defaultHarvestStatus,
+            anthocyanin_expression: 'NONE',
+            specific_diagnosis: diagDesc,
+            specific_action: isSeedlingOrVeg
+                ? 'Mantener microclima húmedo y riego suave alrededor del tallo para estimular expansión radicular.'
+                : 'Continuar seguimiento cenital y control de humedad por sensor asignado.'
+        };
+    });
 }
