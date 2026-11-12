@@ -23,6 +23,7 @@ export async function GET() {
 
         let availableStrains: string[] = ['Nicole Punch', 'Tropicanna WFC', 'Red Hot Cookies', 'Gorilla Glue #4', 'Amnesia Haze', 'OG Kush'];
         let latestPerPlant: any[] = [];
+        let latestImageUrl: string | null = null;
         let cropDetected = false;
         let soilSensors: SoilSensorOption[] = [...DEFAULT_SOIL_SENSORS];
 
@@ -89,6 +90,7 @@ export async function GET() {
 
                 if (analyses && analyses.length > 0) {
                     const latest = analyses[0];
+                    latestImageUrl = latest.image_urls?.[0] || null;
                     cropDetected = latest.context_snapshot?.crop_detected ?? (
                         (latest.health_score ?? 0) > 0 &&
                         (latest.context_snapshot?.canopy_coverage_pct ?? 0) > 0
@@ -115,6 +117,7 @@ export async function GET() {
             soil_sensors: soilSensors,
             available_strains: availableStrains,
             latest_per_plant: latestPerPlant,
+            latest_image_url: latestImageUrl,
             crop_detected: cropDetected
         });
     } catch (err: any) {

@@ -138,7 +138,7 @@ export default function VisionWidget() {
 
     const latest = data?.latest_analysis;
     const snapshot = latest?.context_snapshot;
-    const latestImg = latest?.image_urls?.[0] || '/captures/foto_prueba.jpg';
+    const latestImg: string | null = latest?.image_urls?.[0] || latest?.image_url || null;
 
     const isCrop = latest?.crop_detected ?? snapshot?.crop_detected ?? (
         (latest?.health_score ?? 0) > 0 &&
@@ -189,7 +189,7 @@ export default function VisionWidget() {
     const fertLive = data?.fertilization_plan_live || null;
     const fertCorrelation = fertLive?.correlation || latest?.fertilization_plan_correlation || snapshot?.fertilization_plan_correlation || null;
     const shellyLink = data?.shelly_link || null;
-    const wasCapturedInDark = shellyLink?.captured_during_dark_cycle || (!isCrop && (latest?.health_score ?? 0) === 0);
+    const wasCapturedInDark = Boolean(data && (shellyLink?.captured_during_dark_cycle || photoperiodAudit === 'DARK_CYCLE_OK'));
 
     const getPostureBadge = (posture: string) => {
         switch (posture) {
@@ -221,7 +221,7 @@ export default function VisionWidget() {
     };
 
     const postureInfo = getPostureBadge(leafPosture);
-    const activeGridZonesCount = data?.plant_grid?.zones?.filter((z: any) => z.active)?.length || 6;
+    const activeGridZonesCount = data?.plant_grid?.zones?.filter((z: any) => z.active)?.length ?? null;
 
     return (
         <div className="bg-zinc-900/70 border border-zinc-800/80 rounded-2xl p-5 shadow-xl backdrop-blur-sm flex flex-col gap-5">
@@ -235,11 +235,15 @@ export default function VisionWidget() {
                         <h3 className="text-base font-bold text-zinc-100 flex items-center gap-2 flex-wrap">
                             <span>Agente de Visión IA v2.0 — Dosel & Ciclo Completo</span>
                             <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 rounded-full">
-                                {activeGridZonesCount} Plantas Mapeadas • 120° Wide
+                                {activeGridZonesCount !== null ? `${activeGridZonesCount} Plantas Mapeadas • 120° Wide` : 'Sincronizando Mapa • 120° Wide'}
                             </span>
                         </h3>
                         <p className="text-xs text-zinc-400">
-                            Etapa detectada: <strong className="text-emerald-400">{getStageLabel(stageDetected)}</strong> • Sony IMX708 HDR
+                            Etapa detectada:{' '}
+                            <strong className="text-emerald-400">
+                                {loading && !data ? 'Sincronizando telemetría...' : getStageLabel(stageDetected)}
+                            </strong>{' '}
+                            • Sony IMX708 HDR
                         </p>
                     </div>
                 </div>
@@ -340,35 +344,46 @@ export default function VisionWidget() {
                 {/* Columna Izquierda: Foto Cenital */}
                 <div className="md:col-span-6 flex flex-col gap-2">
                     <div
-                        className="relative w-full aspect-video rounded-xl overflow-hidden bg-black border border-zinc-800 group cursor-pointer"
-                        onClick={() => setIsZoomed(!isZoomed)}
+                        className="relative w-full aspect-video rounded-xl overflow-hidden bg-zinc-950 border border-zinc-800 group cursor-pointer flex items-center justify-center"
+                        onClick={() => latestImg && setIsZoomed(!isZoomed)}
                     >
-                        <img
-                            src={latestImg}
-                            alt="Dosel Cenital Cultivo"
-                            className={`w-full h-full object-cover transition-transform duration-300 ${isZoomed ? 'scale-150' : 'group-hover:scale-105'}`}
-                        />
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 pointer-events-none" />
+                        {latestImg ? (
+                            <>
+                                <img
+                                    src={latestImg}
+                                    alt="Dosel Cenital Cultivo"
+                                    className={`w-full h-full object-cover transition-transform duration-300 ${isZoomed ? 'scale-150' : 'group-hover:scale-105'}`}
+                                />
+                                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 pointer-events-none" />
 
-                        <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/75 backdrop-blur-md text-[10px] text-zinc-200 font-mono border border-white/10">
-                            <Clock className="w-3 h-3 text-emerald-400" />
-                            <span>{latest?.created_at ? new Date(latest.created_at).toLocaleTimeString() : 'En línea'}</span>
-                            <span className="text-zinc-500">|</span>
-                            {wasCapturedInDark ? (
-                                <span className="text-amber-400 font-semibold">
-                                    🌙 Capturada con Shelly APAGADO{shellyLink?.is_on ? ' (Shelly actual: ON)' : ''}
-                                </span>
-                            ) : (
-                                <span className="text-emerald-400">
-                                    {photoperiodAudit === 'LIGHT_LEAK_ALERT' ? '⚠️ Fuga Lumínica' : '☀️ Shelly ON • Fotoperíodo OK'}
-                                </span>
-                            )}
-                        </div>
+                                <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/75 backdrop-blur-md text-[10px] text-zinc-200 font-mono border border-white/10">
+                                    <Clock className="w-3 h-3 text-emerald-400" />
+                                    <span>{latest?.created_at ? new Date(latest.created_at).toLocaleTimeString() : 'En línea'}</span>
+                                    <span className="text-zinc-500">|</span>
+                                    {wasCapturedInDark ? (
+                                        <span className="text-amber-400 font-semibold">
+                                            🌙 Capturada con Shelly APAGADO{shellyLink?.is_on ? ' (Shelly actual: ON)' : ''}
+                                        </span>
+                                    ) : (
+                                        <span className="text-emerald-400">
+                                            {photoperiodAudit === 'LIGHT_LEAK_ALERT' ? '⚠️ Fuga Lumínica' : '☀️ Shelly ON • Fotoperíodo OK'}
+                                        </span>
+                                    )}
+                                </div>
 
-                        <div className="absolute bottom-2 right-2 flex items-center gap-1 px-2 py-1 rounded bg-black/60 backdrop-blur-md text-[10px] text-zinc-300">
-                            <ZoomIn className="w-3 h-3 text-zinc-400" />
-                            <span>{isZoomed ? 'Click para alejar' : 'Click para zoom 12MP'}</span>
-                        </div>
+                                <div className="absolute bottom-2 right-2 flex items-center gap-1 px-2 py-1 rounded bg-black/60 backdrop-blur-md text-[10px] text-zinc-300">
+                                    <ZoomIn className="w-3 h-3 text-zinc-400" />
+                                    <span>{isZoomed ? 'Click para alejar' : 'Click para zoom 12MP'}</span>
+                                </div>
+                            </>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center gap-2 text-zinc-400 p-6 text-center">
+                                <RefreshCw className="w-6 h-6 text-emerald-400 animate-spin" />
+                                <span className="text-xs font-mono text-zinc-300">
+                                    {loading ? 'Cargando última captura cenital 12MP...' : 'Aguardando primera captura cenital...'}
+                                </span>
+                            </div>
+                        )}
                     </div>
                 </div>
 

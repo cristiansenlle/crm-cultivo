@@ -120,7 +120,7 @@ export async function GET() {
         }
 
         const files = fs.readdirSync(CAPTURES_DIR)
-            .filter(f => f.endsWith('.jpg') || f.endsWith('.jpeg') || f.endsWith('.png'))
+            .filter(f => (f.endsWith('.jpg') || f.endsWith('.jpeg') || f.endsWith('.png')) && !f.includes('foto_prueba'))
             .map(f => {
                 const stat = fs.statSync(path.join(CAPTURES_DIR, f));
                 return {

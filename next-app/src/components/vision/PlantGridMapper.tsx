@@ -33,6 +33,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
     const [soilSensors, setSoilSensors] = useState<SoilSensorOption[]>([]);
     const [availableStrains, setAvailableStrains] = useState<string[]>([]);
     const [perPlantResults, setPerPlantResults] = useState<PerPlantAnalysis[]>([]);
+    const [serverImageUrl, setServerImageUrl] = useState<string | null>(null);
     const [selectedZoneId, setSelectedZoneId] = useState<string>('A1');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -66,6 +67,9 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                     ? data.soil_sensors
                     : [];
                 setSoilSensors(sensorsList);
+                if (data.latest_image_url) {
+                    setServerImageUrl(data.latest_image_url);
+                }
 
                 if (data.grid?.zones) {
                     const rows = Math.max(1, data.grid.grid_rows || 2);
@@ -615,12 +619,18 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                         ref={viewportRef}
                         className="relative w-full aspect-video rounded-2xl overflow-hidden bg-black border border-zinc-800 shadow-2xl select-none"
                     >
-                        <img
-                            src={latestImageUrl || '/captures/cenital_2026-09-17T23-55-54-760Z.jpg'}
-                            alt="Vista Cenital con Zonas de Plantas"
-                            className="w-full h-full object-cover opacity-85 pointer-events-none"
-                            draggable={false}
-                        />
+                        {(latestImageUrl || serverImageUrl) ? (
+                            <img
+                                src={(latestImageUrl || serverImageUrl) as string}
+                                alt="Vista Cenital con Zonas de Plantas"
+                                className="w-full h-full object-cover opacity-85 pointer-events-none"
+                                draggable={false}
+                            />
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center bg-zinc-950 text-xs font-mono text-zinc-400">
+                                Sincronizando última captura cenital...
+                            </div>
+                        )}
 
                         {/* Lienzo de Zonas Espaciales (Posicionamiento por Coordenadas % X, Y, Ancho, Alto) */}
                         <div className="absolute inset-0">
