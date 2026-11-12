@@ -414,7 +414,7 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
                             'Content-Type': 'application/json'
                         },
                         body: JSON.stringify({
-                            model: 'google/gemini-2.0-flash-001',
+                            model: 'google/gemini-2.5-flash-lite',
                             messages: [
                                 {
                                     role: 'user',
@@ -555,7 +555,7 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
         const mimeType = parts[0].replace('data:', '') || 'image/jpeg';
         const base64Content = parts[1] || '';
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`;
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
         const res = await fetch(url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

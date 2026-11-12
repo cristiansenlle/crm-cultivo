@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { loadPlantGrid } from '@/lib/vision/PlantGridStore';
+import { getShellyCameraLinkStatus } from '@/lib/vision/ShellyLightCheck';
 import {
     loadFertilizationPlans,
     resolveBatchActivePlanWeek,
@@ -189,14 +190,21 @@ export async function GET() {
             };
         });
 
+        const shellyLink = await getShellyCameraLinkStatus(
+            plantGrid,
+            adminSupabase,
+            latestRaw?.created_at || null
+        );
+
         return NextResponse.json({
             camera: {
                 model: 'Sony IMX708 (Camera Module 3 Wide 120°)',
                 orientation: 'Cenital (Top-Down)',
                 resolution: '12 MP con Autofoco y HDR activo',
-                interval: '1 hora (fotoperíodo activo)'
+                interval: `Vinculada a ${shellyLink.linked_shelly_name} (${shellyLink.is_on ? 'ENCENDIDO' : 'APAGADO'})`
             },
             plant_grid: plantGrid,
+            shelly_link: shellyLink,
             latest_analysis: latestAnalysis,
             fertilization_plan_live: liveFertilizationPlan,
             timeline

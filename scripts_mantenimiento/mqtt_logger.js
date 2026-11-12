@@ -81,6 +81,48 @@ let lastKnownVPD = null;
 let lastAutomationEval = 0;
 const ruleCooldowns = {};
 
+
+let cameraAutoCaptureTimer = null;
+
+function getCameraShellyConfig() {
+  try {
+    const gridPath = '/var/www/captures/crop_vision/plant_grid.json';
+    if (fs.existsSync(gridPath)) {
+      const grid = JSON.parse(fs.readFileSync(gridPath, 'utf8'));
+      return {
+        linked_shelly_device_id: grid.linked_shelly_device_id || 'shellyplus1-8813bf9f8878',
+        linked_shelly_name: grid.linked_shelly_name || 'Shelly Iluminación Carpa (8813bf9f8878)',
+        only_capture_when_shelly_on: grid.only_capture_when_shelly_on !== false,
+        auto_capture_on_shelly_on: grid.auto_capture_on_shelly_on !== false
+      };
+    }
+  } catch (e) {
+    console.warn('[VISION AUTO] Error leyendo plant_grid.json:', e.message);
+  }
+  return {
+    linked_shelly_device_id: 'shellyplus1-8813bf9f8878',
+    linked_shelly_name: 'Shelly Iluminación Carpa (8813bf9f8878)',
+    only_capture_when_shelly_on: true,
+    auto_capture_on_shelly_on: true
+  };
+}
+
+function publishCameraLightState(shellyId, isOn) {
+  try {
+    const cfg = getCameraShellyConfig();
+    const payload = {
+      linked_shelly_device_id: shellyId || cfg.linked_shelly_device_id,
+      is_on: Boolean(isOn),
+      only_capture_when_shelly_on: cfg.only_capture_when_shelly_on,
+      capture_enabled: !cfg.only_capture_when_shelly_on || Boolean(isOn),
+      updated_at: new Date().toISOString()
+    };
+    client.publish('cultivo/camera/light_state', JSON.stringify(payload), { retain: true, qos: 1 });
+  } catch (e) {
+    console.error('[VISION AUTO] Error publicando light_state:', e.message);
+  }
+}
+
 async function initPhotoperiodState() {
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/device_logs?source=eq.mqtt_logger&order=created_at.desc&limit=10`, {
@@ -88,7 +130,9 @@ async function initPhotoperiodState() {
     });
     if (res.ok) {
       const logs = await res.json();
-      const lightLog = logs?.find(l => l.event === 'on' || l.event === 'off');
+      const camCfg = getCameraShellyConfig();
+      const lightLog = logs?.find(l => l.device_ip === camCfg.linked_shelly_device_id && (l.event === 'on' || l.event === 'off'))
+                    || logs?.find(l => l.event === 'on' || l.event === 'off');
       if (lightLog) {
         isLightOn = lightLog.event === 'on';
         console.log(`[CLIMA AUTO] 💡 Fotoperiodo inicial recuperado de BD: ${isLightOn ? 'DÍA (Luces ON)' : 'NOCHE (Luces OFF)'}`);
@@ -246,6 +290,11 @@ client.on('connect', () => {
   
   client.publish('shellyplus1-8813bf9f8878/rpc', JSON.stringify({id: 999, src: 'logger_rpc', method: 'Shelly.GetDeviceInfo'}));
   client.publish('shellyplus1-8813bf9fc354/rpc', JSON.stringify({id: 999, src: 'logger_rpc', method: 'Shelly.GetDeviceInfo'}));
+  client.publish('shelly1g4-a085e3b53e7c/rpc', JSON.stringify({id: 999, src: 'logger_rpc', method: 'Shelly.GetDeviceInfo'}));
+
+  // Consultar estado físico actual del relé (Switch.GetStatus) para sincronizar cámara y fotoperiodo
+  const camCfg = getCameraShellyConfig();
+  client.publish(`${camCfg.linked_shelly_device_id}/rpc`, JSON.stringify({id: 998, src: 'logger_rpc', method: 'Switch.GetStatus', params: {id: 0}}));
 });
 
 client.on('error', (err) => console.error("MQTT Error:", err));
@@ -356,6 +405,17 @@ client.on('message', async (topic, message) => {
         return;
     }
 
+    if (topic === 'logger_rpc/rpc' && payload.id === 998 && payload.result) {
+        const deviceId = payload.src;
+        const camCfg = getCameraShellyConfig();
+        if (deviceId === camCfg.linked_shelly_device_id && typeof payload.result.output === 'boolean') {
+            isLightOn = payload.result.output;
+            publishCameraLightState(deviceId, isLightOn);
+            console.log(`[VISION AUTO] 💡 Estado físico en vivo del Shelly vinculado (${deviceId}): ${isLightOn ? 'ENCENDIDO (Captura Habilitada)' : 'APAGADO (Pausa Nocturna)'}`);
+        }
+        return;
+    }
+
     if (topic === 'logger_rpc/rpc' && payload.id === 999 && payload.result) {
         const name = payload.result.name || (payload.result.device && payload.result.device.name) || (payload.result.sys && payload.result.sys.device && payload.result.sys.device.name);
         const deviceId = payload.src; 
@@ -393,19 +453,46 @@ client.on('message', async (topic, message) => {
                 const { error } = await insertSupabase('device_logs', { device_ip: deviceId, event: eventStr, source: 'mqtt_logger' });
                 if (error) console.error("Error al guardar en Supabase:", error.message);
 
-                // Detectar cambio de fotoperiodo (Luces ON = DÍA, OFF = NOCHE)
+                // Detectar cambio de fotoperiodo y vinculación con Cámara Cenital
+                const camCfg = getCameraShellyConfig();
                 const devName = (deviceNames[deviceId] || '').toLowerCase();
-                const isLightDevice = devName.includes('luz') || devName.includes('iluminac') ||
-                                      deviceId === 'shellyplus1-8813bf9fc354' ||
-                                      (!devName.includes('extractor') && !devName.includes('riego') && !devName.includes('bomba'));
-                
+                const isLinkedCameraShelly = deviceId === camCfg.linked_shelly_device_id;
+                const isLightDevice = isLinkedCameraShelly ||
+                                      devName.includes('luz') || devName.includes('iluminac') ||
+                                      deviceId === 'shellyplus1-8813bf9f8878' ||
+                                      deviceId === 'shellyplus1-8813bf9fc354';
+
                 if (isLightDevice) {
                     const prevMode = isLightOn;
                     isLightOn = state.output;
                     console.log(`[CLIMA AUTO] 💡 Fotoperiodo actualizado: ${isLightOn ? 'DÍA (Luces ON)' : 'NOCHE (Luces OFF)'} por ${deviceId} (${deviceNames[deviceId] || 'Shelly'})`);
-                    
+
                     if (prevMode !== isLightOn && lastKnownTC !== null && lastKnownRH !== null && lastKnownVPD !== null) {
                         evaluateClimateAutomation(lastKnownTC, lastKnownRH, lastKnownVPD);
+                    }
+                }
+
+                if (isLinkedCameraShelly) {
+                    publishCameraLightState(deviceId, state.output);
+                    if (cameraAutoCaptureTimer) {
+                        clearTimeout(cameraAutoCaptureTimer);
+                        cameraAutoCaptureTimer = null;
+                    }
+
+                    if (state.output === true && camCfg.auto_capture_on_shelly_on) {
+                        console.log(`[VISION AUTO] 📸 Shelly vinculado (${deviceId}) ENCENDIDO -> Programando captura automática de cámara en 8s...`);
+                        cameraAutoCaptureTimer = setTimeout(() => {
+                            cameraAutoCaptureTimer = null;
+                            client.publish('cultivo/camera/commands', JSON.stringify({
+                                cmd: 'capture_now',
+                                trigger: 'shelly_light_on',
+                                shelly_id: deviceId,
+                                requested_at: new Date().toISOString()
+                            }), { qos: 1 });
+                            console.log(`[VISION AUTO] 📸 Comando capture_now enviado a la cámara tras encendido de ${deviceId}.`);
+                        }, 8000);
+                    } else if (state.output === false) {
+                        console.log(`[VISION AUTO] 🌙 Shelly vinculado (${deviceId}) APAGADO -> Cámara en pausa nocturna.`);
                     }
                 }
 

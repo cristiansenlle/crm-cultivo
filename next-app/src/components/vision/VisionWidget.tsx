@@ -26,6 +26,27 @@ interface VisionStatusData {
         interval: string;
     };
     plant_grid?: any;
+    shelly_link?: {
+        linked_shelly_device_id: string;
+        linked_shelly_name: string;
+        is_on: boolean;
+        online: boolean;
+        temperature_c: number | null;
+        last_event_at: string | null;
+        only_capture_when_shelly_on: boolean;
+        auto_capture_on_shelly_on: boolean;
+        capture_enabled: boolean;
+        captured_during_dark_cycle: boolean;
+        available_shellys: {
+            device_id: string;
+            name: string;
+            room: string;
+            is_on: boolean;
+            online: boolean;
+            temperature_c: number | null;
+            last_event_at: string | null;
+        }[];
+    };
     latest_analysis: any;
     fertilization_plan_live?: any;
     timeline: any[];
@@ -38,6 +59,34 @@ export default function VisionWidget() {
     const [isTriggeringCapture, setIsTriggeringCapture] = useState(false);
     const [captureFeedback, setCaptureFeedback] = useState('');
     const [isZoomed, setIsZoomed] = useState(false);
+    const [savingShellyLink, setSavingShellyLink] = useState(false);
+
+    const handleUpdateShellyLink = async (updates: {
+        linked_shelly_device_id?: string;
+        only_capture_when_shelly_on?: boolean;
+        auto_capture_on_shelly_on?: boolean;
+    }) => {
+        setSavingShellyLink(true);
+        try {
+            const res = await fetch('/api/vision/grid', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update_shelly_link',
+                    ...updates
+                })
+            });
+            if (res.ok) {
+                await fetchData();
+                setCaptureFeedback('✅ Vinculación de cámara con Shelly actualizada.');
+                setTimeout(() => setCaptureFeedback(''), 3500);
+            }
+        } catch (e) {
+            console.error('Error actualizando vinculación Shelly:', e);
+        } finally {
+            setSavingShellyLink(false);
+        }
+    };
 
     const fetchData = async () => {
         try {
@@ -69,14 +118,16 @@ export default function VisionWidget() {
                 body: JSON.stringify({ action: 'snapshot' })
             });
             if (res.ok) {
-                setCaptureFeedback('📸 Foto capturada. Ejecutando análisis fenológico y por cuadrante...');
+                setCaptureFeedback('📸 Comando enviado a la cámara. Ejecutando captura y análisis fenológico...');
                 setTimeout(() => {
                     fetchData();
                     setCaptureFeedback('');
                     setIsTriggeringCapture(false);
-                }, 5500);
+                }, 6500);
             } else {
-                setCaptureFeedback('Error al solicitar captura.');
+                const errJson = await res.json().catch(() => ({}));
+                setCaptureFeedback(errJson.error || 'Error al solicitar captura.');
+                setTimeout(() => setCaptureFeedback(''), 6000);
                 setIsTriggeringCapture(false);
             }
         } catch (e) {
@@ -109,6 +160,8 @@ export default function VisionWidget() {
     const perPlantList: any[] = isCrop ? (latest?.per_plant_analysis || snapshot?.per_plant_analysis || []) : [];
     const fertLive = data?.fertilization_plan_live || null;
     const fertCorrelation = fertLive?.correlation || latest?.fertilization_plan_correlation || snapshot?.fertilization_plan_correlation || null;
+    const shellyLink = data?.shelly_link || null;
+    const wasCapturedInDark = shellyLink?.captured_during_dark_cycle || (!isCrop && (latest?.health_score ?? 0) === 0);
 
     const getPostureBadge = (posture: string) => {
         switch (posture) {
@@ -187,6 +240,67 @@ export default function VisionWidget() {
                 </div>
             </div>
 
+            {/* Barra de Vinculación Fotoperíodo Shelly <-> Cámara */}
+            {shellyLink && (
+                <div className="p-3 rounded-xl bg-zinc-950/80 border border-zinc-800/90 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                    <div className="flex flex-wrap items-center gap-2.5">
+                        <div className="flex items-center gap-1.5 text-xs font-bold text-zinc-200">
+                            <Sun className={`w-4 h-4 ${shellyLink.is_on ? 'text-amber-400 animate-pulse' : 'text-zinc-500'}`} />
+                            <span>Shelly Vinculado a Cámara:</span>
+                        </div>
+
+                        <select
+                            value={shellyLink.linked_shelly_device_id}
+                            disabled={savingShellyLink}
+                            onChange={(e) => handleUpdateShellyLink({ linked_shelly_device_id: e.target.value })}
+                            className="px-2.5 py-1.5 rounded-lg bg-zinc-900 border border-zinc-700 text-xs font-mono text-zinc-100 focus:outline-none focus:border-emerald-500 cursor-pointer"
+                        >
+                            {(shellyLink.available_shellys || []).map((sh) => (
+                                <option key={sh.device_id} value={sh.device_id}>
+                                    {sh.name} — {sh.is_on ? '🟢 ENCENDIDO' : '🔴 APAGADO'}{sh.online ? ' (Online)' : ''}
+                                </option>
+                            ))}
+                        </select>
+
+                        <span
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-mono font-bold border ${
+                                shellyLink.is_on
+                                    ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40'
+                                    : 'bg-rose-500/15 text-rose-300 border-rose-500/40'
+                            }`}
+                        >
+                            {shellyLink.is_on
+                                ? `💡 LUZ ENCENDIDA${shellyLink.temperature_c ? ` • ${shellyLink.temperature_c}°C` : ''} • Captura Habilitada`
+                                : '🌙 LUZ APAGADA • Cámara en Pausa Nocturna'}
+                        </span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-3 text-[11px] text-zinc-300">
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={shellyLink.only_capture_when_shelly_on}
+                                disabled={savingShellyLink}
+                                onChange={(e) => handleUpdateShellyLink({ only_capture_when_shelly_on: e.target.checked })}
+                                className="accent-emerald-500 rounded cursor-pointer"
+                            />
+                            <span>Solo capturar con Shelly ON</span>
+                        </label>
+
+                        <label className="flex items-center gap-1.5 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={shellyLink.auto_capture_on_shelly_on}
+                                disabled={savingShellyLink}
+                                onChange={(e) => handleUpdateShellyLink({ auto_capture_on_shelly_on: e.target.checked })}
+                                className="accent-emerald-500 rounded cursor-pointer"
+                            />
+                            <span>Auto-capturar al encender Shelly</span>
+                        </label>
+                    </div>
+                </div>
+            )}
+
             {captureFeedback && (
                 <div className="px-3 py-1.5 rounded-lg bg-emerald-950/80 border border-emerald-600/40 text-emerald-300 text-xs text-center font-medium animate-pulse">
                     {captureFeedback}
@@ -208,11 +322,19 @@ export default function VisionWidget() {
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-black/20 pointer-events-none" />
 
-                        <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/65 backdrop-blur-md text-[10px] text-zinc-200 font-mono">
+                        <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/75 backdrop-blur-md text-[10px] text-zinc-200 font-mono border border-white/10">
                             <Clock className="w-3 h-3 text-emerald-400" />
                             <span>{latest?.created_at ? new Date(latest.created_at).toLocaleTimeString() : 'En línea'}</span>
                             <span className="text-zinc-500">|</span>
-                            <span className="text-emerald-400">{photoperiodAudit === 'LIGHT_LEAK_ALERT' ? '⚠️ Fuga Lumínica' : 'Fotoperíodo OK'}</span>
+                            {wasCapturedInDark ? (
+                                <span className="text-amber-400 font-semibold">
+                                    🌙 Capturada con Shelly APAGADO{shellyLink?.is_on ? ' (Shelly actual: ON)' : ''}
+                                </span>
+                            ) : (
+                                <span className="text-emerald-400">
+                                    {photoperiodAudit === 'LIGHT_LEAK_ALERT' ? '⚠️ Fuga Lumínica' : '☀️ Shelly ON • Fotoperíodo OK'}
+                                </span>
+                            )}
                         </div>
 
                         <div className="absolute bottom-2 right-2 flex items-center gap-1 px-2 py-1 rounded bg-black/60 backdrop-blur-md text-[10px] text-zinc-300">

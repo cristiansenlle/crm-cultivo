@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { getShellyCameraLinkStatus, KNOWN_SHELLY_RELAYS } from '@/lib/vision/ShellyLightCheck';
 import {
     loadPlantGrid,
     savePlantGrid,
@@ -114,6 +115,30 @@ export async function GET() {
 export async function POST(req: NextRequest) {
     try {
         const body = await req.json();
+
+        if (body.action === 'update_shelly_link') {
+            const current = loadPlantGrid();
+            const shellyId = String(body.linked_shelly_device_id || current.linked_shelly_device_id || 'shellyplus1-8813bf9f8878');
+            const known = KNOWN_SHELLY_RELAYS.find(r => r.device_id === shellyId);
+            const shellyName = body.linked_shelly_name || (known ? known.name : `Shelly (${shellyId})`);
+            const onlyWhenOn = body.only_capture_when_shelly_on !== undefined
+                ? Boolean(body.only_capture_when_shelly_on)
+                : (current.only_capture_when_shelly_on !== false);
+            const autoOnTurnOn = body.auto_capture_on_shelly_on !== undefined
+                ? Boolean(body.auto_capture_on_shelly_on)
+                : (current.auto_capture_on_shelly_on !== false);
+
+            const updated = savePlantGrid({
+                ...current,
+                linked_shelly_device_id: shellyId,
+                linked_shelly_name: shellyName,
+                only_capture_when_shelly_on: onlyWhenOn,
+                auto_capture_on_shelly_on: autoOnTurnOn
+            });
+
+            const shellyLink = await getShellyCameraLinkStatus(updated, adminSupabase);
+            return NextResponse.json({ success: true, grid: updated, shelly_link: shellyLink });
+        }
 
         if (body.action === 'template') {
             const tpl = body.template as 'staggered_5' | 'staggered_7' | 'staggered_10' | 'perimeter_8';

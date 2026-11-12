@@ -40,6 +40,10 @@ export interface PlantGridLayout {
     grid_cols: number;
     scrog_net_installed: boolean;
     target_flip_coverage_pct: number;
+    linked_shelly_device_id?: string;
+    linked_shelly_name?: string;
+    only_capture_when_shelly_on?: boolean;
+    auto_capture_on_shelly_on?: boolean;
     updated_at: string;
     zones: PlantZoneConfig[];
 }
@@ -331,6 +335,10 @@ export function getTemplateGridLayout(
         grid_cols: cols,
         scrog_net_installed: true,
         target_flip_coverage_pct: 72,
+        linked_shelly_device_id: 'shellyplus1-8813bf9f8878',
+        linked_shelly_name: 'Shelly Iluminación Carpa (8813bf9f8878)',
+        only_capture_when_shelly_on: true,
+        auto_capture_on_shelly_on: true,
         updated_at: new Date().toISOString(),
         zones
     };
@@ -389,7 +397,15 @@ function normalizeLegacySensors(layout: PlantGridLayout): PlantGridLayout {
         }
         return updated;
     });
-    return { ...layout, layout_mode: layout.layout_mode || 'grid', zones };
+    return {
+        ...layout,
+        layout_mode: layout.layout_mode || 'grid',
+        linked_shelly_device_id: layout.linked_shelly_device_id || 'shellyplus1-8813bf9f8878',
+        linked_shelly_name: layout.linked_shelly_name || 'Shelly Iluminación Carpa (8813bf9f8878)',
+        only_capture_when_shelly_on: layout.only_capture_when_shelly_on !== false,
+        auto_capture_on_shelly_on: layout.auto_capture_on_shelly_on !== false,
+        zones
+    };
 }
 
 export function loadPlantGrid(): PlantGridLayout {
