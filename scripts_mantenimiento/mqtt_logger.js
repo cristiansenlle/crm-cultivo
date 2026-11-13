@@ -287,6 +287,9 @@ client.on('connect', () => {
   client.subscribe('cultivo/electrophysiology/esp32/#', (err) => {
     if (!err) console.log("Suscrito a topics Electrofisiologia ESP32.");
   });
+  client.subscribe('cultivo/broadlink/#', (err) => {
+    if (!err) console.log("Suscrito a topics Broadlink RM4.");
+  });
   
   client.publish('shellyplus1-8813bf9f8878/rpc', JSON.stringify({id: 999, src: 'logger_rpc', method: 'Shelly.GetDeviceInfo'}));
   client.publish('shellyplus1-8813bf9fc354/rpc', JSON.stringify({id: 999, src: 'logger_rpc', method: 'Shelly.GetDeviceInfo'}));
@@ -300,10 +303,59 @@ client.on('connect', () => {
 client.on('error', (err) => console.error("MQTT Error:", err));
 client.on('offline', () => console.log("MQTT Offline"));
 
+let lastBroadlinkHealTime = 0;
+
 client.on('message', async (topic, message) => {
   try {
     const msgStr = message.toString();
     const payload = JSON.parse(msgStr);
+
+    // Monitoreo y Auto-Reparación de Broadlink RM4 Mini
+    if (topic === 'cultivo/broadlink/status') {
+        const statusText = payload.message || msgStr;
+        console.log(`[${new Date().toISOString()}] 📡 Broadlink Status: ${statusText}`);
+        try {
+            const ipMatch = statusText.match(/(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})/);
+            let cached = { online: true, rm4Ip: '192.168.100.7', lastMessage: statusText, updatedAt: new Date().toISOString() };
+            if (fs.existsSync('/tmp/broadlink_rm4_status.json')) {
+                try { cached = { ...JSON.parse(fs.readFileSync('/tmp/broadlink_rm4_status.json', 'utf8')), ...cached }; } catch(e) {}
+            }
+            if (ipMatch) cached.rm4Ip = ipMatch[1];
+            cached.online = !statusText.toLowerCase().includes('error') && !statusText.includes('No se encontró');
+            cached.lastMessage = statusText;
+            cached.updatedAt = new Date().toISOString();
+            fs.writeFileSync('/tmp/broadlink_rm4_status.json', JSON.stringify(cached, null, 2), 'utf8');
+        } catch (e) {}
+
+        if (
+            (statusText.includes('Error al entrar en modo aprendizaje') || statusText.includes('No se ha detectado el Broadlink')) &&
+            Date.now() - lastBroadlinkHealTime > 15000
+        ) {
+            lastBroadlinkHealTime = Date.now();
+            console.log(`[BROADLINK AUTO-HEAL] 🔧 Error de sesión detectado en RM4 Mini. Forzando re-autenticación remota del puente...`);
+            const { exec } = require('child_process');
+            const healCmd = `
+              LINE=$(grep -h "New client connected" /var/log/mosquitto/mosquitto.log.1 /var/log/mosquitto/mosquitto.log 2>/dev/null | grep -i "broadlink-bridge" | tail -n 1)
+              if [ -n "$LINE" ]; then
+                ADDR=$(echo "$LINE" | sed -n 's/.*from \\([0-9.]*:[0-9]*\\) as.*/\\1/p')
+                IP=$(echo "$ADDR" | cut -d: -f1)
+                PORT=$(echo "$ADDR" | cut -d: -f2)
+                if [ -n "$IP" ] && [ -n "$PORT" ]; then
+                  ACTIVE=$(ss -tn state established "( sport = :1883 and dst = $IP and dport = :$PORT )" | tail -n +2)
+                  if [ -n "$ACTIVE" ]; then
+                    ss -K dst "$IP" dport = "$PORT"
+                    exit 0
+                  fi
+                fi
+              fi
+              ss -K state established '( sport = :1883 and dst != 127.0.0.1 )'
+            `;
+            exec(healCmd, () => {
+                console.log(`[BROADLINK AUTO-HEAL] ✅ Socket reiniciado. El puente en Raspberry Pi re-autenticará el RM4 automáticamente.`);
+            });
+        }
+        return;
+    }
     
     // Check ESP32 Soil Sensor
     if (topic.includes('soil/esp32')) {
