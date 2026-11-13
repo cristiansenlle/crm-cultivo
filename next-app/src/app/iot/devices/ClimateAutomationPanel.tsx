@@ -5,6 +5,7 @@ import {
   Sun, Moon, Thermometer, Droplets, Activity, Zap, Play, CheckCircle2, 
   AlertTriangle, Clock, RefreshCw, Plus, Trash2, Sliders, ShieldCheck 
 } from 'lucide-react';
+import { parseCommandMeta } from './BroadlinkPanel';
 
 export default function ClimateAutomationPanel() {
   const [loading, setLoading] = useState(true);
@@ -659,11 +660,42 @@ export default function ClimateAutomationPanel() {
                   className="w-full bg-neutral-950 border border-neutral-700 rounded-lg px-3 py-2 text-white text-sm font-medium text-emerald-400"
                 >
                   <option value="">Selecciona un comando / secuencia...</option>
-                  {commands.map(cmd => (
-                    <option key={cmd.id} value={cmd.id}>
-                      {cmd.hex_code?.startsWith('MACRO:') ? '🔄 [SECUENCIA] ' : '⚡ [IR] '} {cmd.name}
-                    </option>
-                  ))}
+                  {(() => {
+                    const macros = commands.filter(c => c.hex_code?.startsWith('MACRO:'));
+                    const singles = commands.filter(c => !c.hex_code?.startsWith('MACRO:'));
+                    const groups: Record<string, Array<{ cmd: any; order: number }>> = {};
+                    singles.forEach((cmd, idx) => {
+                      const meta = parseCommandMeta(cmd, idx);
+                      if (!groups[meta.equipment]) groups[meta.equipment] = [];
+                      groups[meta.equipment].push({ cmd, order: meta.order });
+                    });
+                    Object.keys(groups).forEach(eq => {
+                      groups[eq].sort((a, b) => a.order - b.order);
+                    });
+
+                    return (
+                      <>
+                        {macros.length > 0 && (
+                          <optgroup label="🔄 Secuencias Guardadas (Macros)">
+                            {macros.map(cmd => (
+                              <option key={cmd.id} value={cmd.id}>
+                                🔄 {cmd.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {Object.entries(groups).map(([eq, list]) => (
+                          <optgroup key={eq} label={`📦 Equipo: ${eq}`}>
+                            {list.map((item, idx) => (
+                              <option key={item.cmd.id} value={item.cmd.id}>
+                                #{idx + 1} ⚡ [{eq}] {item.cmd.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </>
+                    );
+                  })()}
                 </select>
               </div>
             </div>
