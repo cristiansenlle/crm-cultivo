@@ -264,6 +264,45 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({ success: true, grid: updated });
         }
 
+        if (body.action === 'auto_detect_plants') {
+            const result = await VisionAgentEngine.autoDetectAndTrackPlants({
+                replaceAll: Boolean(body.replace_all)
+            });
+            return NextResponse.json({
+                success: result.success,
+                grid: result.grid,
+                latest_per_plant:
+                    result.analysis?.per_plant_analysis ||
+                    reconcilePerPlantAnalysis(result.grid, []),
+                tracking_summary: result.grid.last_tracking_summary || {
+                    timestamp: new Date().toISOString(),
+                    matched_count: result.tracking.matchedCount,
+                    moved_count: result.tracking.movedCount,
+                    added_zones: result.tracking.addedZones,
+                    missing_zones: result.tracking.missingZones,
+                    message: result.tracking.summaryMessage
+                },
+                analysis: result.analysis,
+                error: result.error
+            });
+        }
+
+        if (body.action === 'update_tracking_settings') {
+            const current = loadPlantGrid();
+            const updated = savePlantGrid({
+                ...current,
+                auto_track_enabled:
+                    body.auto_track_enabled !== undefined
+                        ? Boolean(body.auto_track_enabled)
+                        : current.auto_track_enabled !== false,
+                auto_add_remove_zones:
+                    body.auto_add_remove_zones !== undefined
+                        ? Boolean(body.auto_add_remove_zones)
+                        : current.auto_add_remove_zones !== false
+            });
+            return NextResponse.json({ success: true, grid: updated });
+        }
+
         if (body.action === 'reanalyze') {
             const analysis = await VisionAgentEngine.reanalyzeLatestCaptureWithCurrentGrid();
             const current = loadPlantGrid();

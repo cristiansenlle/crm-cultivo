@@ -14,7 +14,8 @@ import {
     Move,
     Plus,
     Trash2,
-    Maximize2
+    Maximize2,
+    Target
 } from 'lucide-react';
 import type {
     PlantGridLayout,
@@ -37,6 +38,8 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
     const [selectedZoneId, setSelectedZoneId] = useState<string>('A1');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
+    const [autoDetecting, setAutoDetecting] = useState(false);
+    const [savingTracking, setSavingTracking] = useState(false);
     const [saveMessage, setSaveMessage] = useState('');
     const [showOverlayMetrics, setShowOverlayMetrics] = useState(true);
     const [freeformEditMode, setFreeformEditMode] = useState(true);
@@ -346,6 +349,74 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
         }
     };
 
+    const handleAutoDetectPlants = async (replaceAll = false) => {
+        if (!grid) return;
+        setAutoDetecting(true);
+        setSaveMessage('🎯 Escaneando la foto cenital con IA para localizar macetas, domos y reubicar etiquetas...');
+        try {
+            const res = await fetch('/api/vision/grid', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'auto_detect_plants',
+                    replace_all: replaceAll
+                })
+            });
+            const data = await res.json();
+            if (res.ok && data.success && data.grid) {
+                setGrid(data.grid);
+                if (Array.isArray(data.latest_per_plant)) {
+                    setPerPlantResults(data.latest_per_plant);
+                }
+                const activeCountNow = (data.grid.zones || []).filter((z: PlantZoneConfig) => z.active).length;
+                setCustomPlantCount(activeCountNow);
+                const msg = data.tracking_summary?.message || 'Plantas detectadas y coordenadas calibradas.';
+                setSaveMessage(`🎯 Auto-Detección completada: ${msg}`);
+                setTimeout(() => setSaveMessage(''), 6000);
+            } else {
+                setSaveMessage(`⚠️ ${data.error || data.tracking_summary?.message || 'No se pudieron auto-detectar plantas en la imagen actual.'}`);
+                setTimeout(() => setSaveMessage(''), 5500);
+            }
+        } catch (err) {
+            console.error('Error en auto_detect_plants:', err);
+            setSaveMessage('❌ Error de comunicación durante el auto-reconocimiento.');
+            setTimeout(() => setSaveMessage(''), 4500);
+        } finally {
+            setAutoDetecting(false);
+        }
+    };
+
+    const handleToggleTrackingSetting = async (patch: {
+        auto_track_enabled?: boolean;
+        auto_add_remove_zones?: boolean;
+    }) => {
+        if (!grid) return;
+        setSavingTracking(true);
+        const prevGrid = grid;
+        setGrid({ ...grid, ...patch });
+        try {
+            const res = await fetch('/api/vision/grid', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'update_tracking_settings',
+                    ...patch
+                })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                if (data.grid) setGrid(data.grid);
+            } else {
+                setGrid(prevGrid);
+            }
+        } catch (err) {
+            console.error('Error actualizando configuración de tracking:', err);
+            setGrid(prevGrid);
+        } finally {
+            setSavingTracking(false);
+        }
+    };
+
     const updateSelectedZone = (patch: Partial<PlantZoneConfig>) => {
         if (!grid) return;
         const updatedZones = grid.zones.map(z =>
@@ -406,6 +477,43 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
         }
     };
 
+    const getSubstrateBadge = (moisture?: PerPlantAnalysis['visual_substrate_moisture']) => {
+        switch (moisture) {
+            case 'WET':
+                return { label: '💧 Sustrato Saturado', short: '💧 Sat.', color: 'bg-blue-500/20 text-blue-300 border-blue-500/40' };
+            case 'MOIST_OPTIMAL':
+                return { label: '🟫 Sustrato Húmedo', short: '🟫 OK', color: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/35' };
+            case 'DRY_SURFACE':
+                return { label: '🏜️ Sustrato Seco', short: '🏜️ Seco', color: 'bg-amber-500/20 text-amber-300 border-amber-500/40' };
+            default:
+                return null;
+        }
+    };
+
+    const getRelativeGrowthBadge = (rel?: PerPlantAnalysis['relative_growth_vs_batch']) => {
+        switch (rel) {
+            case 'AHEAD':
+                return { label: '🚀 +Vigor', short: '🚀', color: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' };
+            case 'LAGGING':
+                return { label: '⚠️ Rezagada', short: '⚠️', color: 'bg-rose-500/20 text-rose-300 border-rose-500/40' };
+            default:
+                return null;
+        }
+    };
+
+    const getPresenceBadge = (status?: PlantZoneConfig['presence_status']) => {
+        switch (status) {
+            case 'MOVED':
+                return { label: '📍 Auto-ajustada', short: '📍', color: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40' };
+            case 'NEW_DETECTED':
+                return { label: '✨ Nueva', short: '✨', color: 'bg-purple-500/20 text-purple-300 border-purple-500/40' };
+            case 'MISSING':
+                return { label: '⚠️ Ausente', short: '⚠️', color: 'bg-rose-500/20 text-rose-300 border-rose-500/40' };
+            default:
+                return null;
+        }
+    };
+
     return (
         <div className="flex flex-col gap-6">
             {/* Barra de Controles del Mapa Espacial */}
@@ -433,6 +541,20 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                         >
                             <Move className="w-3.5 h-3.5" />
                             <span>{freeformEditMode ? 'Edición Libre Activa (Arrastrar/Estirar)' : 'Mover / Redimensionar'}</span>
+                        </button>
+
+                        <button
+                            onClick={() => handleAutoDetectPlants(false)}
+                            disabled={autoDetecting || saving}
+                            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-purple-600/90 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-bold border border-purple-400/40 shadow-lg shadow-purple-950/40 transition-all cursor-pointer"
+                            title="Detecta automáticamente todas las macetas/cúpulas visibles y reubica las etiquetas sobre cada planta"
+                        >
+                            {autoDetecting ? (
+                                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                                <Target className="w-3.5 h-3.5" />
+                            )}
+                            <span>{autoDetecting ? 'Detectando...' : '🎯 Auto-Detectar Plantas IA'}</span>
                         </button>
 
                         <button
@@ -602,6 +724,44 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                         </button>
                     </div>
                 </div>
+
+                {/* Fila 3: Configuración Auto-Tracking Dinámico */}
+                <div className="pt-2.5 border-t border-zinc-800/70 flex flex-wrap items-center justify-between gap-3 text-xs">
+                    <div className="flex flex-wrap items-center gap-4">
+                        <span className="text-[11px] font-mono uppercase tracking-wider text-purple-300 font-bold flex items-center gap-1.5">
+                            <Target className="w-3.5 h-3.5 text-purple-400" />
+                            Auto-Tracking IA:
+                        </span>
+
+                        <label className="flex items-center gap-1.5 text-zinc-300 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={grid.auto_track_enabled !== false}
+                                disabled={savingTracking}
+                                onChange={e => handleToggleTrackingSetting({ auto_track_enabled: e.target.checked })}
+                                className="accent-purple-500 rounded cursor-pointer"
+                            />
+                            <span>Auto-ajustar etiquetas al mover macetas</span>
+                        </label>
+
+                        <label className="flex items-center gap-1.5 text-zinc-300 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={grid.auto_add_remove_zones !== false}
+                                disabled={savingTracking}
+                                onChange={e => handleToggleTrackingSetting({ auto_add_remove_zones: e.target.checked })}
+                                className="accent-purple-500 rounded cursor-pointer"
+                            />
+                            <span>Detectar altas/bajas automáticamente</span>
+                        </label>
+                    </div>
+
+                    {grid.last_tracking_summary?.message && (
+                        <div className="px-2.5 py-1 rounded-lg bg-purple-950/40 border border-purple-500/30 text-[11px] font-mono text-purple-200">
+                            🎯 Último escaneo: {grid.last_tracking_summary.message}
+                        </div>
+                    )}
+                </div>
             </div>
 
             {saveMessage && (
@@ -675,6 +835,12 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                         } ${isCompact ? 'p-1.5' : 'p-2'} ${
                                             isSelected
                                                 ? 'border-2 border-emerald-400 bg-emerald-500/15 shadow-[inset_0_0_25px_rgba(16,185,129,0.25)]'
+                                                : zone.presence_status === 'MISSING'
+                                                ? 'border-dashed border-rose-500/60 bg-rose-950/25 opacity-75'
+                                                : plantDiag?.relative_growth_vs_batch === 'LAGGING'
+                                                ? 'border-amber-400/70 bg-amber-950/20 hover:border-amber-300'
+                                                : zone.presence_status === 'MOVED'
+                                                ? 'border-cyan-400/60 bg-cyan-950/15 hover:border-cyan-300'
                                                 : zone.active
                                                 ? 'border-white/30 bg-black/20 hover:bg-emerald-950/30 hover:border-emerald-400/60'
                                                 : 'border-dashed border-white/15 bg-black/60 opacity-45'
@@ -704,6 +870,30 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
 
                                             {zone.active && showOverlayMetrics && (
                                                 <div className="flex items-center gap-1 shrink-0">
+                                                    {plantDiag?.dome_detected && (
+                                                        <span
+                                                            className="px-1 py-0.5 rounded bg-sky-500/20 border border-sky-400/40 text-sky-200 text-[9px] leading-none"
+                                                            title={`Con domo / cúpula (${plantDiag.dome_status || 'OPTIMAL_HUMIDITY'})`}
+                                                        >
+                                                            🫧
+                                                        </span>
+                                                    )}
+                                                    {getPresenceBadge(zone.presence_status) && (
+                                                        <span
+                                                            className={`px-1 py-0.5 rounded border text-[9px] leading-none ${getPresenceBadge(zone.presence_status)!.color}`}
+                                                            title={getPresenceBadge(zone.presence_status)!.label}
+                                                        >
+                                                            {getPresenceBadge(zone.presence_status)!.short}
+                                                        </span>
+                                                    )}
+                                                    {getRelativeGrowthBadge(plantDiag?.relative_growth_vs_batch) && (
+                                                        <span
+                                                            className={`px-1 py-0.5 rounded border text-[9px] leading-none ${getRelativeGrowthBadge(plantDiag?.relative_growth_vs_batch)!.color}`}
+                                                            title={getRelativeGrowthBadge(plantDiag?.relative_growth_vs_batch)!.label}
+                                                        >
+                                                            {getRelativeGrowthBadge(plantDiag?.relative_growth_vs_batch)!.short}
+                                                        </span>
+                                                    )}
                                                     {isCompact && plantDiag && (
                                                         <span className="px-1 py-0.5 rounded bg-emerald-950/90 border border-emerald-500/40 text-emerald-300 text-[9px] font-mono font-bold leading-none">
                                                             ♥{plantDiag.health_score}%
@@ -794,7 +984,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                                             </>
                                                         ) : (
                                                             <span className="text-teal-300 shrink-0">
-                                                                🌱 Vigor OK
+                                                                {getSubstrateBadge(plantDiag.visual_substrate_moisture)?.short || '🌱 Vigor OK'}
                                                             </span>
                                                         )}
                                                     </div>
@@ -1134,7 +1324,34 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                         )}
                                     </div>
                                     {cropDetected && selectedPlantAnalysis ? (
-                                        <div className="text-[11px] text-zinc-300 flex flex-col gap-1">
+                                        <div className="text-[11px] text-zinc-300 flex flex-col gap-1.5">
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                                {getPresenceBadge(selectedZone.presence_status || selectedPlantAnalysis.presence_status) && (
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${getPresenceBadge(selectedZone.presence_status || selectedPlantAnalysis.presence_status)!.color}`}>
+                                                        {getPresenceBadge(selectedZone.presence_status || selectedPlantAnalysis.presence_status)!.label}
+                                                    </span>
+                                                )}
+                                                {selectedPlantAnalysis.dome_detected && (
+                                                    <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-sky-500/20 text-sky-300 border border-sky-500/40">
+                                                        🫧 Con Domo ({selectedPlantAnalysis.dome_status === 'LEAVES_TOUCHING_REMOVE_SOON' ? 'Retirar pronto' : selectedPlantAnalysis.dome_status === 'HIGH_CONDENSATION' ? 'Alta condensación' : 'Humedad OK'})
+                                                    </span>
+                                                )}
+                                                {getSubstrateBadge(selectedPlantAnalysis.visual_substrate_moisture) && (
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${getSubstrateBadge(selectedPlantAnalysis.visual_substrate_moisture)!.color}`}>
+                                                        {getSubstrateBadge(selectedPlantAnalysis.visual_substrate_moisture)!.label}
+                                                    </span>
+                                                )}
+                                                {getRelativeGrowthBadge(selectedPlantAnalysis.relative_growth_vs_batch) && (
+                                                    <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${getRelativeGrowthBadge(selectedPlantAnalysis.relative_growth_vs_batch)!.color}`}>
+                                                        {getRelativeGrowthBadge(selectedPlantAnalysis.relative_growth_vs_batch)!.label}
+                                                    </span>
+                                                )}
+                                            </div>
+                                            {selectedPlantAnalysis.lagging_alert && (
+                                                <div className="p-2 rounded-lg bg-rose-950/50 border border-rose-500/40 text-rose-200 text-[10px] font-medium">
+                                                    ⚠️ {selectedPlantAnalysis.lagging_alert}
+                                                </div>
+                                            )}
                                             <p><strong>Rasgos observados:</strong> {selectedPlantAnalysis.pheno_traits_observed}</p>
                                             <p><strong>Diagnóstico:</strong> {selectedPlantAnalysis.specific_diagnosis}</p>
                                             <p className="text-emerald-300"><strong>Acción sugerida:</strong> {selectedPlantAnalysis.specific_action}</p>

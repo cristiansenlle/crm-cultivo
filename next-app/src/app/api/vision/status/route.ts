@@ -52,6 +52,7 @@ export async function GET() {
                 estimated_yield_grams: isCrop ? (snap.estimated_yield_grams ?? 0) : 0,
                 harvest_readiness_pct: isCrop ? (snap.harvest_readiness_pct ?? 0) : 0,
                 lifecycle_advisors: snap.lifecycle_advisors || null,
+                tracking_summary: snap.tracking_summary || plantGrid.last_tracking_summary || null,
                 per_plant_analysis: isCrop
                     ? reconcilePerPlantAnalysis(plantGrid, snap.per_plant_analysis, {
                           stage: snap.phenological_stage_detected || 'SEEDLING',

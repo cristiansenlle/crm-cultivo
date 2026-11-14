@@ -181,7 +181,13 @@ export default function VisionWidget() {
                         bud_count: isSeedlingOrVeg ? 0 : (match?.bud_count ?? 0),
                         maturity_pct: isSeedlingOrVeg ? 0 : (match?.maturity_pct ?? 0),
                         specific_diagnosis: match?.specific_diagnosis || `En seguimiento activo (${z.strain})`,
-                        sensor_short: sensorShort
+                        sensor_short: sensorShort,
+                        presence_status: z.presence_status || match?.presence_status || 'PRESENT',
+                        dome_detected: match?.dome_detected ?? false,
+                        dome_status: match?.dome_status || 'NONE',
+                        visual_substrate_moisture: match?.visual_substrate_moisture || 'UNKNOWN',
+                        relative_growth_vs_batch: match?.relative_growth_vs_batch || 'AVERAGE',
+                        lagging_alert: match?.lagging_alert || null
                     };
                 })
               : rawPerPlant)
@@ -442,48 +448,101 @@ export default function VisionWidget() {
                             </div>
                         </div>
 
-                        {/* 3. Conteo de Colas y Proyección de Cosecha */}
+                        {/* 3. Conteo de Plantas Mapeadas (Veg/Plántula) o Colas & Proyección (Flora) */}
                         <div className="p-3 bg-zinc-950/60 border border-zinc-800/80 rounded-xl flex flex-col justify-between">
-                            <span className="text-[11px] text-zinc-400 flex items-center gap-1">
-                                <Award className="w-3.5 h-3.5 text-purple-400" />
-                                Colas & Proyección
-                            </span>
-                            <div className="flex items-baseline justify-between gap-1 mt-1">
-                                <div>
-                                    <span className={`text-xl font-black ${isCrop ? 'text-purple-300' : 'text-zinc-500'}`}>
-                                        {isCrop ? budSitesCount : 0}
+                            {isCrop && isSeedlingOrVeg ? (
+                                <>
+                                    <span className="text-[11px] text-zinc-400 flex items-center gap-1">
+                                        <Layers className="w-3.5 h-3.5 text-emerald-400" />
+                                        Plantas Mapeadas
                                     </span>
-                                    <span className="text-[11px] text-zinc-500 ml-1">colas</span>
-                                </div>
-                                <div className="text-right">
-                                    <span className={`text-sm font-bold font-mono ${isCrop ? 'text-amber-300' : 'text-zinc-600'}`}>
-                                        ~{isCrop ? estimatedYield : 0}g
+                                    <div className="flex items-baseline justify-between gap-1 mt-1">
+                                        <div>
+                                            <span className="text-xl font-black text-emerald-300">
+                                                {activeZones.length || perPlantList.length}
+                                            </span>
+                                            <span className="text-[11px] text-zinc-500 ml-1">ejemplares</span>
+                                        </div>
+                                        <span className="text-[10px] font-mono text-cyan-300">
+                                            100% activas
+                                        </span>
+                                    </div>
+                                    <span className="text-[10px] text-zinc-500 mt-1">
+                                        Seguimiento fenológico individual
                                     </span>
-                                </div>
-                            </div>
-                            <span className="text-[10px] text-zinc-500 mt-1">
-                                {isCrop ? 'Ápices expuestos al LED' : 'Pendiente de floración'}
-                            </span>
+                                </>
+                            ) : (
+                                <>
+                                    <span className="text-[11px] text-zinc-400 flex items-center gap-1">
+                                        <Award className="w-3.5 h-3.5 text-purple-400" />
+                                        Colas & Proyección
+                                    </span>
+                                    <div className="flex items-baseline justify-between gap-1 mt-1">
+                                        <div>
+                                            <span className={`text-xl font-black ${isCrop ? 'text-purple-300' : 'text-zinc-500'}`}>
+                                                {isCrop ? budSitesCount : 0}
+                                            </span>
+                                            <span className="text-[11px] text-zinc-500 ml-1">colas</span>
+                                        </div>
+                                        <div className="text-right">
+                                            <span className={`text-sm font-bold font-mono ${isCrop ? 'text-amber-300' : 'text-zinc-600'}`}>
+                                                ~{isCrop ? estimatedYield : 0}g
+                                            </span>
+                                        </div>
+                                    </div>
+                                    <span className="text-[10px] text-zinc-500 mt-1">
+                                        {isCrop ? 'Ápices expuestos al LED' : 'Pendiente de floración'}
+                                    </span>
+                                </>
+                            )}
                         </div>
 
-                        {/* 4. Maduración Estigmática / Ventana de Corte */}
+                        {/* 4. Progreso hacia Meta SCROG 12/12 (Veg/Plántula) o Madurez Floral (Flora) */}
                         <div className="p-3 bg-zinc-950/60 border border-zinc-800/80 rounded-xl flex flex-col justify-between">
-                            <span className="text-[11px] text-zinc-400 flex items-center gap-1">
-                                <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
-                                Madurez Floral
-                            </span>
-                            <div className="flex items-baseline gap-1 mt-1">
-                                <span className={`text-xl font-black ${isCrop ? 'text-amber-300' : 'text-zinc-500'}`}>
-                                    {isCrop ? `${harvestReadiness}%` : '0%'}
-                                </span>
-                                <span className="text-[11px] text-zinc-500">oxidación</span>
-                            </div>
-                            <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden mt-2">
-                                <div
-                                    className="h-full bg-gradient-to-r from-amber-500 to-orange-400"
-                                    style={{ width: `${isCrop ? harvestReadiness : 0}%` }}
-                                />
-                            </div>
+                            {isCrop && isSeedlingOrVeg ? (
+                                <>
+                                    <span className="text-[11px] text-zinc-400 flex items-center gap-1">
+                                        <TrendingUp className="w-3.5 h-3.5 text-cyan-400" />
+                                        Progreso hacia 12/12
+                                    </span>
+                                    <div className="flex items-baseline justify-between gap-1 mt-1">
+                                        <div>
+                                            <span className="text-xl font-black text-cyan-300">
+                                                {canopyCover}%
+                                            </span>
+                                            <span className="text-[11px] text-zinc-500 ml-1">/ {targetFlipPct}%</span>
+                                        </div>
+                                        <span className="text-[10px] font-mono text-zinc-400">
+                                            Meta SCROG
+                                        </span>
+                                    </div>
+                                    <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden mt-2">
+                                        <div
+                                            className="h-full bg-gradient-to-r from-cyan-500 to-emerald-400"
+                                            style={{ width: `${Math.min(100, Math.round((canopyCover / Math.max(1, targetFlipPct)) * 100))}%` }}
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <>
+                                    <span className="text-[11px] text-zinc-400 flex items-center gap-1">
+                                        <TrendingUp className="w-3.5 h-3.5 text-amber-400" />
+                                        Madurez Floral
+                                    </span>
+                                    <div className="flex items-baseline gap-1 mt-1">
+                                        <span className={`text-xl font-black ${isCrop ? 'text-amber-300' : 'text-zinc-500'}`}>
+                                            {isCrop ? `${harvestReadiness}%` : '0%'}
+                                        </span>
+                                        <span className="text-[11px] text-zinc-500">oxidación</span>
+                                    </div>
+                                    <div className="w-full bg-zinc-800 h-1.5 rounded-full overflow-hidden mt-2">
+                                        <div
+                                            className="h-full bg-gradient-to-r from-amber-500 to-orange-400"
+                                            style={{ width: `${isCrop ? harvestReadiness : 0}%` }}
+                                        />
+                                    </div>
+                                </>
+                            )}
                         </div>
                     </div>
 
@@ -634,10 +693,36 @@ export default function VisionWidget() {
             {isCrop && perPlantList.length > 0 && (
                 <div className="pt-2 border-t border-zinc-800/80 flex flex-col gap-2.5">
                     <div className="flex items-center justify-between flex-wrap gap-2">
-                        <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
-                            <Leaf className="w-3.5 h-3.5 text-emerald-400" />
-                            <span>Estado en Vivo por Planta Individual Mapeada ({perPlantList.length} activas)</span>
-                        </span>
+                        <div className="flex items-center flex-wrap gap-2">
+                            <span className="text-xs font-bold text-zinc-200 flex items-center gap-1.5">
+                                <Leaf className="w-3.5 h-3.5 text-emerald-400" />
+                                <span>Estado en Vivo por Planta Individual Mapeada ({perPlantList.length} activas)</span>
+                            </span>
+                            {(() => {
+                                const ahead = perPlantList.filter(p => p.relative_growth_vs_batch === 'AHEAD').length;
+                                const lagging = perPlantList.filter(p => p.relative_growth_vs_batch === 'LAGGING').length;
+                                const domed = perPlantList.filter(p => p.dome_detected).length;
+                                return (
+                                    <div className="flex items-center gap-1.5 text-[10px] font-mono">
+                                        {ahead > 0 && (
+                                            <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                                                🚀 {ahead} +vigor
+                                            </span>
+                                        )}
+                                        {lagging > 0 && (
+                                            <span className="px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-300 border border-rose-500/30">
+                                                ⚠️ {lagging} rezagada(s)
+                                            </span>
+                                        )}
+                                        {domed > 0 && (
+                                            <span className="px-1.5 py-0.5 rounded bg-sky-500/15 text-sky-300 border border-sky-500/30">
+                                                🫧 {domed} con domo
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })()}
+                        </div>
                         <span className="text-[11px] font-mono text-zinc-400">
                             Etapa actual: <strong className="text-emerald-400">{getStageLabel(stageDetected)}</strong>
                         </span>
@@ -664,6 +749,55 @@ export default function VisionWidget() {
                                     <span className="text-[10px] text-emerald-300/90 font-medium truncate">
                                         {pl.strain}
                                     </span>
+
+                                    <div className="flex flex-wrap items-center gap-1 mt-0.5">
+                                        {pl.relative_growth_vs_batch === 'AHEAD' && (
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/35">
+                                                🚀 +Vigor
+                                            </span>
+                                        )}
+                                        {pl.relative_growth_vs_batch === 'LAGGING' && (
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-rose-500/20 text-rose-300 border border-rose-500/35">
+                                                ⚠️ Rezagada
+                                            </span>
+                                        )}
+                                        {pl.dome_detected && (
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-sky-500/15 text-sky-300 border border-sky-500/30">
+                                                🫧 Domo
+                                            </span>
+                                        )}
+                                        {pl.visual_substrate_moisture && pl.visual_substrate_moisture !== 'UNKNOWN' && (
+                                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono border ${
+                                                pl.visual_substrate_moisture === 'DRY_SURFACE'
+                                                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/35'
+                                                    : pl.visual_substrate_moisture === 'WET'
+                                                    ? 'bg-blue-500/20 text-blue-300 border-blue-500/35'
+                                                    : 'bg-zinc-800/90 text-emerald-300 border-zinc-700'
+                                            }`}>
+                                                {pl.visual_substrate_moisture === 'DRY_SURFACE'
+                                                    ? '🏜️ Seco'
+                                                    : pl.visual_substrate_moisture === 'WET'
+                                                    ? '💧 Saturado'
+                                                    : '🟫 Sustrato OK'}
+                                            </span>
+                                        )}
+                                        {pl.presence_status === 'MOVED' && (
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
+                                                📍 Ajustada
+                                            </span>
+                                        )}
+                                        {pl.presence_status === 'NEW_DETECTED' && (
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-purple-500/15 text-purple-300 border border-purple-500/30">
+                                                ✨ Nueva
+                                            </span>
+                                        )}
+                                        {pl.presence_status === 'MISSING' && (
+                                            <span className="px-1.5 py-0.5 rounded text-[9px] font-mono bg-rose-500/20 text-rose-300 border border-rose-500/35">
+                                                ⚠️ Ausente
+                                            </span>
+                                        )}
+                                    </div>
+
                                     {pl.specific_diagnosis && (
                                         <p className="text-[10px] text-zinc-400 line-clamp-2 leading-tight mt-0.5">
                                             {pl.specific_diagnosis}

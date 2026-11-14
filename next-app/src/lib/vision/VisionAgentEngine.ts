@@ -1,7 +1,15 @@
 import { createClient } from '@supabase/supabase-js';
 import fs from 'fs';
 import path from 'path';
-import { loadPlantGrid, reconcilePerPlantAnalysis, PerPlantAnalysis } from './PlantGridStore';
+import {
+    loadPlantGrid,
+    savePlantGrid,
+    reconcileSpatialTracking,
+    reconcilePerPlantAnalysis,
+    PerPlantAnalysis,
+    DetectedPlantBox,
+    PlantGridLayout
+} from './PlantGridStore';
 import {
     RED_HOT_COOKIES_FEEDING_PLAN,
     resolveBatchActivePlanWeek,
@@ -49,6 +57,8 @@ export interface VisionAnalysisResult {
     harvest_readiness_pct: number;
     lifecycle_advisors: LifecycleAdvisors;
     per_plant_analysis: PerPlantAnalysis[];
+    unmapped_plants_detected?: DetectedPlantBox[];
+    tracking_summary?: PlantGridLayout['last_tracking_summary'] | null;
     deficiencies: string[];
     pests_detected: string[];
     issues_detected: string[];
@@ -73,7 +83,8 @@ export class VisionAgentEngine {
     static async analyzeCenitalCapture(
         imageBase64Data: string,
         imageUrl: string,
-        batchId?: string
+        batchId?: string,
+        options?: { skipAutoTrack?: boolean }
     ): Promise<VisionAnalysisResult> {
         if (!adminSupabase) {
             throw new Error('Cliente Supabase no configurado en el servidor');
@@ -96,8 +107,42 @@ export class VisionAgentEngine {
         }
         const roomId = activeBatch?.room_id || activeBatch?.location || null;
 
-        // 2. Cargar el Mapa Espacial de Cuadrícula de Plantas y Multigenética
-        const plantGrid = loadPlantGrid();
+        let formattedImageData = imageBase64Data;
+        if (!formattedImageData.startsWith('data:image/')) {
+            formattedImageData = `data:image/jpeg;base64,${imageBase64Data}`;
+        }
+
+        // 2. Cargar Mapa Espacial y ejecutar Auto-Tracking visual previo si está habilitado
+        let plantGrid = loadPlantGrid();
+        let preTrackingSummary: PlantGridLayout['last_tracking_summary'] | null = plantGrid.last_tracking_summary || null;
+
+        if (plantGrid.auto_track_enabled !== false && !options?.skipAutoTrack) {
+            try {
+                const blindDet = await this.detectContainersBlind(formattedImageData);
+                const currActiveCount = plantGrid.zones.filter(z => z.active).length;
+                if (
+                    blindDet?.crop_detected &&
+                    Array.isArray(blindDet.detected_plants) &&
+                    blindDet.detected_plants.length >= Math.max(1, Math.floor(currActiveCount * 0.5))
+                ) {
+                    const trackRes = reconcileSpatialTracking(plantGrid, blindDet.detected_plants, {
+                        forceSnap: false,
+                        allowAddNew: plantGrid.auto_add_remove_zones !== false,
+                        markMissing: false,
+                        replaceAll: false,
+                        maxMatchDistancePct: 28
+                    });
+                    preTrackingSummary = trackRes.updatedGrid.last_tracking_summary || preTrackingSummary;
+                    if (trackRes.movedCount > 0 || trackRes.addedZones.length > 0) {
+                        plantGrid = savePlantGrid(trackRes.updatedGrid);
+                        console.log('[VisionAgentEngine] 🎯 Auto-Tracking previo actualizado:', trackRes.summaryMessage);
+                    }
+                }
+            } catch (trackErr: any) {
+                console.warn('[VisionAgentEngine] Auto-Tracking previo omitido:', trackErr?.message || trackErr);
+            }
+        }
+
         const activeZones = plantGrid.zones.filter(z => z.active);
 
         // 3. Consultar captura previa válida para calcular Delta de Crecimiento Diario (Δ%/día)
@@ -295,15 +340,19 @@ INSTRUCCIONES ESTRICTAS DE ANÁLISIS CENITAL v2.0 (CICLO COMPLETO E INDIVIDUALIZ
    - Calcula "canopy_coverage_pct" (0 a 100%) de área verde sobre el total de la malla/carpa.
    - Calcula "daily_growth_delta_pct": tasa de expansión diaria estimada según el vigor o comparando con previous_canopy_coverage_pct.
 
-2. MAPEO INDIVIDUAL DE PLANTAS POR COORDENADAS ESPACIALES (per_plant_analysis):
-   - Cada planta en mapped_plants tiene su recuadro exacto en porcentaje sobre el fotograma ("bounding_box_pct", donde X: 0%-100% va de izquierda a derecha e Y: 0%-100% va de arriba a abajo, soportando grillas, tresbolillo/zig-zag o zonas libres).
+2. MAPEO INDIVIDUAL DE PLANTAS POR COORDENADAS ESPACIALES Y TRACKING AUTOMÁTICO (per_plant_analysis):
+   - Cada planta en mapped_plants tiene su recuadro actual en "bounding_box_pct" (X: 0%-100%, Y: 0%-100%). Si movieron ligeramente la maceta respecto a ese recuadro, búscala en las cercanías y reporta su caja real en "detected_box_2d".
    - OBLIGATORIO: "per_plant_analysis" DEBE contener exactamente ${activeZones.length} elementos, uno por cada planta en mapped_plants (${activeZones.map(z => z.zone_id).join(', ')}), respetando exactamente su "zone_id", "plant_name" y "strain". No omitas ninguna zona mapeada.
    - Si la etapa es "SEEDLING", "VEGETATIVE_EARLY" o "VEGETATIVE_SCROG", asigna obligatoriamente "bud_count": 0, "maturity_pct": 0, "estimated_yield_grams": 0, "harvest_readiness_pct": 0 y "harvest_status": "VEGETATIVE".
-   - Para CADA planta listada en mapped_plants, inspecciona exclusivamente su región "bounding_box_pct":
-     * Estado de salud individual (0-100), % de su cuadrante cubierto (canopy_share_pct), postura foliar ("PRAYING", "TURGID", "DROOPING", "CLAWING").
-     * DIFERENCIACIÓN MULTIGENÉTICA: Observa el ancho de foliolos (Indica ancha vs Sativa fina), estiramiento (stretch) y pigmentación.
-     * REGLA DE ANTOCIANINAS: Si "natural_anthocyanins_purple" es true para esa planta (ej. Nicole Punch o Tropicanna), los tonos morados/púrpura en hojas superiores durante floración avanzada deben clasificarse como "anthocyanin_expression": "GENETIC_NORMAL" (salud alta) y NO como deficiencia de fósforo. Si es false y hay morado severo, clasifícalo como "STRESS_INDUCED".
-     * Cuenta las colas florales principales en ese cuadrante ("bud_count") y estima su % de madurez hacia cosecha ("maturity_pct" y "harvest_status": "VEGETATIVE", "DEVELOPING", "FLUSH_WINDOW", "READY_TO_CHOP", "OVERRIPE_RISK").
+   - Para CADA planta listada en mapped_plants:
+     * Estado de salud individual (0-100), % de su zona ocupada por hojas (canopy_share_pct), postura foliar ("PRAYING", "TURGID", "DROOPING", "CLAWING").
+     * COORDENADA REAL DETECTADA ("detected_box_2d"): array [ymin, xmin, ymax, xmax] en escala entera 0..1000 delimitando toda la maceta/domo/planta real correspondiente a esta zona (o null si esa maceta fue retirada de la carpa).
+     * AUDITORÍA DE DOMO / CÚPULA DE HUMEDAD: "dome_detected" (true/false si tiene botella o cúpula plástica encima) y "dome_status" ("NONE", "OPTIMAL_HUMIDITY", "HIGH_CONDENSATION", "LEAVES_TOUCHING_REMOVE_SOON").
+     * HUMEDAD VISUAL DEL SUSTRATO: "visual_substrate_moisture" ("WET", "MOIST_OPTIMAL", "DRY_SURFACE", "UNKNOWN") evaluando el tono oscuro/húmedo vs marrón claro/seco de la turba/sustrato visible en la maceta (respaldo clave para macetas sin sonda o con sonda en 0%).
+     * ETIQUETA VISIBLE: "visual_label_read" si se lee un número o código en la maceta/domo (ej. "A1", "P9", "1"), o null.
+     * DIFERENCIACIÓN MULTIGENÉTICA y REGLA DE ANTOCIANINAS ("GENETIC_NORMAL" vs "STRESS_INDUCED").
+     * Conteo de colas ("bud_count"), % madurez ("maturity_pct") y "harvest_status".
+   - PLANTAS ADICIONALES NO MAPEADAS ("unmapped_plants_detected"): si ves macetas o plántulas nuevas fuera de las zonas listadas, devuélvelas con su "box_2d": [ymin, xmin, ymax, xmax] en escala 0..1000, "dome_detected", "dome_status" y "visual_substrate_moisture".
 
 3. ASISTENTES DE CICLO COMPLETO (lifecycle_advisors):
    - "topping_lst_advice": Recomendación de poda apical o amarre LST según simetría de cada planta.
@@ -350,20 +399,26 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
   "per_plant_analysis": [
     {
       "zone_id": "A1",
-      "plant_name": "Nicole Punch #1",
-      "strain": "Nicole Punch",
-      "health_score": 92,
-      "canopy_share_pct": 85,
-      "leaf_posture": "PRAYING",
-      "pheno_traits_observed": "Foliolo ancho índico, pigmentación púrpura genética en bordes",
-      "bud_count": 8,
-      "maturity_pct": 75,
-      "harvest_status": "FLUSH_WINDOW",
-      "anthocyanin_expression": "GENETIC_NORMAL",
-      "specific_diagnosis": "Vigor excelente y senescencia limpia.",
-      "specific_action": "Iniciar lavado de raíces en 3 días."
+      "plant_name": "RHC 2/2026",
+      "strain": "Red Hot Cookies",
+      "health_score": 84,
+      "canopy_share_pct": 12,
+      "leaf_posture": "TURGID",
+      "pheno_traits_observed": "Cotiledones expandidos y primer par de hojas verdaderas vigoroso",
+      "bud_count": 0,
+      "maturity_pct": 0,
+      "harvest_status": "VEGETATIVE",
+      "anthocyanin_expression": "NONE",
+      "detected_box_2d": [45, 30, 310, 260],
+      "dome_detected": true,
+      "dome_status": "OPTIMAL_HUMIDITY",
+      "visual_substrate_moisture": "MOIST_OPTIMAL",
+      "visual_label_read": null,
+      "specific_diagnosis": "Plántula estable con cúpula limpia y sustrato con humedad uniforme.",
+      "specific_action": "Mantener cúpula y ventilar 15 minutos diarios."
     }
   ],
+  "unmapped_plants_detected": [],
   "deficiencies": [],
   "pests_detected": [],
   "issues_detected": [],
@@ -372,85 +427,7 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
   "suggested_actions": []
 }`;
 
-        let parsedResult: VisionAnalysisResult;
-
-        const openRouterKey = process.env.OPENROUTER_API_KEY || '';
-        const geminiKey = process.env.GEMINI_API_KEY || '';
-
-        let formattedImageData = imageBase64Data;
-        if (!formattedImageData.startsWith('data:image/')) {
-            formattedImageData = `data:image/jpeg;base64,${imageBase64Data}`;
-        }
-
-        if (openRouterKey) {
-            try {
-                let aiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${openRouterKey}`,
-                        'HTTP-Referer': 'https://cannabiscrm.com',
-                        'X-Title': 'CRM Cannabis Vision Agent v2',
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        model: 'google/gemini-2.5-flash',
-                        messages: [
-                            {
-                                role: 'user',
-                                content: [
-                                    { type: 'text', text: prompt },
-                                    { type: 'image_url', image_url: { url: formattedImageData } }
-                                ]
-                            }
-                        ],
-                        response_format: { type: 'json_object' }
-                    })
-                });
-
-                if (!aiResponse.ok) {
-                    console.warn('[VisionAgentEngine] Intento con gemini-2.5-flash fallo, intentando fallback...');
-                    aiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-                        method: 'POST',
-                        headers: {
-                            'Authorization': `Bearer ${openRouterKey}`,
-                            'HTTP-Referer': 'https://cannabiscrm.com',
-                            'X-Title': 'CRM Cannabis Vision Agent v2',
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({
-                            model: 'google/gemini-2.5-flash-lite',
-                            messages: [
-                                {
-                                    role: 'user',
-                                    content: [
-                                        { type: 'text', text: prompt },
-                                        { type: 'image_url', image_url: { url: formattedImageData } }
-                                    ]
-                                }
-                            ],
-                            response_format: { type: 'json_object' }
-                        })
-                    });
-                }
-
-                if (!aiResponse.ok) {
-                    const err = await aiResponse.text();
-                    throw new Error(`OpenRouter Error: ${err}`);
-                }
-
-                const data = await aiResponse.json();
-                let rawText = data.choices?.[0]?.message?.content || '{}';
-                rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
-                parsedResult = JSON.parse(rawText);
-            } catch (openRouterErr) {
-                console.warn('Fallback a Gemini directo por error en OpenRouter:', openRouterErr);
-                parsedResult = await this.fallbackGemini(prompt, formattedImageData, geminiKey);
-            }
-        } else if (geminiKey) {
-            parsedResult = await this.fallbackGemini(prompt, formattedImageData, geminiKey);
-        } else {
-            throw new Error('No hay API Keys de visión disponibles (OPENROUTER_API_KEY o GEMINI_API_KEY faltantes)');
-        }
+        const parsedResult = await this.callVisionModel<VisionAnalysisResult>(prompt, formattedImageData);
 
         // 6. Normalizar y validar estrictamente según crop_detected
         const isCrop = parsedResult.crop_detected ?? (
@@ -471,8 +448,11 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
         const finalBudCount = isCrop ? (parsedResult.bud_sites_count ?? 0) : 0;
         const finalEstYield = isCrop ? (parsedResult.estimated_yield_grams ?? 0) : 0;
         const finalHarvestReadiness = isCrop ? (parsedResult.harvest_readiness_pct ?? 0) : 0;
-        const finalPerPlant = isCrop
-            ? reconcilePerPlantAnalysis(plantGrid, parsedResult.per_plant_analysis, {
+        const effectiveGrid = plantGrid;
+        const trackingSummary: PlantGridLayout['last_tracking_summary'] | null = preTrackingSummary || plantGrid.last_tracking_summary || null;
+
+                const finalPerPlant = isCrop
+            ? reconcilePerPlantAnalysis(effectiveGrid, parsedResult.per_plant_analysis, {
                   stage: finalStage,
                   health_score: finalHealthScore,
                   crop_detected: isCrop
@@ -526,6 +506,7 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
                     per_plant_analysis: finalPerPlant,
                     deficiencies: parsedResult.deficiencies || [],
                     pests_detected: parsedResult.pests_detected || [],
+                    tracking_summary: trackingSummary,
                     fertilization_plan_correlation: planCorrelation
                 }
             }).select();
@@ -554,7 +535,36 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
             harvest_readiness_pct: finalHarvestReadiness,
             lifecycle_advisors: finalAdvisors,
             per_plant_analysis: finalPerPlant,
+            tracking_summary: trackingSummary,
             fertilization_plan_correlation: planCorrelation
+        };
+    }
+
+    private static getLatestCaptureOnDisk(): { name: string; fullPath: string; publicUrl: string; base64Data: string } | null {
+        const capturesDir = fs.existsSync('/var/www/captures/crop_vision')
+            ? '/var/www/captures/crop_vision'
+            : path.join(process.cwd(), 'public', 'captures');
+
+        if (!fs.existsSync(capturesDir)) return null;
+
+        const files = fs.readdirSync(capturesDir)
+            .filter(f => (f.endsWith('.jpg') || f.endsWith('.jpeg') || f.endsWith('.png')) && !f.includes('foto_prueba'))
+            .map(f => ({
+                name: f,
+                fullPath: path.join(capturesDir, f),
+                mtime: fs.statSync(path.join(capturesDir, f)).mtime.getTime()
+            }))
+            .sort((a, b) => b.mtime - a.mtime);
+
+        if (files.length === 0) return null;
+
+        const latestFile = files[0];
+        const buffer = fs.readFileSync(latestFile.fullPath);
+        return {
+            name: latestFile.name,
+            fullPath: latestFile.fullPath,
+            publicUrl: `/captures/${latestFile.name}`,
+            base64Data: `data:image/jpeg;base64,${buffer.toString('base64')}`
         };
     }
 
@@ -563,37 +573,198 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
      */
     static async reanalyzeLatestCaptureWithCurrentGrid(): Promise<VisionAnalysisResult | null> {
         try {
-            const capturesDir = fs.existsSync('/var/www/captures/crop_vision')
-                ? '/var/www/captures/crop_vision'
-                : path.join(process.cwd(), 'public', 'captures');
+            const latest = this.getLatestCaptureOnDisk();
+            if (!latest) return null;
 
-            if (!fs.existsSync(capturesDir)) return null;
-
-            const files = fs.readdirSync(capturesDir)
-                .filter(f => (f.endsWith('.jpg') || f.endsWith('.jpeg') || f.endsWith('.png')) && f !== 'foto_prueba.jpg')
-                .map(f => ({
-                    name: f,
-                    fullPath: path.join(capturesDir, f),
-                    mtime: fs.statSync(path.join(capturesDir, f)).mtime.getTime()
-                }))
-                .sort((a, b) => b.mtime - a.mtime);
-
-            if (files.length === 0) return null;
-
-            const latestFile = files[0];
-            const buffer = fs.readFileSync(latestFile.fullPath);
-            const base64Data = `data:image/jpeg;base64,${buffer.toString('base64')}`;
-            const publicUrl = `/captures/${latestFile.name}`;
-
-            console.log(`[VisionAgentEngine] 🔄 Re-analizando captura ${latestFile.name} con el mapa espacial actualizado...`);
-            return await this.analyzeCenitalCapture(base64Data, publicUrl);
+            console.log(`[VisionAgentEngine] 🔄 Re-analizando captura ${latest.name} con el mapa espacial actualizado...`);
+            return await this.analyzeCenitalCapture(latest.base64Data, latest.publicUrl);
         } catch (err: any) {
             console.error('[VisionAgentEngine] Error en reanalyzeLatestCaptureWithCurrentGrid:', err.message);
             return null;
         }
     }
 
-    private static async fallbackGemini(prompt: string, base64Url: string, apiKey: string): Promise<VisionAnalysisResult> {
+    /**
+     * Escanea la captura cenital más reciente para auto-detectar todas las macetas, cúpulas y plantas,
+     * emparejarlas contra las zonas existentes (moviendo etiquetas si rotaron macetas) o creando nuevas zonas.
+     */
+    private static async detectContainersBlind(
+        formattedImageData: string
+    ): Promise<{ crop_detected: boolean; detected_plants: DetectedPlantBox[] }> {
+        const detectPrompt = `Detect ALL individual seedling pots, transparent plastic bottle domes, and plant containers inside this overhead (top-down) grow tent image.
+Do NOT guess a grid. Detect every actual visible pot or bottle dome from pixels alone.
+CRITICAL CLUSTER RULE: On the left side/tray, several transparent plastic bottle domes sit very close together and physically touch side-by-side. Do NOT merge adjacent domes into one combined box — output one separate tight box_2d for EACH individual bottle dome/pot.
+EXCLUSION RULE: Do NOT detect fans, white styrofoam blocks, wood tent posts, cables, reflective walls, shadows, or empty cardboard/floor below the bottom row of pots (e.g. empty tray area at Y > 740) as plants — ONLY real pots/domes containing seedlings or planted substrate.
+
+Return ONLY valid JSON:
+{
+  "crop_detected": true,
+  "count": 10,
+  "detected_plants": [
+    {
+      "box_2d": [ymin, xmin, ymax, xmax],
+      "visual_label_read": null,
+      "dome_detected": true,
+      "dome_status": "OPTIMAL_HUMIDITY",
+      "visual_substrate_moisture": "MOIST_OPTIMAL",
+      "notes": "breve descripción en español"
+    }
+  ]
+}
+
+Use integer coordinates [ymin, xmin, ymax, xmax] normalized 0..1000 (0=top/left, 1000=bottom/right).`;
+
+        return await this.callVisionModel<{ crop_detected: boolean; detected_plants: DetectedPlantBox[] }>(
+            detectPrompt,
+            formattedImageData
+        );
+    }
+
+    static async autoDetectAndTrackPlants(options?: { replaceAll?: boolean }): Promise<{
+        success: boolean;
+        grid: PlantGridLayout;
+        tracking: ReturnType<typeof reconcileSpatialTracking>;
+        analysis: VisionAnalysisResult | null;
+        error?: string;
+    }> {
+        const currentGrid = loadPlantGrid();
+        const latest = this.getLatestCaptureOnDisk();
+        if (!latest) {
+            return {
+                success: false,
+                grid: currentGrid,
+                tracking: {
+                    updatedGrid: currentGrid,
+                    movedCount: 0,
+                    matchedCount: 0,
+                    addedZones: [],
+                    missingZones: [],
+                    summaryMessage: 'No hay capturas cenitales disponibles en disco para auto-detectar plantas.'
+                },
+                analysis: null,
+                error: 'No hay capturas cenitales disponibles en disco.'
+            };
+        }
+
+        const detRes = await this.detectContainersBlind(latest.base64Data);
+
+        if (!detRes?.crop_detected || !Array.isArray(detRes.detected_plants) || detRes.detected_plants.length === 0) {
+            return {
+                success: false,
+                grid: currentGrid,
+                tracking: {
+                    updatedGrid: currentGrid,
+                    movedCount: 0,
+                    matchedCount: 0,
+                    addedZones: [],
+                    missingZones: [],
+                    summaryMessage: 'La IA no detectó macetas ni plantas visibles en la captura actual.'
+                },
+                analysis: null,
+                error: 'No se detectaron plantas en la imagen actual.'
+            };
+        }
+
+        const tracking = reconcileSpatialTracking(currentGrid, detRes.detected_plants, {
+            forceSnap: true,
+            allowAddNew: currentGrid.auto_add_remove_zones !== false,
+            markMissing: Boolean(options?.replaceAll),
+            replaceAll: Boolean(options?.replaceAll),
+            maxMatchDistancePct: 28
+        });
+
+        const savedGrid = savePlantGrid(tracking.updatedGrid);
+        console.log(`[VisionAgentEngine] 🎯 Auto-Detección Visual Ciega sobre ${latest.name}: ${tracking.summaryMessage}`);
+
+        const analysis = await this.analyzeCenitalCapture(latest.base64Data, latest.publicUrl, undefined, {
+            skipAutoTrack: true
+        });
+
+        return {
+            success: true,
+            grid: savedGrid,
+            tracking,
+            analysis
+        };
+    }
+
+    private static async callVisionModel<T>(prompt: string, formattedImageData: string): Promise<T> {
+        const openRouterKey = process.env.OPENROUTER_API_KEY || '';
+        const geminiKey = process.env.GEMINI_API_KEY || '';
+
+        if (openRouterKey) {
+            try {
+                let aiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${openRouterKey}`,
+                        'HTTP-Referer': 'https://cannabiscrm.com',
+                        'X-Title': 'CRM Cannabis Vision Agent v2',
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        model: 'google/gemini-2.5-flash',
+                        temperature: 0.1,
+                        messages: [
+                            {
+                                role: 'user',
+                                content: [
+                                    { type: 'text', text: prompt },
+                                    { type: 'image_url', image_url: { url: formattedImageData } }
+                                ]
+                            }
+                        ],
+                        response_format: { type: 'json_object' }
+                    })
+                });
+
+                if (!aiResponse.ok) {
+                    console.warn('[VisionAgentEngine] Intento con gemini-2.5-flash fallo, intentando fallback...');
+                    aiResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Authorization': `Bearer ${openRouterKey}`,
+                            'HTTP-Referer': 'https://cannabiscrm.com',
+                            'X-Title': 'CRM Cannabis Vision Agent v2',
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            model: 'google/gemini-2.5-flash-lite',
+                            messages: [
+                                {
+                                    role: 'user',
+                                    content: [
+                                        { type: 'text', text: prompt },
+                                        { type: 'image_url', image_url: { url: formattedImageData } }
+                                    ]
+                                }
+                            ],
+                            response_format: { type: 'json_object' }
+                        })
+                    });
+                }
+
+                if (!aiResponse.ok) {
+                    const err = await aiResponse.text();
+                    throw new Error(`OpenRouter Error: ${err}`);
+                }
+
+                const data = await aiResponse.json();
+                let rawText = data.choices?.[0]?.message?.content || '{}';
+                rawText = rawText.replace(/```json/g, '').replace(/```/g, '').trim();
+                return JSON.parse(rawText) as T;
+            } catch (openRouterErr) {
+                console.warn('Fallback a Gemini directo por error en OpenRouter:', openRouterErr);
+                return await this.fallbackGemini<T>(prompt, formattedImageData, geminiKey);
+            }
+        } else if (geminiKey) {
+            return await this.fallbackGemini<T>(prompt, formattedImageData, geminiKey);
+        }
+
+        throw new Error('No hay API Keys de visión disponibles (OPENROUTER_API_KEY o GEMINI_API_KEY faltantes)');
+    }
+
+    private static async fallbackGemini<T>(prompt: string, base64Url: string, apiKey: string): Promise<T> {
         if (!apiKey) throw new Error('GEMINI_API_KEY no disponible para fallback');
 
         const parts = base64Url.split(';base64,');
@@ -619,6 +790,7 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
                     }
                 ],
                 generationConfig: {
+                    temperature: 0.1,
                     response_mime_type: 'application/json'
                 }
             })
@@ -631,6 +803,6 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
 
         const json = await res.json();
         const text = json.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
-        return JSON.parse(text);
+        return JSON.parse(text) as T;
     }
 }
