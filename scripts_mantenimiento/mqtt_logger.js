@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 const mqtt = require('mqtt');
 
 let SUPABASE_URL = "";
@@ -83,6 +84,125 @@ const ruleCooldowns = {};
 
 
 let cameraAutoCaptureTimer = null;
+let cameraAutoPreStopTimer = null;
+
+const CAPTURES_DIR = fs.existsSync('/var/www/captures/crop_vision')
+  ? '/var/www/captures/crop_vision'
+  : path.resolve(__dirname, '..', 'next-app', 'public', 'captures');
+const CAMERA_RUNTIME_STATUS_PATH = path.join(CAPTURES_DIR, 'camera_runtime_status.json');
+const STREAM_WATCHDOG_MAX_MS = 240 * 1000;      // 4 minutos máximo por sesión
+const PRE_HOURLY_STOP_GUARD_MS = 3360 * 1000;   // 56 min (4 min antes de captura horaria RPi 3600s)
+
+let cameraRuntimeStatus = {
+  last_heartbeat_at: null,
+  streaming: false,
+  cpu_temp: null,
+  last_event: null,
+  last_event_at: null,
+  last_stream_start_at: null,
+  last_capture_at: null,
+  updated_at: null
+};
+
+function getLatestCenitalCaptureIso() {
+  try {
+    if (!fs.existsSync(CAPTURES_DIR)) return null;
+    const files = fs.readdirSync(CAPTURES_DIR).filter(f => /^cenital_.*\.(jpg|jpeg|png)$/i.test(f));
+    let maxMtime = 0;
+    for (const file of files) {
+      const st = fs.statSync(path.join(CAPTURES_DIR, file));
+      if (st.mtimeMs > maxMtime) maxMtime = st.mtimeMs;
+    }
+    return maxMtime > 0 ? new Date(maxMtime).toISOString() : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function persistCameraRuntimeStatus() {
+  try {
+    if (!fs.existsSync(CAPTURES_DIR)) {
+      fs.mkdirSync(CAPTURES_DIR, { recursive: true });
+    }
+    cameraRuntimeStatus.updated_at = new Date().toISOString();
+    fs.writeFileSync(CAMERA_RUNTIME_STATUS_PATH, JSON.stringify(cameraRuntimeStatus, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[VISION RUNTIME] Error persistiendo camera_runtime_status.json:', e.message);
+  }
+}
+
+function initCameraRuntimeStatus() {
+  try {
+    if (fs.existsSync(CAMERA_RUNTIME_STATUS_PATH)) {
+      const saved = JSON.parse(fs.readFileSync(CAMERA_RUNTIME_STATUS_PATH, 'utf8'));
+      cameraRuntimeStatus = { ...cameraRuntimeStatus, ...saved };
+    }
+  } catch (e) {
+    console.warn('[VISION RUNTIME] Error leyendo camera_runtime_status.json:', e.message);
+  }
+
+  const latestDiskIso = getLatestCenitalCaptureIso();
+  if (latestDiskIso) {
+    const savedMs = cameraRuntimeStatus.last_capture_at ? new Date(cameraRuntimeStatus.last_capture_at).getTime() : 0;
+    const diskMs = new Date(latestDiskIso).getTime();
+    if (!savedMs || diskMs > savedMs) {
+      cameraRuntimeStatus.last_capture_at = latestDiskIso;
+    }
+  }
+  persistCameraRuntimeStatus();
+}
+
+function publishCameraStreamStop(reason) {
+  try {
+    if (!client.connected) return;
+    client.publish('cultivo/camera/commands', JSON.stringify({
+      cmd: 'stream_stop',
+      reason,
+      requested_at: new Date().toISOString()
+    }), { qos: 1 });
+    cameraRuntimeStatus.streaming = false;
+    cameraRuntimeStatus.last_stream_start_at = null;
+    persistCameraRuntimeStatus();
+    console.log(`[VISION GUARD] 🛑 stream_stop preventivo enviado (${reason}).`);
+  } catch (e) {
+    console.error('[VISION GUARD] Error enviando stream_stop:', e.message);
+  }
+}
+
+initCameraRuntimeStatus();
+
+// Watchdog Servidor Anti-Deadlock (cada 10s)
+setInterval(() => {
+  const streamActive = Boolean(cameraRuntimeStatus.streaming || cameraRuntimeStatus.last_stream_start_at);
+  if (!streamActive) return;
+
+  const nowMs = Date.now();
+  const startMs = cameraRuntimeStatus.last_stream_start_at
+    ? new Date(cameraRuntimeStatus.last_stream_start_at).getTime()
+    : 0;
+
+  if (startMs > 0 && (nowMs - startMs) >= STREAM_WATCHDOG_MAX_MS) {
+    publishCameraStreamStop('server_timeout_guard');
+    return;
+  }
+
+  const latestCaptureIso = getLatestCenitalCaptureIso();
+  if (latestCaptureIso) {
+    const prevMs = cameraRuntimeStatus.last_capture_at ? new Date(cameraRuntimeStatus.last_capture_at).getTime() : 0;
+    const diskMs = new Date(latestCaptureIso).getTime();
+    if (!prevMs || diskMs > prevMs) {
+      cameraRuntimeStatus.last_capture_at = latestCaptureIso;
+    }
+  }
+
+  if (cameraRuntimeStatus.last_capture_at) {
+    const capMs = new Date(cameraRuntimeStatus.last_capture_at).getTime();
+    const elapsedMs = nowMs - capMs;
+    if (!Number.isNaN(capMs) && elapsedMs >= PRE_HOURLY_STOP_GUARD_MS && elapsedMs <= 3720 * 1000) {
+      publishCameraStreamStop('pre_hourly_capture_guard');
+    }
+  }
+}, 10000);
 
 function getCameraShellyConfig() {
   try {
@@ -290,6 +410,9 @@ client.on('connect', () => {
   client.subscribe('cultivo/broadlink/#', (err) => {
     if (!err) console.log("Suscrito a topics Broadlink RM4.");
   });
+  client.subscribe(['cultivo/camera/heartbeat', 'cultivo/camera/events', 'cultivo/camera/commands'], (err) => {
+    if (!err) console.log("Suscrito a topics Cámara Cenital (heartbeat, events, commands).");
+  });
   
   client.publish('shellyplus1-8813bf9f8878/rpc', JSON.stringify({id: 999, src: 'logger_rpc', method: 'Shelly.GetDeviceInfo'}));
   client.publish('shellyplus1-8813bf9fc354/rpc', JSON.stringify({id: 999, src: 'logger_rpc', method: 'Shelly.GetDeviceInfo'}));
@@ -309,6 +432,55 @@ client.on('message', async (topic, message) => {
   try {
     const msgStr = message.toString();
     const payload = JSON.parse(msgStr);
+
+    if (topic === 'cultivo/camera/heartbeat') {
+        cameraRuntimeStatus.last_heartbeat_at = new Date().toISOString();
+        cameraRuntimeStatus.streaming = Boolean(payload.streaming);
+        if (typeof payload.cpu_temp === 'number') {
+            cameraRuntimeStatus.cpu_temp = payload.cpu_temp;
+        }
+        if (
+            !cameraRuntimeStatus.streaming &&
+            cameraRuntimeStatus.last_stream_start_at &&
+            (Date.now() - new Date(cameraRuntimeStatus.last_stream_start_at).getTime() > 15000)
+        ) {
+            cameraRuntimeStatus.last_stream_start_at = null;
+        }
+        persistCameraRuntimeStatus();
+        return;
+    }
+
+    if (topic === 'cultivo/camera/events') {
+        const nowIso = new Date().toISOString();
+        cameraRuntimeStatus.last_event = payload.event || null;
+        cameraRuntimeStatus.last_event_at = nowIso;
+        if (payload.event === 'stream_started') {
+            cameraRuntimeStatus.streaming = true;
+            if (!cameraRuntimeStatus.last_stream_start_at) {
+                cameraRuntimeStatus.last_stream_start_at = nowIso;
+            }
+        } else if (payload.event === 'stream_stopped' || payload.event === 'stream_timeout') {
+            cameraRuntimeStatus.streaming = false;
+            cameraRuntimeStatus.last_stream_start_at = null;
+        } else if (payload.event === 'photo_captured' || payload.event === 'scheduled_capture_completed') {
+            cameraRuntimeStatus.last_capture_at = nowIso;
+        }
+        persistCameraRuntimeStatus();
+        return;
+    }
+
+    if (topic === 'cultivo/camera/commands') {
+        const nowIso = new Date().toISOString();
+        if (payload.cmd === 'stream_start') {
+            cameraRuntimeStatus.last_stream_start_at = nowIso;
+            persistCameraRuntimeStatus();
+        } else if (payload.cmd === 'stream_stop') {
+            cameraRuntimeStatus.streaming = false;
+            cameraRuntimeStatus.last_stream_start_at = null;
+            persistCameraRuntimeStatus();
+        }
+        return;
+    }
 
     // Monitoreo y Auto-Reparación de Broadlink RM4 Mini
     if (topic === 'cultivo/broadlink/status') {
@@ -526,13 +698,21 @@ client.on('message', async (topic, message) => {
 
                 if (isLinkedCameraShelly) {
                     publishCameraLightState(deviceId, state.output);
+                    if (cameraAutoPreStopTimer) {
+                        clearTimeout(cameraAutoPreStopTimer);
+                        cameraAutoPreStopTimer = null;
+                    }
                     if (cameraAutoCaptureTimer) {
                         clearTimeout(cameraAutoCaptureTimer);
                         cameraAutoCaptureTimer = null;
                     }
 
                     if (state.output === true && camCfg.auto_capture_on_shelly_on) {
-                        console.log(`[VISION AUTO] 📸 Shelly vinculado (${deviceId}) ENCENDIDO -> Programando captura automática de cámara en 8s...`);
+                        console.log(`[VISION AUTO] 📸 Shelly vinculado (${deviceId}) ENCENDIDO -> stream_stop preventivo en 5s y captura en 8s...`);
+                        cameraAutoPreStopTimer = setTimeout(() => {
+                            cameraAutoPreStopTimer = null;
+                            publishCameraStreamStop('shelly_light_on_pre_guard');
+                        }, 5000);
                         cameraAutoCaptureTimer = setTimeout(() => {
                             cameraAutoCaptureTimer = null;
                             client.publish('cultivo/camera/commands', JSON.stringify({
