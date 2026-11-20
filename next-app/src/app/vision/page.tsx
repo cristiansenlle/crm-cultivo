@@ -61,7 +61,7 @@ function VisionCenterContent() {
 
     const loadCaptures = () => {
         setLoadingCaptures(true);
-        fetch('/api/vision/capture')
+        fetch('/api/vision/capture', { cache: 'no-store' })
             .then(res => res.json())
             .then(data => {
                 if (data.captures) {
@@ -74,7 +74,7 @@ function VisionCenterContent() {
 
     const loadDiagnostics = () => {
         setLoadingDiag(true);
-        fetch('/api/vision/status')
+        fetch('/api/vision/status', { cache: 'no-store' })
             .then(res => res.json())
             .then(data => {
                 if (data.latest_analysis) {
@@ -91,6 +91,16 @@ function VisionCenterContent() {
     useEffect(() => {
         loadCaptures();
         loadDiagnostics();
+        const onVisionUpdated = () => {
+            loadCaptures();
+            loadDiagnostics();
+        };
+        window.addEventListener('vision-capture-updated', onVisionUpdated);
+        window.addEventListener('vision-grid-updated', onVisionUpdated);
+        return () => {
+            window.removeEventListener('vision-capture-updated', onVisionUpdated);
+            window.removeEventListener('vision-grid-updated', onVisionUpdated);
+        };
     }, []);
 
     useEffect(() => {

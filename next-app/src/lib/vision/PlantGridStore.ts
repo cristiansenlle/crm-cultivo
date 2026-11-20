@@ -88,6 +88,8 @@ export interface DetectedPlantBox {
     zone_id_hint?: string;
     visual_label_read?: string;
     box_2d: [number, number, number, number];
+    estimated_canopy_share_pct?: number;
+    pot_description?: string;
     dome_detected?: boolean;
     dome_status?: 'NONE' | 'OPTIMAL_HUMIDITY' | 'HIGH_CONDENSATION' | 'LEAVES_TOUCHING_REMOVE_SOON';
     visual_substrate_moisture?: 'WET' | 'MOIST_OPTIMAL' | 'DRY_SURFACE' | 'UNKNOWN';
@@ -506,7 +508,7 @@ function round1(val: number): number {
     return Number(val.toFixed(1));
 }
 
-function computeIoU(
+function getIntersectionArea(
     a: { x_pct: number; y_pct: number; w_pct: number; h_pct: number },
     b: { x_pct: number; y_pct: number; w_pct: number; h_pct: number }
 ): number {
@@ -514,11 +516,25 @@ function computeIoU(
     const y1 = Math.max(a.y_pct, b.y_pct);
     const x2 = Math.min(a.x_pct + a.w_pct, b.x_pct + b.w_pct);
     const y2 = Math.min(a.y_pct + a.h_pct, b.y_pct + b.h_pct);
-    const interW = Math.max(0, x2 - x1);
-    const interH = Math.max(0, y2 - y1);
-    const interArea = interW * interH;
+    return Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+}
+
+function computeIoU(
+    a: { x_pct: number; y_pct: number; w_pct: number; h_pct: number },
+    b: { x_pct: number; y_pct: number; w_pct: number; h_pct: number }
+): number {
+    const interArea = getIntersectionArea(a, b);
     const unionArea = a.w_pct * a.h_pct + b.w_pct * b.h_pct - interArea;
     return unionArea > 0 ? interArea / unionArea : 0;
+}
+
+function computeContainment(
+    a: { x_pct: number; y_pct: number; w_pct: number; h_pct: number },
+    b: { x_pct: number; y_pct: number; w_pct: number; h_pct: number }
+): number {
+    const interArea = getIntersectionArea(a, b);
+    const minArea = Math.min(a.w_pct * a.h_pct, b.w_pct * b.h_pct);
+    return minArea > 0 ? interArea / minArea : 0;
 }
 
 export function normalizeBox2dToPct(
@@ -608,9 +624,12 @@ export function reconcileSpatialTracking(
         const cx = pct.x_pct + pct.w_pct / 2;
         const cy = pct.y_pct + pct.h_pct / 2;
 
-        // Deduplicar solo duplicados reales del mismo domo/maceta; domos contiguos en bandeja pueden estar a ~6-9%
+        // Evitar apilamiento de dos cajas sobre una misma maceta/domo (cúpula + sustrato interior)
         const isDuplicate = normalizedList.some(
-            existing => computeIoU(existing.pct, pct) > 0.68 || Math.hypot(existing.cx - cx, existing.cy - cy) < 3.8
+            existing =>
+                computeIoU(existing.pct, pct) > 0.42 ||
+                computeContainment(existing.pct, pct) > 0.58 ||
+                Math.hypot(existing.cx - cx, existing.cy - cy) < 5.6
         );
         if (!isDuplicate) {
             normalizedList.push({ ...raw, pct, cx, cy });
@@ -618,9 +637,11 @@ export function reconcileSpatialTracking(
     }
 
     const zonesCopy: PlantZoneConfig[] = (grid.zones || []).map(z => ({ ...z }));
+    const isAutoCreatedZone = (z: PlantZoneConfig) => z.notes === 'Detectada automáticamente por Visión IA';
     const activeZoneIndices = zonesCopy
         .map((z, idx) => (z.active || z.presence_status === 'MISSING' ? idx : -1))
-        .filter(idx => idx !== -1);
+        .filter(idx => idx !== -1)
+        .sort((aIdx, bIdx) => Number(isAutoCreatedZone(zonesCopy[aIdx])) - Number(isAutoCreatedZone(zonesCopy[bIdx])));
 
     const matchedZoneToDet = new Map<number, number>();
     const matchedDetIndices = new Set<number>();
@@ -668,21 +689,34 @@ export function reconcileSpatialTracking(
     }
 
     // Paso 3: Emparejamiento bipartito greedy por menor distancia euclidiana de centroides
-    const runGreedyMatch = (limitDistPct: number) => {
-        const candidatePairs: Array<{ zIdx: number; detIdx: number; dist: number }> = [];
+    const runGreedyMatch = (limitDistPct: number, minSeparationFromMatchedPct = 0) => {
+        const candidatePairs: Array<{ zIdx: number; detIdx: number; dist: number; isAuto: number }> = [];
 
         for (const zIdx of activeZoneIndices) {
             if (matchedZoneToDet.has(zIdx)) continue;
+            const isAuto = isAutoCreatedZone(zonesCopy[zIdx]) ? 1 : 0;
             for (let detIdx = 0; detIdx < normalizedList.length; detIdx++) {
                 if (matchedDetIndices.has(detIdx)) continue;
-                const d = distBetween(zonesCopy[zIdx], normalizedList[detIdx]);
+                const det = normalizedList[detIdx];
+                if (minSeparationFromMatchedPct > 0) {
+                    let tooClose = false;
+                    for (const matchedDetIdx of matchedZoneToDet.values()) {
+                        const mDet = normalizedList[matchedDetIdx];
+                        if (Math.hypot(det.cx - mDet.cx, det.cy - mDet.cy) < minSeparationFromMatchedPct) {
+                            tooClose = true;
+                            break;
+                        }
+                    }
+                    if (tooClose) continue;
+                }
+                const d = distBetween(zonesCopy[zIdx], det);
                 if (d <= limitDistPct) {
-                    candidatePairs.push({ zIdx, detIdx, dist: d });
+                    candidatePairs.push({ zIdx, detIdx, dist: d, isAuto });
                 }
             }
         }
 
-        candidatePairs.sort((a, b) => a.dist - b.dist);
+        candidatePairs.sort((a, b) => a.dist - b.dist || a.isAuto - b.isAuto);
 
         for (const pair of candidatePairs) {
             if (!matchedZoneToDet.has(pair.zIdx) && !matchedDetIndices.has(pair.detIdx)) {
@@ -695,22 +729,28 @@ export function reconcileSpatialTracking(
     const maxDist = options?.maxMatchDistancePct ?? 36;
     runGreedyMatch(maxDist);
 
-    // Paso 3b: Fallback para plantas movidas a mayor distancia mientras queden zonas activas y detecciones libres
+    // Paso 3b: Fallback para plantas movidas a mayor distancia manteniendo separación mínima >= 5.6%
     const maxDistFallback = 42;
     if (
         maxDist < maxDistFallback &&
         matchedZoneToDet.size < activeZoneIndices.length &&
         matchedDetIndices.size < normalizedList.length
     ) {
-        runGreedyMatch(maxDistFallback);
+        runGreedyMatch(maxDistFallback, 5.6);
     }
 
     let matchedCount = 0;
     let movedCount = 0;
     const missingZones: string[] = [];
     const addedZones: string[] = [];
+    const autoZonesToDelete = new Set<number>();
+    const shouldDeactivateMissing = Boolean(
+        options?.markMissing ||
+        options?.replaceAll ||
+        (grid.auto_add_remove_zones !== false && normalizedList.length < activeZoneIndices.length)
+    );
 
-    // Aplicar emparejamientos y marcar ausencias
+    // Aplicar emparejamientos y marcar o limpiar ausencias reales
     for (const zIdx of activeZoneIndices) {
         const z = zonesCopy[zIdx];
         if (matchedZoneToDet.has(zIdx)) {
@@ -735,10 +775,12 @@ export function reconcileSpatialTracking(
                 z.visual_marker_label = det.visual_label_read.trim();
             }
         } else {
-            if (options?.markMissing || options?.replaceAll) {
-                z.presence_status = 'MISSING';
-                if (options?.replaceAll) {
+            if (shouldDeactivateMissing) {
+                if (isAutoCreatedZone(z)) {
+                    autoZonesToDelete.add(zIdx);
+                } else {
                     z.active = false;
+                    z.presence_status = 'MISSING';
                 }
                 missingZones.push(z.zone_id);
             } else {
@@ -817,10 +859,14 @@ export function reconcileSpatialTracking(
     if (missingZones.length > 0) parts.push(`${missingZones.length} ausente(s) (${missingZones.join(', ')})`);
     const summaryMessage = parts.join(' • ');
 
+    const finalZones = autoZonesToDelete.size > 0
+        ? zonesCopy.filter((_, idx) => !autoZonesToDelete.has(idx))
+        : zonesCopy;
+
     const updatedGrid: PlantGridLayout = {
         ...grid,
         layout_mode: 'freeform',
-        zones: zonesCopy,
+        zones: finalZones,
         last_tracking_summary: {
             timestamp: now,
             matched_count: matchedCount,

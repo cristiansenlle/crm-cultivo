@@ -1,5 +1,41 @@
+import fs from 'fs';
+import path from 'path';
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+
+export const dynamic = 'force-dynamic';
+
+function getLatestDiskCapture(): { url: string; name: string; captured_at: string; mtimeMs: number } | null {
+    try {
+        const capturesDir = fs.existsSync('/var/www/captures/crop_vision')
+            ? '/var/www/captures/crop_vision'
+            : path.join(process.cwd(), 'public', 'captures');
+        if (!fs.existsSync(capturesDir)) return null;
+
+        const files = fs.readdirSync(capturesDir)
+            .filter(f => /\.(jpg|jpeg|png)$/i.test(f) && !f.includes('foto_prueba'))
+            .map(f => {
+                const stat = fs.statSync(path.join(capturesDir, f));
+                return {
+                    name: f,
+                    url: `/captures/${f}`,
+                    mtimeMs: stat.mtimeMs
+                };
+            })
+            .sort((a, b) => b.mtimeMs - a.mtimeMs);
+
+        if (files.length === 0) return null;
+        const latestFile = files.find(f => f.name.startsWith('cenital_')) || files[0];
+        return {
+            url: latestFile.url,
+            name: latestFile.name,
+            captured_at: new Date(latestFile.mtimeMs).toISOString(),
+            mtimeMs: latestFile.mtimeMs
+        };
+    } catch {
+        return null;
+    }
+}
 import { loadPlantGrid, reconcilePerPlantAnalysis } from '@/lib/vision/PlantGridStore';
 import { getShellyCameraLinkStatus } from '@/lib/vision/ShellyLightCheck';
 import {
@@ -203,6 +239,15 @@ export async function GET() {
             latestRaw?.created_at || null
         );
 
+        const latestDisk = getLatestDiskCapture();
+        const diskMatchesAnalysis = Boolean(
+            latestDisk && latestAnalysis?.image_url && latestDisk.url === latestAnalysis.image_url
+        );
+        const analysisInProgress = Boolean(
+            latestDisk && !diskMatchesAnalysis && (Date.now() - latestDisk.mtimeMs) < 90000
+        );
+        const latestImageUrl = latestDisk?.url || latestAnalysis?.image_url || null;
+
         return NextResponse.json({
             camera: {
                 model: 'Sony IMX708 (Camera Module 3 Wide 120°)',
@@ -212,6 +257,15 @@ export async function GET() {
             },
             plant_grid: plantGrid,
             shelly_link: shellyLink,
+            latest_image_url: latestImageUrl,
+            latest_disk_capture: latestDisk
+                ? {
+                      url: latestDisk.url,
+                      name: latestDisk.name,
+                      captured_at: latestDisk.captured_at
+                  }
+                : null,
+            analysis_in_progress: analysisInProgress,
             latest_analysis: latestAnalysis,
             fertilization_plan_live: liveFertilizationPlan,
             timeline

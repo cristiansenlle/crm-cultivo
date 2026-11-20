@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
     Camera,
     Video,
@@ -47,6 +47,13 @@ interface VisionStatusData {
             last_event_at: string | null;
         }[];
     };
+    latest_image_url?: string | null;
+    latest_disk_capture?: {
+        url: string;
+        name: string;
+        captured_at: string;
+    } | null;
+    analysis_in_progress?: boolean;
     latest_analysis: any;
     fertilization_plan_live?: any;
     timeline: any[];
@@ -88,29 +95,103 @@ export default function VisionWidget() {
         }
     };
 
-    const fetchData = async () => {
+    const pollCancelledRef = useRef(false);
+
+    const fetchData = useCallback(async () => {
         try {
-            const res = await fetch('/api/vision/status');
+            const res = await fetch('/api/vision/status', { cache: 'no-store' });
             if (res.ok) {
                 const json = await res.json();
                 setData(json);
+                return json as VisionStatusData;
             }
         } catch (e) {
             console.error('Error al cargar estado de visión:', e);
         } finally {
             setLoading(false);
         }
-    };
+        return null;
+    }, []);
+
+    const pollUntilNewCaptureAndAnalysis = useCallback(async (
+        prevDiskUrl: string | null,
+        prevAnalysisId: string | null
+    ) => {
+        pollCancelledRef.current = false;
+        let notifiedNewPhoto = false;
+        setIsTriggeringCapture(true);
+
+        for (let attempt = 0; attempt < 14; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 2500));
+            if (pollCancelledRef.current) return;
+
+            const json = await fetchData();
+            if (pollCancelledRef.current || !json) continue;
+
+            const newDiskUrl = json.latest_disk_capture?.url || null;
+            const newAnalysisId = json.latest_analysis?.id || null;
+
+            if (!notifiedNewPhoto && newDiskUrl && newDiskUrl !== prevDiskUrl) {
+                notifiedNewPhoto = true;
+                setCaptureFeedback('📸 Nueva foto recibida en servidor. Analizando plantas con IA...');
+                window.dispatchEvent(new CustomEvent('vision-capture-updated'));
+            }
+
+            if (newAnalysisId && newAnalysisId !== prevAnalysisId && !json.analysis_in_progress) {
+                window.dispatchEvent(new CustomEvent('vision-capture-updated'));
+                setCaptureFeedback('✅ Captura y diagnóstico actualizados');
+                setIsTriggeringCapture(false);
+                setTimeout(() => {
+                    if (!pollCancelledRef.current) setCaptureFeedback('');
+                }, 4000);
+                return;
+            }
+        }
+
+        if (!pollCancelledRef.current) {
+            setIsTriggeringCapture(false);
+            setCaptureFeedback(notifiedNewPhoto
+                ? '📸 Foto actualizada. El análisis IA continúa procesándose en segundo plano.'
+                : ''
+            );
+            if (notifiedNewPhoto) {
+                setTimeout(() => {
+                    if (!pollCancelledRef.current) setCaptureFeedback('');
+                }, 4000);
+            }
+        }
+    }, [fetchData]);
 
     useEffect(() => {
         fetchData();
         const interval = setInterval(fetchData, 30000);
-        return () => clearInterval(interval);
-    }, []);
+        const onGridUpdated = () => {
+            fetchData();
+        };
+        window.addEventListener('vision-grid-updated', onGridUpdated);
+        return () => {
+            pollCancelledRef.current = true;
+            clearInterval(interval);
+            window.removeEventListener('vision-grid-updated', onGridUpdated);
+        };
+    }, [fetchData]);
+
+    const latest = data?.latest_analysis;
+    const snapshot = latest?.context_snapshot;
+    const latestImg: string | null =
+        data?.latest_image_url ||
+        data?.latest_disk_capture?.url ||
+        latest?.image_urls?.[0] ||
+        latest?.image_url ||
+        null;
 
     const handleManualCapture = async () => {
+        pollCancelledRef.current = true;
         setIsTriggeringCapture(true);
         setCaptureFeedback('Enviando comando a la Raspberry Pi...');
+        const prevDiskUrl = data?.latest_disk_capture?.url || latestImg;
+        const prevAnalysisId = latest?.id || null;
+
         try {
             const res = await fetch('/api/vision/stream', {
                 method: 'POST',
@@ -118,12 +199,8 @@ export default function VisionWidget() {
                 body: JSON.stringify({ action: 'snapshot' })
             });
             if (res.ok) {
-                setCaptureFeedback('📸 Comando enviado a la cámara. Ejecutando captura y análisis fenológico...');
-                setTimeout(() => {
-                    fetchData();
-                    setCaptureFeedback('');
-                    setIsTriggeringCapture(false);
-                }, 6500);
+                setCaptureFeedback('📸 Comando enviado a la cámara. Esperando imagen desde la Carpa...');
+                await pollUntilNewCaptureAndAnalysis(prevDiskUrl, prevAnalysisId);
             } else {
                 const errJson = await res.json().catch(() => ({}));
                 setCaptureFeedback(errJson.error || 'Error al solicitar captura.');
@@ -135,10 +212,6 @@ export default function VisionWidget() {
             setIsTriggeringCapture(false);
         }
     };
-
-    const latest = data?.latest_analysis;
-    const snapshot = latest?.context_snapshot;
-    const latestImg: string | null = latest?.image_urls?.[0] || latest?.image_url || null;
 
     const isCrop = latest?.crop_detected ?? snapshot?.crop_detected ?? (
         (latest?.health_score ?? 0) > 0 &&
@@ -364,7 +437,10 @@ export default function VisionWidget() {
 
                                 <div className="absolute top-2 left-2 flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-black/75 backdrop-blur-md text-[10px] text-zinc-200 font-mono border border-white/10">
                                     <Clock className="w-3 h-3 text-emerald-400" />
-                                    <span>{latest?.created_at ? new Date(latest.created_at).toLocaleTimeString() : 'En línea'}</span>
+                                    <span>{data?.analysis_in_progress && data?.latest_disk_capture?.captured_at ? new Date(data.latest_disk_capture.captured_at).toLocaleTimeString() : (latest?.created_at ? new Date(latest.created_at).toLocaleTimeString() : 'En línea')}</span>
+                                    {data?.analysis_in_progress && (
+                                        <span className="text-cyan-300 font-semibold animate-pulse">• 🤖 Analizando IA...</span>
+                                    )}
                                     <span className="text-zinc-500">|</span>
                                     {wasCapturedInDark ? (
                                         <span className="text-amber-400 font-semibold">
@@ -828,7 +904,7 @@ export default function VisionWidget() {
             <LiveStreamModal
                 isOpen={isLiveStreamOpen}
                 onClose={() => setIsLiveStreamOpen(false)}
-                onSnapshotTaken={fetchData}
+                onSnapshotTaken={() => pollUntilNewCaptureAndAnalysis(data?.latest_disk_capture?.url || latestImg, latest?.id || null)}
             />
         </div>
     );

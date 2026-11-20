@@ -4,6 +4,7 @@ import path from 'path';
 import {
     loadPlantGrid,
     savePlantGrid,
+    normalizeBox2dToPct,
     reconcileSpatialTracking,
     reconcilePerPlantAnalysis,
     PerPlantAnalysis,
@@ -84,7 +85,7 @@ export class VisionAgentEngine {
         imageBase64Data: string,
         imageUrl: string,
         batchId?: string,
-        options?: { skipAutoTrack?: boolean }
+        options?: { skipAutoTrack?: boolean; preDetectedBoxes?: DetectedPlantBox[] }
     ): Promise<VisionAnalysisResult> {
         if (!adminSupabase) {
             throw new Error('Cliente Supabase no configurado en el servidor');
@@ -115,6 +116,7 @@ export class VisionAgentEngine {
         // 2. Cargar Mapa Espacial y ejecutar Auto-Tracking visual previo si está habilitado
         let plantGrid = loadPlantGrid();
         let preTrackingSummary: PlantGridLayout['last_tracking_summary'] | null = plantGrid.last_tracking_summary || null;
+        let detectedBoxes: DetectedPlantBox[] = Array.isArray(options?.preDetectedBoxes) ? options!.preDetectedBoxes : [];
 
         if (plantGrid.auto_track_enabled !== false && !options?.skipAutoTrack) {
             try {
@@ -123,8 +125,9 @@ export class VisionAgentEngine {
                 if (
                     blindDet?.crop_detected &&
                     Array.isArray(blindDet.detected_plants) &&
-                    blindDet.detected_plants.length >= Math.max(1, Math.floor(currActiveCount * 0.5))
+                    blindDet.detected_plants.length >= Math.max(1, Math.floor(currActiveCount * 0.4))
                 ) {
+                    detectedBoxes = blindDet.detected_plants;
                     const trackRes = reconcileSpatialTracking(plantGrid, blindDet.detected_plants, {
                         forceSnap: false,
                         allowAddNew: plantGrid.auto_add_remove_zones !== false,
@@ -133,7 +136,7 @@ export class VisionAgentEngine {
                         maxMatchDistancePct: 28
                     });
                     preTrackingSummary = trackRes.updatedGrid.last_tracking_summary || preTrackingSummary;
-                    if (trackRes.movedCount > 0 || trackRes.addedZones.length > 0) {
+                    if (trackRes.movedCount > 0 || trackRes.addedZones.length > 0 || trackRes.missingZones.length > 0) {
                         plantGrid = savePlantGrid(trackRes.updatedGrid);
                         console.log('[VisionAgentEngine] 🎯 Auto-Tracking previo actualizado:', trackRes.summaryMessage);
                     }
@@ -288,18 +291,45 @@ export class VisionAgentEngine {
                 target_flip_coverage_pct: plantGrid.target_flip_coverage_pct,
                 previous_canopy_coverage_pct: prevCanopyCoverage,
                 layout_mode: plantGrid.layout_mode || 'grid',
-                mapped_plants: activeZones.map(z => ({
-                    zone_id: z.zone_id,
-                    bounding_box_pct: `X: ${Math.round(z.x_pct ?? 0)}% a ${Math.round((z.x_pct ?? 0) + (z.w_pct ?? 33))}%, Y: ${Math.round(z.y_pct ?? 0)}% a ${Math.round((z.y_pct ?? 0) + (z.h_pct ?? 50))}% del encuadre`,
-                    position: `Región (${Math.round(z.x_pct ?? 0)}%-${Math.round((z.x_pct ?? 0) + (z.w_pct ?? 33))}% horiz, ${Math.round(z.y_pct ?? 0)}%-${Math.round((z.y_pct ?? 0) + (z.h_pct ?? 50))}% vert)`,
-                    plant_name: z.plant_name,
-                    strain: z.strain,
-                    biotype: z.biotype,
-                    natural_anthocyanins_purple: z.natural_anthocyanins,
-                    expected_flowering_days: z.expected_flowering_days,
-                    soil_sensor: z.soil_sensor_pin,
-                    bio_channel: z.bio_channel
-                }))
+                mapped_plants: activeZones.map(z => {
+                    const zcx = (z.x_pct ?? 0) + (z.w_pct ?? 10) / 2;
+                    const zcy = (z.y_pct ?? 0) + (z.h_pct ?? 14.5) / 2;
+                    let matchedPreScan: DetectedPlantBox | null = null;
+                    let bestPreDist = 16;
+                    if (detectedBoxes.length > 0) {
+                        const rawCoords = detectedBoxes.flatMap(b => (Array.isArray(b.box_2d) ? b.box_2d.slice(0, 4).map(Number) : []));
+                        const boxScale: 1000 | 100 = rawCoords.length > 0 && Math.max(...rawCoords) > 100.5 ? 1000 : 100;
+                        for (const box of detectedBoxes) {
+                            const pct = normalizeBox2dToPct(box.box_2d, boxScale);
+                            if (!pct) continue;
+                            const dist = Math.hypot((pct.x_pct + pct.w_pct / 2) - zcx, (pct.y_pct + pct.h_pct / 2) - zcy);
+                            if (dist < bestPreDist) {
+                                bestPreDist = dist;
+                                matchedPreScan = box;
+                            }
+                        }
+                    }
+                    return {
+                        zone_id: z.zone_id,
+                        bounding_box_pct: `X: ${Math.round(z.x_pct ?? 0)}% a ${Math.round((z.x_pct ?? 0) + (z.w_pct ?? 33))}%, Y: ${Math.round(z.y_pct ?? 0)}% a ${Math.round((z.y_pct ?? 0) + (z.h_pct ?? 50))}% del encuadre`,
+                        position: `Región (${Math.round(z.x_pct ?? 0)}%-${Math.round((z.x_pct ?? 0) + (z.w_pct ?? 33))}% horiz, ${Math.round(z.y_pct ?? 0)}%-${Math.round((z.y_pct ?? 0) + (z.h_pct ?? 50))}% vert)`,
+                        plant_name: z.plant_name,
+                        strain: z.strain,
+                        biotype: z.biotype,
+                        natural_anthocyanins_purple: z.natural_anthocyanins,
+                        expected_flowering_days: z.expected_flowering_days,
+                        soil_sensor: z.soil_sensor_pin,
+                        bio_channel: z.bio_channel,
+                        visual_pre_scan: matchedPreScan
+                            ? {
+                                  pot_description: matchedPreScan.pot_description || matchedPreScan.notes || null,
+                                  estimated_canopy_share_pct: matchedPreScan.estimated_canopy_share_pct ?? null,
+                                  dome_detected: matchedPreScan.dome_detected ?? null,
+                                  visual_substrate_moisture: matchedPreScan.visual_substrate_moisture ?? null
+                              }
+                            : undefined
+                    };
+                })
             },
             climate_telemetry: recentClimate || 'Sin lecturas recientes',
             soil_sensor: recentSoil || 'Sin sensor centinela',
@@ -344,8 +374,9 @@ INSTRUCCIONES ESTRICTAS DE ANÁLISIS CENITAL v2.0 (CICLO COMPLETO E INDIVIDUALIZ
    - Cada planta en mapped_plants tiene su recuadro actual en "bounding_box_pct" (X: 0%-100%, Y: 0%-100%). Si movieron ligeramente la maceta respecto a ese recuadro, búscala en las cercanías y reporta su caja real en "detected_box_2d".
    - OBLIGATORIO: "per_plant_analysis" DEBE contener exactamente ${activeZones.length} elementos, uno por cada planta en mapped_plants (${activeZones.map(z => z.zone_id).join(', ')}), respetando exactamente su "zone_id", "plant_name" y "strain". No omitas ninguna zona mapeada.
    - Si la etapa es "SEEDLING", "VEGETATIVE_EARLY" o "VEGETATIVE_SCROG", asigna obligatoriamente "bud_count": 0, "maturity_pct": 0, "estimated_yield_grams": 0, "harvest_readiness_pct": 0 y "harvest_status": "VEGETATIVE".
-   - Para CADA planta listada en mapped_plants:
-     * Estado de salud individual (0-100), % de su zona ocupada por hojas (canopy_share_pct), postura foliar ("PRAYING", "TURGID", "DROOPING", "CLAWING").
+   - Para CADA planta listada en mapped_plants (apóyate en su bounding_box_pct y visual_pre_scan):
+     * OBSERVACIÓN INDIVIDUAL REAL Y PROHIBICIÓN DE PLANTILLAS REPETIDAS: Está PROHIBIDO repetir el mismo "canopy_share_pct" (como 2% en todas) o copiar descripciones genéricas idénticas en serie. Debes evaluar el tamaño foliar real visible en cada maceta (por ej., una planta vegetativa más grande en maceta de color o con varios nudos debe reflejar mayor "canopy_share_pct" y vigor que plántulas más pequeñas de 2 cotiledones), describiendo rasgos físicos reales de esa zona en "pheno_traits_observed" y "specific_diagnosis".
+     * Estado de salud individual (0-100), % real de su zona ocupada por hojas verdes ("canopy_share_pct": entero realista entre 3 y 80 según la masa foliar observada), postura foliar ("PRAYING", "TURGID", "DROOPING", "CLAWING").
      * COORDENADA REAL DETECTADA ("detected_box_2d"): array [ymin, xmin, ymax, xmax] en escala entera 0..1000 delimitando toda la maceta/domo/planta real correspondiente a esta zona (o null si esa maceta fue retirada de la carpa).
      * AUDITORÍA DE DOMO / CÚPULA DE HUMEDAD: "dome_detected" (true/false si tiene botella o cúpula plástica encima) y "dome_status" ("NONE", "OPTIMAL_HUMIDITY", "HIGH_CONDENSATION", "LEAVES_TOUCHING_REMOVE_SOON").
      * HUMEDAD VISUAL DEL SUSTRATO: "visual_substrate_moisture" ("WET", "MOIST_OPTIMAL", "DRY_SURFACE", "UNKNOWN") evaluando el tono oscuro/húmedo vs marrón claro/seco de la turba/sustrato visible en la maceta (respaldo clave para macetas sin sonda o con sonda en 0%).
@@ -591,15 +622,16 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
     private static async detectContainersBlind(
         formattedImageData: string
     ): Promise<{ crop_detected: boolean; detected_plants: DetectedPlantBox[] }> {
-        const detectPrompt = `Detect ALL individual seedling pots, transparent plastic bottle domes, and plant containers inside this overhead (top-down) grow tent image.
-Do NOT guess a grid. Detect every actual visible pot or bottle dome from pixels alone.
-CRITICAL CLUSTER RULE: On the left side/tray, several transparent plastic bottle domes sit very close together and physically touch side-by-side. Do NOT merge adjacent domes into one combined box — output one separate tight box_2d for EACH individual bottle dome/pot.
-EXCLUSION RULE: Do NOT detect fans, white styrofoam blocks, wood tent posts, cables, reflective walls, shadows, or empty cardboard/floor below the bottom row of pots (e.g. empty tray area at Y > 740) as plants — ONLY real pots/domes containing seedlings or planted substrate.
+        const detectPrompt = `Detect ONLY the real, currently present individual seedling/plant pots and transparent plastic bottle domes inside this overhead (top-down) grow tent image.
+Do NOT guess a grid or assume any fixed plant count. Count ONLY what is physically present in the pixels right now.
+ONE-BOX-PER-UNIT RULE: A transparent bottle dome placed over a pot (for example a pink pot or dark pot sitting inside a cut plastic bottle) is ONE SINGLE unit — NEVER output one box for the dome top and another overlapping box for the inner pot or soil.
+ADJACENT UNIT RULE: When distinct physical domes sit near each other in a cluster on a tray, give each separate plant unit its own box, without splitting one single bottle into two boxes.
+EMPTY TRAY & EXCLUSION RULE: If the right-side cardboard tray (or any cardboard surface) is empty or has only loose soil crumbs, return ZERO boxes on that empty tray. Do NOT detect fans, white styrofoam blocks, wood tent posts, cables, reflective walls, shadows, or empty cardboard as plants.
 
-Return ONLY valid JSON:
+Return ONLY valid JSON with accurate count matching detected_plants.length:
 {
   "crop_detected": true,
-  "count": 10,
+  "count": 1,
   "detected_plants": [
     {
       "box_2d": [ymin, xmin, ymax, xmax],
@@ -607,12 +639,14 @@ Return ONLY valid JSON:
       "dome_detected": true,
       "dome_status": "OPTIMAL_HUMIDITY",
       "visual_substrate_moisture": "MOIST_OPTIMAL",
-      "notes": "breve descripción en español"
+      "estimated_canopy_share_pct": 18,
+      "pot_description": "maceta rosa con planta vegetativa vigorosa de varios nudos bajo domo",
+      "notes": "observación física breve en español"
     }
   ]
 }
 
-Use integer coordinates [ymin, xmin, ymax, xmax] normalized 0..1000 (0=top/left, 1000=bottom/right).`;
+Estimate "estimated_canopy_share_pct" realistically (integer 3..65) per unit based on visible green leaf size inside each dome/pot, and use integer coordinates [ymin, xmin, ymax, xmax] normalized 0..1000 (0=top/left, 1000=bottom/right).`;
 
         return await this.callVisionModel<{ crop_detected: boolean; detected_plants: DetectedPlantBox[] }>(
             detectPrompt,
@@ -677,7 +711,8 @@ Use integer coordinates [ymin, xmin, ymax, xmax] normalized 0..1000 (0=top/left,
         console.log(`[VisionAgentEngine] 🎯 Auto-Detección Visual Ciega sobre ${latest.name}: ${tracking.summaryMessage}`);
 
         const analysis = await this.analyzeCenitalCapture(latest.base64Data, latest.publicUrl, undefined, {
-            skipAutoTrack: true
+            skipAutoTrack: true,
+            preDetectedBoxes: detRes.detected_plants
         });
 
         return {

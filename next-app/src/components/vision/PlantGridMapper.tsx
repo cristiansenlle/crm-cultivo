@@ -60,10 +60,10 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
         initialH: number;
     } | null>(null);
 
-    const fetchGridData = async () => {
-        setLoading(true);
+    const fetchGridData = async (silent = false) => {
+        if (!silent) setLoading(true);
         try {
-            const res = await fetch('/api/vision/grid');
+            const res = await fetch('/api/vision/grid', { cache: 'no-store' });
             if (res.ok) {
                 const data = await res.json();
                 const sensorsList: SoilSensorOption[] = Array.isArray(data.soil_sensors)
@@ -133,6 +133,13 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
 
     useEffect(() => {
         fetchGridData();
+        const onVisionCaptureUpdated = () => {
+            fetchGridData(true);
+        };
+        window.addEventListener('vision-capture-updated', onVisionCaptureUpdated);
+        return () => {
+            window.removeEventListener('vision-capture-updated', onVisionCaptureUpdated);
+        };
     }, []);
 
     // Manejo de Drag & Resize sobre el contenedor cenital
@@ -206,6 +213,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                 setCustomCols(data.grid.grid_cols);
                 setCustomPlantCount(data.grid.zones.filter((z: PlantZoneConfig) => z.active).length);
                 setSelectedZoneId(data.grid.zones[0]?.zone_id || 'A1');
+                window.dispatchEvent(new CustomEvent('vision-grid-updated'));
                 setSaveMessage(
                     `Cuadrícula ajustada a ${safeRows}×${safeCols} (${targetActive} ${
                         targetActive === 1 ? 'planta activa' : 'plantas activas'
@@ -235,6 +243,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                 setCustomCols(data.grid.grid_cols);
                 setCustomPlantCount(data.grid.zones.filter((z: PlantZoneConfig) => z.active).length);
                 setSelectedZoneId(data.grid.zones[0]?.zone_id || 'A1');
+                window.dispatchEvent(new CustomEvent('vision-grid-updated'));
                 setSaveMessage(`✨ Disposición "${label}" aplicada. Puedes arrastrar o redimensionar cada planta libremente.`);
                 setTimeout(() => setSaveMessage(''), 4500);
             }
@@ -336,9 +345,11 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                 if (Array.isArray(data.reconciled_per_plant)) {
                     setPerPlantResults(data.reconciled_per_plant);
                 }
+                window.dispatchEvent(new CustomEvent('vision-grid-updated'));
                 setSaveMessage('✅ Mapa guardado y sincronizado. Re-analizando diagnósticos individuales con IA...');
                 setTimeout(() => {
-                    fetchGridData();
+                    fetchGridData(true);
+                    window.dispatchEvent(new CustomEvent('vision-grid-updated'));
                     setSaveMessage('');
                 }, 4500);
             }
@@ -370,6 +381,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                 }
                 const activeCountNow = (data.grid.zones || []).filter((z: PlantZoneConfig) => z.active).length;
                 setCustomPlantCount(activeCountNow);
+                window.dispatchEvent(new CustomEvent('vision-grid-updated'));
                 const msg = data.tracking_summary?.message || 'Plantas detectadas y coordenadas calibradas.';
                 setSaveMessage(`🎯 Auto-Detección completada: ${msg}`);
                 setTimeout(() => setSaveMessage(''), 6000);
