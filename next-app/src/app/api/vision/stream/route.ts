@@ -163,9 +163,9 @@ export async function POST(req: NextRequest) {
             });
 
             let mtx = await checkMediaMtxStreamReady();
-            const deadline = Date.now() + 4200;
+            const deadline = Date.now() + 6500;
             while (!mtx.ready && Date.now() < deadline) {
-                await new Promise(resolve => setTimeout(resolve, 600));
+                await new Promise(resolve => setTimeout(resolve, 500));
                 mtx = await checkMediaMtxStreamReady();
             }
 

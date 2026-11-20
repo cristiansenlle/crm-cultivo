@@ -91,7 +91,9 @@ const CAPTURES_DIR = fs.existsSync('/var/www/captures/crop_vision')
   : path.resolve(__dirname, '..', 'next-app', 'public', 'captures');
 const CAMERA_RUNTIME_STATUS_PATH = path.join(CAPTURES_DIR, 'camera_runtime_status.json');
 const STREAM_WATCHDOG_MAX_MS = 240 * 1000;      // 4 minutos máximo por sesión
-const PRE_HOURLY_STOP_GUARD_MS = 3360 * 1000;   // 56 min (4 min antes de captura horaria RPi 3600s)
+const PRE_HOURLY_STOP_GUARD_MS = 3550 * 1000;   // 59m10s (50s antes de captura horaria RPi 3600s)
+const PRE_HOURLY_STOP_MAX_MS = 3630 * 1000;     // 60m30s (fin de ventana preventiva)
+let lastPreHourlyGuardCaptureIso = null;
 
 let cameraRuntimeStatus = {
   last_heartbeat_at: null,
@@ -119,6 +121,16 @@ function getLatestCenitalCaptureIso() {
   }
 }
 
+function syncLatestCaptureTimestamp() {
+  const latestCaptureIso = getLatestCenitalCaptureIso();
+  if (!latestCaptureIso) return;
+  const prevMs = cameraRuntimeStatus.last_capture_at ? new Date(cameraRuntimeStatus.last_capture_at).getTime() : 0;
+  const diskMs = new Date(latestCaptureIso).getTime();
+  if (!prevMs || diskMs > prevMs) {
+    cameraRuntimeStatus.last_capture_at = latestCaptureIso;
+  }
+}
+
 function persistCameraRuntimeStatus() {
   try {
     if (!fs.existsSync(CAPTURES_DIR)) {
@@ -141,14 +153,7 @@ function initCameraRuntimeStatus() {
     console.warn('[VISION RUNTIME] Error leyendo camera_runtime_status.json:', e.message);
   }
 
-  const latestDiskIso = getLatestCenitalCaptureIso();
-  if (latestDiskIso) {
-    const savedMs = cameraRuntimeStatus.last_capture_at ? new Date(cameraRuntimeStatus.last_capture_at).getTime() : 0;
-    const diskMs = new Date(latestDiskIso).getTime();
-    if (!savedMs || diskMs > savedMs) {
-      cameraRuntimeStatus.last_capture_at = latestDiskIso;
-    }
-  }
+  syncLatestCaptureTimestamp();
   persistCameraRuntimeStatus();
 }
 
@@ -186,19 +191,17 @@ setInterval(() => {
     return;
   }
 
-  const latestCaptureIso = getLatestCenitalCaptureIso();
-  if (latestCaptureIso) {
-    const prevMs = cameraRuntimeStatus.last_capture_at ? new Date(cameraRuntimeStatus.last_capture_at).getTime() : 0;
-    const diskMs = new Date(latestCaptureIso).getTime();
-    if (!prevMs || diskMs > prevMs) {
-      cameraRuntimeStatus.last_capture_at = latestCaptureIso;
-    }
-  }
+  syncLatestCaptureTimestamp();
 
-  if (cameraRuntimeStatus.last_capture_at) {
+  if (
+    cameraRuntimeStatus.last_capture_at &&
+    cameraRuntimeStatus.last_capture_at !== lastPreHourlyGuardCaptureIso &&
+    (startMs === 0 || (nowMs - startMs) >= 20000)
+  ) {
     const capMs = new Date(cameraRuntimeStatus.last_capture_at).getTime();
     const elapsedMs = nowMs - capMs;
-    if (!Number.isNaN(capMs) && elapsedMs >= PRE_HOURLY_STOP_GUARD_MS && elapsedMs <= 3720 * 1000) {
+    if (!Number.isNaN(capMs) && elapsedMs >= PRE_HOURLY_STOP_GUARD_MS && elapsedMs <= PRE_HOURLY_STOP_MAX_MS) {
+      lastPreHourlyGuardCaptureIso = cameraRuntimeStatus.last_capture_at;
       publishCameraStreamStop('pre_hourly_capture_guard');
     }
   }
@@ -446,6 +449,7 @@ client.on('message', async (topic, message) => {
         ) {
             cameraRuntimeStatus.last_stream_start_at = null;
         }
+        syncLatestCaptureTimestamp();
         persistCameraRuntimeStatus();
         return;
     }

@@ -20,7 +20,7 @@ interface CameraStatusInfo {
 const DEFAULT_STREAM_DURATION_SEC = 240;
 const STREAM_WEBRTC_URL = 'http://109.199.99.126:8889/cultivo/';
 const POLL_INTERVAL_MS = 1500;
-const MAX_POLL_ATTEMPTS = 8;
+const MAX_POLL_ATTEMPTS = 12;
 
 export default function LiveStreamModal({ isOpen, onClose, onSnapshotTaken }: LiveStreamModalProps) {
     const [status, setStatus] = useState<'connecting' | 'streaming' | 'capturing' | 'stopped' | 'error'>('connecting');
