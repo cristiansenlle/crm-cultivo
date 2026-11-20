@@ -9,7 +9,9 @@ import {
     reconcilePerPlantAnalysis,
     PerPlantAnalysis,
     DetectedPlantBox,
-    PlantGridLayout
+    PlantGridLayout,
+    SpatialMicroclimateInsight,
+    computeSpatialMicroclimateInsight
 } from './PlantGridStore';
 import {
     RED_HOT_COOKIES_FEEDING_PLAN,
@@ -60,6 +62,7 @@ export interface VisionAnalysisResult {
     per_plant_analysis: PerPlantAnalysis[];
     unmapped_plants_detected?: DetectedPlantBox[];
     tracking_summary?: PlantGridLayout['last_tracking_summary'] | null;
+    spatial_microclimate?: SpatialMicroclimateInsight | null;
     deficiencies: string[];
     pests_detected: string[];
     issues_detected: string[];
@@ -148,16 +151,24 @@ export class VisionAgentEngine {
 
         const activeZones = plantGrid.zones.filter(z => z.active);
 
-        // 3. Consultar captura previa válida para calcular Delta de Crecimiento Diario (Δ%/día)
+        // 3. Consultar capturas previas válidas para Delta Diario y tasa individual 24h/72h
         let prevCanopyCoverage: number | null = null;
+        let historySnapshots: Array<{ created_at: string; per_plant_analysis?: any[] }> = [];
         try {
             const { data: prevAnalyses } = await adminSupabase
                 .from('core_image_analyses')
                 .select('created_at, context_snapshot, health_score')
                 .order('created_at', { ascending: false })
-                .limit(10);
+                .limit(20);
 
             if (prevAnalyses && prevAnalyses.length > 0) {
+                historySnapshots = prevAnalyses
+                    .filter((a: any) => a.context_snapshot?.crop_detected === true && Array.isArray(a.context_snapshot?.per_plant_analysis))
+                    .map((a: any) => ({
+                        created_at: a.created_at,
+                        per_plant_analysis: a.context_snapshot.per_plant_analysis
+                    }));
+
                 const validPrev = prevAnalyses.find(
                     a => a.context_snapshot?.crop_detected === true && (a.context_snapshot?.canopy_coverage_pct ?? 0) > 0
                 );
@@ -202,7 +213,7 @@ export class VisionAgentEngine {
         try {
             const [{ data: soilSensors }, { data: soilTele }] = await Promise.all([
                 adminSupabase.from('core_soil_sensors').select('id, board_id, pin_index, name').order('pin_index', { ascending: true }),
-                adminSupabase.from('soil_telemetry').select('sensor_id, moisture_pct, created_at').order('created_at', { ascending: false }).limit(30)
+                adminSupabase.from('soil_telemetry').select('sensor_id, moisture_pct, created_at').order('created_at', { ascending: false }).limit(80)
             ]);
             if (soilSensors && soilSensors.length > 0) {
                 recentSoil = soilSensors.map((s: any) => {
@@ -482,13 +493,28 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
         const effectiveGrid = plantGrid;
         const trackingSummary: PlantGridLayout['last_tracking_summary'] | null = preTrackingSummary || plantGrid.last_tracking_summary || null;
 
-                const finalPerPlant = isCrop
+        const soilMoistureBySensorId: Record<string, number | null> = {};
+        if (Array.isArray(recentSoil)) {
+            for (const s of recentSoil) {
+                if (s?.sensor_id && typeof s.moisture_pct === 'number') {
+                    soilMoistureBySensorId[s.sensor_id] = Number(s.moisture_pct);
+                }
+            }
+        }
+
+        const finalPerPlant = isCrop
             ? reconcilePerPlantAnalysis(effectiveGrid, parsedResult.per_plant_analysis, {
                   stage: finalStage,
                   health_score: finalHealthScore,
-                  crop_detected: isCrop
+                  crop_detected: isCrop,
+                  soilMoistureBySensorId,
+                  historySnapshots
               })
             : [];
+
+        const spatialMicroclimate = isCrop
+            ? computeSpatialMicroclimateInsight(effectiveGrid, finalPerPlant)
+            : null;
         const finalAdvisors: LifecycleAdvisors = isCrop && parsedResult.lifecycle_advisors ? parsedResult.lifecycle_advisors : {
             topping_lst_advice: 'Sin cultivo detectado en escena.',
             scrog_tucking_advice: 'Posicione la cámara sobre la malla SCROG para recibir guías de entrenamiento.',
@@ -538,6 +564,7 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
                     deficiencies: parsedResult.deficiencies || [],
                     pests_detected: parsedResult.pests_detected || [],
                     tracking_summary: trackingSummary,
+                    spatial_microclimate: spatialMicroclimate,
                     fertilization_plan_correlation: planCorrelation
                 }
             }).select();
@@ -551,7 +578,7 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
             console.error('[VisionAgentEngine] Error al guardar en core_image_analyses:', dbErr);
         }
 
-        return {
+        const analysisResultObj: VisionAnalysisResult = {
             ...parsedResult,
             crop_detected: isCrop,
             phenological_stage_detected: finalStage,
@@ -567,8 +594,15 @@ RESPONDE EXCLUSIVAMENTE CON UN OBJETO JSON VÁLIDO CON ESTA ESTRUCTURA EXACTA:
             lifecycle_advisors: finalAdvisors,
             per_plant_analysis: finalPerPlant,
             tracking_summary: trackingSummary,
+            spatial_microclimate: spatialMicroclimate,
             fertilization_plan_correlation: planCorrelation
         };
+
+        if (!options?.skipAutoTrack) {
+            await this.evaluateAndSendVisionWhatsAppAlerts(analysisResultObj);
+        }
+
+        return analysisResultObj;
     }
 
     private static getLatestCaptureOnDisk(): { name: string; fullPath: string; publicUrl: string; base64Data: string } | null {
@@ -721,6 +755,103 @@ Estimate "estimated_canopy_share_pct" realistically (integer 3..65) per unit bas
             tracking,
             analysis
         };
+    }
+
+    private static async evaluateAndSendVisionWhatsAppAlerts(analysis: VisionAnalysisResult): Promise<void> {
+        try {
+            if (!analysis.crop_detected) return;
+
+            const alerts: Array<{ key: string; text: string }> = [];
+
+            if (analysis.photoperiod_audit === 'LIGHT_LEAK_ALERT') {
+                alerts.push({
+                    key: 'light_leak',
+                    text: '🚨 *Fuga lumínica nocturna* detectada en carpa durante ciclo oscuro.'
+                });
+            }
+
+            if (analysis.light_stress === 'HEAT_TACOING' || analysis.light_stress === 'LIGHT_BLEACHING') {
+                alerts.push({
+                    key: `light_${analysis.light_stress}`,
+                    text: `☀️ *Estrés lumínico/térmico (${analysis.light_stress})*: revisar distancia de luminaria.`
+                });
+            }
+
+            if (analysis.leaf_posture === 'DROOPING' || analysis.leaf_posture === 'CLAWING') {
+                alerts.push({
+                    key: `posture_${analysis.leaf_posture}`,
+                    text: `🍂 *Postura foliar anómala (${analysis.leaf_posture})* detectada en el dosel.`
+                });
+            }
+
+            const touchingDomePlants = (analysis.per_plant_analysis || []).filter(
+                p => p.dome_detected && p.dome_status === 'LEAVES_TOUCHING_REMOVE_SOON'
+            );
+            if (touchingDomePlants.length > 0) {
+                alerts.push({
+                    key: 'dome_touch',
+                    text: `🫧 *Domo por retirar*: ${touchingDomePlants.map(p => p.zone_id).join(', ')} tienen hojas tocando la cúpula.`
+                });
+            }
+
+            const overwatered = (analysis.per_plant_analysis || []).filter(
+                p => p.soil_sensor_audit === 'OVERWATERING_RISK'
+            );
+            if (overwatered.length > 0) {
+                alerts.push({
+                    key: 'overwatering',
+                    text: `💦 *Riesgo de sobrerriego/asfixia radicular*: ${overwatered.map(p => p.zone_id).join(', ')}.`
+                });
+            }
+
+            const criticalHealth = (analysis.per_plant_analysis || []).filter(
+                p => p.presence_status !== 'MISSING' && p.health_score > 0 && p.health_score < 68
+            );
+            if (criticalHealth.length > 0) {
+                alerts.push({
+                    key: 'low_health',
+                    text: `🩺 *Score de salud bajo (<68)* en: ${criticalHealth.map(p => `${p.zone_id} (${p.health_score}/100)`).join(', ')}.`
+                });
+            }
+
+            if (alerts.length === 0) return;
+
+            const cooldownPath = fs.existsSync('/var/www/captures') || process.platform === 'linux'
+                ? '/var/www/captures/crop_vision/vision_wa_cooldown.json'
+                : path.join(process.cwd(), 'public', 'captures', 'vision_wa_cooldown.json');
+
+            let cooldowns: Record<string, number> = {};
+            try {
+                if (fs.existsSync(cooldownPath)) {
+                    cooldowns = JSON.parse(fs.readFileSync(cooldownPath, 'utf8'));
+                }
+            } catch {}
+
+            const now = Date.now();
+            const COOLDOWN_MS = 4 * 3600 * 1000; // 4 horas
+            const activeAlerts = alerts.filter(a => !cooldowns[a.key] || (now - cooldowns[a.key]) >= COOLDOWN_MS);
+            if (activeAlerts.length === 0) return;
+
+            for (const a of activeAlerts) {
+                cooldowns[a.key] = now;
+            }
+            try {
+                fs.mkdirSync(path.dirname(cooldownPath), { recursive: true });
+                fs.writeFileSync(cooldownPath, JSON.stringify(cooldowns, null, 2), 'utf8');
+            } catch {}
+
+            const message = `👁️ *Alerta Visión IA — Cultivo Carpa*\n${activeAlerts.map(a => `• ${a.text}`).join('\n')}\n\n📊 Score global: ${analysis.health_score ?? '-'}/100`;
+
+            await fetch('http://127.0.0.1:5007/send-message', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ phone: '5491156548820@c.us', message }),
+                signal: AbortSignal.timeout(3000)
+            });
+            console.log('[VisionAgentEngine] 📲 Alerta crítica enviada a WhatsApp:', activeAlerts.map(a => a.key).join(', '));
+        } catch (err: any) {
+            console.warn('[VisionAgentEngine] Aviso WhatsApp omitido (servicio local no disponible):', err?.message || err);
+        }
     }
 
     private static async callVisionModel<T>(prompt: string, formattedImageData: string): Promise<T> {

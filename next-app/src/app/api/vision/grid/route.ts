@@ -6,6 +6,8 @@ import {
     loadPlantGrid,
     savePlantGrid,
     reconcilePerPlantAnalysis,
+    fetchLiveSoilAndHistoryContext,
+    computeSpatialMicroclimateInsight,
     getDefaultGridLayout,
     getTemplateGridLayout,
     PlantGridLayout,
@@ -96,13 +98,16 @@ export async function GET() {
                         (latest.context_snapshot?.canopy_coverage_pct ?? 0) > 0
                     );
                     if (cropDetected) {
+                        const liveCtx = await fetchLiveSoilAndHistoryContext(adminSupabase, 24);
                         latestPerPlant = reconcilePerPlantAnalysis(
                             grid,
                             latest.context_snapshot?.per_plant_analysis,
                             {
                                 stage: latest.context_snapshot?.phenological_stage_detected || 'SEEDLING',
                                 health_score: latest.health_score ?? 78,
-                                crop_detected: cropDetected
+                                crop_detected: cropDetected,
+                                soilMoistureBySensorId: liveCtx.soilMoistureBySensorId,
+                                historySnapshots: liveCtx.historySnapshots
                             }
                         );
                     }
@@ -112,11 +117,16 @@ export async function GET() {
             }
         }
 
+        const spatialMicroclimate = cropDetected
+            ? computeSpatialMicroclimateInsight(grid, latestPerPlant)
+            : null;
+
         return NextResponse.json({
             grid,
             soil_sensors: soilSensors,
             available_strains: availableStrains,
             latest_per_plant: latestPerPlant,
+            spatial_microclimate: spatialMicroclimate,
             latest_image_url: latestImageUrl,
             crop_detected: cropDetected
         });
@@ -268,12 +278,16 @@ export async function POST(req: NextRequest) {
             const result = await VisionAgentEngine.autoDetectAndTrackPlants({
                 replaceAll: Boolean(body.replace_all)
             });
+            const finalPlants =
+                result.analysis?.per_plant_analysis ||
+                reconcilePerPlantAnalysis(result.grid, []);
             return NextResponse.json({
                 success: result.success,
                 grid: result.grid,
-                latest_per_plant:
-                    result.analysis?.per_plant_analysis ||
-                    reconcilePerPlantAnalysis(result.grid, []),
+                latest_per_plant: finalPlants,
+                spatial_microclimate:
+                    result.analysis?.spatial_microclimate ||
+                    computeSpatialMicroclimateInsight(result.grid, finalPlants),
                 tracking_summary: result.grid.last_tracking_summary || {
                     timestamp: new Date().toISOString(),
                     matched_count: result.tracking.matchedCount,
@@ -316,8 +330,15 @@ export async function POST(req: NextRequest) {
 
         if (body.grid) {
             const layout: PlantGridLayout = body.grid;
-            const saved = savePlantGrid(layout);
+            savePlantGrid(layout);
             const normalized = loadPlantGrid();
+            const liveCtx = adminSupabase
+                ? await fetchLiveSoilAndHistoryContext(adminSupabase, 20)
+                : { soilMoistureBySensorId: {}, historySnapshots: [] };
+            const reconciled = reconcilePerPlantAnalysis(normalized, body.current_per_plant || [], {
+                soilMoistureBySensorId: liveCtx.soilMoistureBySensorId,
+                historySnapshots: liveCtx.historySnapshots
+            });
             // Disparar re-análisis en segundo plano con las nuevas coordenadas y genéticas
             VisionAgentEngine.reanalyzeLatestCaptureWithCurrentGrid().catch(e =>
                 console.warn('[Grid POST] Re-analysis background warning:', e)
@@ -325,7 +346,8 @@ export async function POST(req: NextRequest) {
             return NextResponse.json({
                 success: true,
                 grid: normalized,
-                reconciled_per_plant: reconcilePerPlantAnalysis(normalized, body.current_per_plant || [])
+                reconciled_per_plant: reconciled,
+                spatial_microclimate: computeSpatialMicroclimateInsight(normalized, reconciled)
             });
         }
 

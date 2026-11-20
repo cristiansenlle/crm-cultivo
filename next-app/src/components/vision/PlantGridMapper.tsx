@@ -15,13 +15,15 @@ import {
     Plus,
     Trash2,
     Maximize2,
-    Target
+    Target,
+    Wind
 } from 'lucide-react';
 import type {
     PlantGridLayout,
     PlantZoneConfig,
     PerPlantAnalysis,
-    SoilSensorOption
+    SoilSensorOption,
+    SpatialMicroclimateInsight
 } from '@/lib/vision/PlantGridStore';
 
 interface PlantGridMapperProps {
@@ -34,6 +36,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
     const [soilSensors, setSoilSensors] = useState<SoilSensorOption[]>([]);
     const [availableStrains, setAvailableStrains] = useState<string[]>([]);
     const [perPlantResults, setPerPlantResults] = useState<PerPlantAnalysis[]>([]);
+    const [spatialMicroclimate, setSpatialMicroclimate] = useState<SpatialMicroclimateInsight | null>(null);
     const [serverImageUrl, setServerImageUrl] = useState<string | null>(null);
     const [selectedZoneId, setSelectedZoneId] = useState<string>('A1');
     const [loading, setLoading] = useState(true);
@@ -120,6 +123,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
 
                 setAvailableStrains(data.available_strains || []);
                 setPerPlantResults(data.latest_per_plant || []);
+                setSpatialMicroclimate(data.spatial_microclimate || null);
                 if (data.grid?.zones?.length > 0 && !selectedZoneId) {
                     setSelectedZoneId(data.grid.zones[0].zone_id);
                 }
@@ -345,6 +349,9 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                 if (Array.isArray(data.reconciled_per_plant)) {
                     setPerPlantResults(data.reconciled_per_plant);
                 }
+                if (data.spatial_microclimate) {
+                    setSpatialMicroclimate(data.spatial_microclimate);
+                }
                 window.dispatchEvent(new CustomEvent('vision-grid-updated'));
                 setSaveMessage('✅ Mapa guardado y sincronizado. Re-analizando diagnósticos individuales con IA...');
                 setTimeout(() => {
@@ -378,6 +385,9 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                 setGrid(data.grid);
                 if (Array.isArray(data.latest_per_plant)) {
                     setPerPlantResults(data.latest_per_plant);
+                }
+                if (data.spatial_microclimate) {
+                    setSpatialMicroclimate(data.spatial_microclimate);
                 }
                 const activeCountNow = (data.grid.zones || []).filter((z: PlantZoneConfig) => z.active).length;
                 setCustomPlantCount(activeCountNow);
@@ -1066,6 +1076,26 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                             <span className="text-zinc-500 font-mono">%</span>
                         </div>
                     </div>
+
+                    {cropDetected && spatialMicroclimate && (
+                        <div className="p-3.5 rounded-xl bg-sky-950/20 border border-sky-500/30 flex flex-col gap-1.5 text-xs">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-bold text-sky-300 flex items-center gap-1.5">
+                                    <Wind className="w-4 h-4 text-sky-400" />
+                                    <span>Microclima Espacial & Rotación Sugerida</span>
+                                </span>
+                                <div className="flex flex-wrap gap-1.5 text-[10px] font-mono">
+                                    {spatialMicroclimate.summary_badges.map((b, i) => (
+                                        <span key={i} className="px-2 py-0.5 rounded bg-black/40 border border-sky-500/25 text-sky-200">
+                                            {b}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                            <p className="text-[11px] text-zinc-200">{spatialMicroclimate.rotation_recommendation}</p>
+                            <p className="text-[11px] text-zinc-400">{spatialMicroclimate.tray_balance_advice}</p>
+                        </div>
+                    )}
                 </div>
 
                 {/* Columna Derecha (5 cols): Editor de Planta Individual Seleccionada */}
@@ -1367,6 +1397,70 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                                     ⚠️ {selectedPlantAnalysis.lagging_alert}
                                                 </div>
                                             )}
+                                            {selectedPlantAnalysis.soil_audit_message && (
+                                                <div className="p-2 rounded-lg bg-amber-950/50 border border-amber-500/40 text-amber-200 text-[10px] font-medium">
+                                                    {selectedPlantAnalysis.soil_audit_message}
+                                                </div>
+                                            )}
+                                            {selectedPlantAnalysis.stalled_alert && (
+                                                <div className="p-2 rounded-lg bg-rose-950/40 border border-rose-500/35 text-rose-200 text-[10px] font-medium">
+                                                    {selectedPlantAnalysis.stalled_alert}
+                                                </div>
+                                            )}
+                                            {(latestImageUrl || serverImageUrl) && (() => {
+                                                const x = Math.max(0, Math.min(90, selectedZone.x_pct ?? 0));
+                                                const y = Math.max(0, Math.min(90, selectedZone.y_pct ?? 0));
+                                                const w = Math.max(5, Math.min(90, selectedZone.w_pct ?? 10));
+                                                const h = Math.max(5, Math.min(90, selectedZone.h_pct ?? 14));
+                                                const vx = Math.max(0, x - 1.5);
+                                                const vy = Math.max(0, y - 2.0);
+                                                const vw = Math.min(100 - vx, w + 3.0);
+                                                const vh = Math.min(100 - vy, h + 4.0);
+                                                return (
+                                                    <div className="flex items-center gap-3 p-2 rounded-lg bg-black/35 border border-zinc-800/80 my-1">
+                                                        <div
+                                                            className="relative w-24 shrink-0 overflow-hidden rounded-lg border border-emerald-500/40 bg-black"
+                                                            style={{ aspectRatio: String((16 * vw) / (9 * vh)) }}
+                                                        >
+                                                            <img
+                                                                src={(latestImageUrl || serverImageUrl) as string}
+                                                                alt={`Zoom ${selectedZone.zone_id}`}
+                                                                style={{
+                                                                    position: 'absolute',
+                                                                    width: `${(100 / vw) * 100}%`,
+                                                                    height: `${(100 / vh) * 100}%`,
+                                                                    left: `${-(vx / vw) * 100}%`,
+                                                                    top: `${-(vy / vh) * 100}%`,
+                                                                    maxWidth: 'none',
+                                                                    maxHeight: 'none',
+                                                                    objectFit: 'fill'
+                                                                }}
+                                                            />
+                                                        </div>
+                                                        <div className="flex flex-col gap-1 text-[10px]">
+                                                            {selectedPlantAnalysis.milestone_badge && (
+                                                                <span className="font-bold text-teal-300">
+                                                                    {selectedPlantAnalysis.milestone_badge}
+                                                                </span>
+                                                            )}
+                                                            {selectedPlantAnalysis.milestone_detail && (
+                                                                <span className="text-zinc-300 leading-tight">{selectedPlantAnalysis.milestone_detail}</span>
+                                                            )}
+                                                            <div className="flex flex-wrap gap-2 text-zinc-400 font-mono">
+                                                                {typeof selectedPlantAnalysis.soil_moisture_pct === 'number' && (
+                                                                    <span>💧 Sonda: {selectedPlantAnalysis.soil_moisture_pct}%</span>
+                                                                )}
+                                                                {selectedPlantAnalysis.growth_delta_24h_pct !== null && selectedPlantAnalysis.growth_delta_24h_pct !== undefined && (
+                                                                    <span>📈 Δ24h: {selectedPlantAnalysis.growth_delta_24h_pct > 0 ? '+' : ''}{selectedPlantAnalysis.growth_delta_24h_pct}%</span>
+                                                                )}
+                                                            </div>
+                                                            {selectedPlantAnalysis.lst_vector_direction && (
+                                                                <span className="text-sky-300 font-mono">{selectedPlantAnalysis.lst_vector_direction}</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
+                                                );
+                                            })()}
                                             <p><strong>Rasgos observados:</strong> {selectedPlantAnalysis.pheno_traits_observed}</p>
                                             <p><strong>Diagnóstico:</strong> {selectedPlantAnalysis.specific_diagnosis}</p>
                                             <p className="text-emerald-300"><strong>Acción sugerida:</strong> {selectedPlantAnalysis.specific_action}</p>

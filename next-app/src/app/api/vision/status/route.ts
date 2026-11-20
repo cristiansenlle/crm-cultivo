@@ -36,7 +36,12 @@ function getLatestDiskCapture(): { url: string; name: string; captured_at: strin
         return null;
     }
 }
-import { loadPlantGrid, reconcilePerPlantAnalysis } from '@/lib/vision/PlantGridStore';
+import {
+    loadPlantGrid,
+    reconcilePerPlantAnalysis,
+    fetchLiveSoilAndHistoryContext,
+    computeSpatialMicroclimateInsight
+} from '@/lib/vision/PlantGridStore';
 import { getShellyCameraLinkStatus } from '@/lib/vision/ShellyLightCheck';
 import {
     loadFertilizationPlans,
@@ -56,12 +61,15 @@ export async function GET() {
 
         const plantGrid = loadPlantGrid();
 
-        // Obtener el análisis más reciente
-        const { data: analyses } = await adminSupabase
-            .from('core_image_analyses')
-            .select('*')
-            .order('created_at', { ascending: false })
-            .limit(1);
+        // Consultar análisis más reciente + suelo en vivo + historial para tasa de crecimiento 24h/72h
+        const [{ data: analyses }, liveCtx] = await Promise.all([
+            adminSupabase
+                .from('core_image_analyses')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(1),
+            fetchLiveSoilAndHistoryContext(adminSupabase, 24)
+        ]);
 
         const latestRaw = analyses && analyses.length > 0 ? analyses[0] : null;
         let latestAnalysis = null;
@@ -93,7 +101,9 @@ export async function GET() {
                     ? reconcilePerPlantAnalysis(plantGrid, snap.per_plant_analysis, {
                           stage: snap.phenological_stage_detected || 'SEEDLING',
                           health_score: latestRaw.health_score ?? 78,
-                          crop_detected: isCrop
+                          crop_detected: isCrop,
+                          soilMoistureBySensorId: liveCtx.soilMoistureBySensorId,
+                          historySnapshots: liveCtx.historySnapshots
                       })
                     : [],
                 growth_stage_est: isCrop ? (snap.batch?.stage || 'Floración') : 'Sin cultivo',
@@ -248,6 +258,10 @@ export async function GET() {
         );
         const latestImageUrl = latestDisk?.url || latestAnalysis?.image_url || null;
 
+        const spatialMicroclimate = latestAnalysis?.crop_detected
+            ? computeSpatialMicroclimateInsight(plantGrid, latestAnalysis.per_plant_analysis || [])
+            : null;
+
         return NextResponse.json({
             camera: {
                 model: 'Sony IMX708 (Camera Module 3 Wide 120°)',
@@ -256,6 +270,7 @@ export async function GET() {
                 interval: `Vinculada a ${shellyLink.linked_shelly_name} (${shellyLink.is_on ? 'ENCENDIDO' : 'APAGADO'})`
             },
             plant_grid: plantGrid,
+            spatial_microclimate: spatialMicroclimate,
             shelly_link: shellyLink,
             latest_image_url: latestImageUrl,
             latest_disk_capture: latestDisk

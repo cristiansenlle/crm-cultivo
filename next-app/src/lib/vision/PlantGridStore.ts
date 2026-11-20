@@ -82,6 +82,34 @@ export interface PerPlantAnalysis {
     visual_substrate_moisture?: 'WET' | 'MOIST_OPTIMAL' | 'DRY_SURFACE' | 'UNKNOWN';
     relative_growth_vs_batch?: 'AHEAD' | 'AVERAGE' | 'LAGGING';
     lagging_alert?: string | null;
+    // v3.0: Recorte HD, auditoría Suelo ESP32 x Visión, tasa crecimiento 24h/72h, hitos y vector LST
+    x_pct?: number;
+    y_pct?: number;
+    w_pct?: number;
+    h_pct?: number;
+    soil_moisture_pct?: number | null;
+    soil_sensor_audit?: 'SENSOR_OK' | 'MISPLACED_OR_AIR_POCKET' | 'OVERWATERING_RISK' | 'UNDERWATERING_DRY' | 'VISUAL_ONLY';
+    soil_audit_message?: string | null;
+    growth_delta_24h_pct?: number | null;
+    growth_delta_72h_pct?: number | null;
+    health_delta_24h?: number | null;
+    growth_velocity_status?: 'FAST_EXPANSION' | 'STEADY_GROWTH' | 'STALLED_ALERT';
+    stalled_alert?: string | null;
+    next_milestone?: 'KEEP_DOME_HUMID' | 'REMOVE_DOME_SOON' | 'TRANSPLANT_WINDOW' | 'TOPPING_LST_READY' | 'SCROG_TUCKING' | 'FLOWER_SWELL' | 'HARVEST_CHECK';
+    milestone_badge?: string;
+    milestone_detail?: string;
+    lst_vector_direction?: string | null;
+}
+
+export interface SpatialMicroclimateInsight {
+    wind_exposure_zones: string[];
+    optimal_light_zones: string[];
+    peripheral_lagging_zones: string[];
+    occupied_left_pct: number;
+    occupied_right_pct: number;
+    rotation_recommendation: string;
+    tray_balance_advice: string;
+    summary_badges: string[];
 }
 
 export interface DetectedPlantBox {
@@ -896,11 +924,334 @@ function calcMedian(values: number[]): number {
 }
 
 /**
+ * Consulta compartida en servidor para obtener las lecturas más recientes de humedad de suelo (ESP32)
+ * y los snapshots históricos de análisis por planta (para tasa de crecimiento 24h/72h).
+ */
+export async function fetchLiveSoilAndHistoryContext(
+    adminSupabase: any,
+    limitAnalyses = 24
+): Promise<{
+    soilMoistureBySensorId: Record<string, number | null>;
+    historySnapshots: Array<{ created_at: string; per_plant_analysis?: any[] }>;
+}> {
+    const soilMoistureBySensorId: Record<string, number | null> = {};
+    let historySnapshots: Array<{ created_at: string; per_plant_analysis?: any[] }> = [];
+
+    if (!adminSupabase) {
+        return { soilMoistureBySensorId, historySnapshots };
+    }
+
+    try {
+        const [{ data: soilTele }, { data: histRows }] = await Promise.all([
+            adminSupabase
+                .from('soil_telemetry')
+                .select('sensor_id, moisture_pct, created_at')
+                .order('created_at', { ascending: false })
+                .limit(80),
+            adminSupabase
+                .from('core_image_analyses')
+                .select('created_at, context_snapshot')
+                .order('created_at', { ascending: false })
+                .limit(limitAnalyses)
+        ]);
+
+        if (Array.isArray(soilTele)) {
+            for (const row of soilTele) {
+                if (row?.sensor_id && soilMoistureBySensorId[row.sensor_id] === undefined && typeof row.moisture_pct === 'number') {
+                    soilMoistureBySensorId[row.sensor_id] = Number(row.moisture_pct);
+                }
+            }
+        }
+
+        if (Array.isArray(histRows)) {
+            historySnapshots = histRows
+                .filter((h: any) => h?.context_snapshot?.crop_detected && Array.isArray(h?.context_snapshot?.per_plant_analysis))
+                .map((h: any) => ({
+                    created_at: h.created_at,
+                    per_plant_analysis: h.context_snapshot.per_plant_analysis
+                }));
+        }
+    } catch (e) {
+        console.warn('[PlantGridStore] Advertencia obteniendo contexto suelo/historial:', e);
+    }
+
+    return { soilMoistureBySensorId, historySnapshots };
+}
+
+function findHistoricalPlantSample(
+    zoneId: string,
+    snapshots: Array<{ created_at: string; per_plant_analysis?: any[] }>,
+    minHoursAgo: number,
+    maxHoursAgo: number,
+    targetHoursAgo: number
+): { sample: any; ageHours: number } | null {
+    const nowMs = Date.now();
+    let best: { sample: any; ageHours: number; diff: number } | null = null;
+
+    for (const snap of snapshots) {
+        if (!snap?.created_at || !Array.isArray(snap.per_plant_analysis)) continue;
+        const ts = new Date(snap.created_at).getTime();
+        if (Number.isNaN(ts)) continue;
+        const ageHours = (nowMs - ts) / 3600000;
+        if (ageHours < minHoursAgo || ageHours > maxHoursAgo) continue;
+
+        const found = snap.per_plant_analysis.find(
+            (p: any) => p && String(p.zone_id).toUpperCase() === String(zoneId).toUpperCase()
+        );
+        if (!found) continue;
+
+        const diff = Math.abs(ageHours - targetHoursAgo);
+        if (!best || diff < best.diff) {
+            best = { sample: found, ageHours, diff };
+        }
+    }
+
+    return best ? { sample: best.sample, ageHours: best.ageHours } : null;
+}
+
+function evaluateSoilAudit(
+    zone: PlantZoneConfig,
+    soilMoisturePct: number | null,
+    visualMoisture: PerPlantAnalysis['visual_substrate_moisture'],
+    leafPosture: PerPlantAnalysis['leaf_posture']
+): {
+    audit: PerPlantAnalysis['soil_sensor_audit'];
+    message: string | null;
+} {
+    const hasAssignedSensor = Boolean(zone.soil_sensor_id && soilMoisturePct !== null);
+
+    if (!hasAssignedSensor || soilMoisturePct === null) {
+        if (visualMoisture === 'DRY_SURFACE' && leafPosture === 'DROOPING') {
+            return {
+                audit: 'UNDERWATERING_DRY',
+                message: '💧 Sustrato seco en superficie y decaimiento foliar (monitoreo visual sin sonda).'
+            };
+        }
+        if (visualMoisture === 'WET' && leafPosture === 'DROOPING') {
+            return {
+                audit: 'OVERWATERING_RISK',
+                message: '🚨 Sustrato saturado visual y hojas caídas: posible sobrerriego.'
+            };
+        }
+        return { audit: 'VISUAL_ONLY', message: null };
+    }
+
+    if (soilMoisturePct <= 8 && (visualMoisture === 'WET' || visualMoisture === 'MOIST_OPTIMAL') && leafPosture !== 'DROOPING') {
+        return {
+            audit: 'MISPLACED_OR_AIR_POCKET',
+            message: `⚠️ Sonda marca ${soilMoisturePct}% pero el sustrato luce húmedo y la planta turgente (revisar inserción física del pin).`
+        };
+    }
+
+    if (leafPosture === 'DROOPING' && (soilMoisturePct >= 68 || visualMoisture === 'WET')) {
+        return {
+            audit: 'OVERWATERING_RISK',
+            message: `🚨 Riesgo de asfixia radicular / exceso de riego (sonda en ${soilMoisturePct}% + hojas decaídas).`
+        };
+    }
+
+    if ((soilMoisturePct <= 22 && visualMoisture === 'DRY_SURFACE') || (visualMoisture === 'DRY_SURFACE' && leafPosture === 'DROOPING')) {
+        return {
+            audit: 'UNDERWATERING_DRY',
+            message: `💧 Falta de riego confirmada por sonda (${soilMoisturePct}%) y sustrato seco superficial.`
+        };
+    }
+
+    return { audit: 'SENSOR_OK', message: null };
+}
+
+function evaluateMilestoneAndLst(
+    zone: PlantZoneConfig,
+    allActiveZones: PlantZoneConfig[],
+    item: PerPlantAnalysis,
+    stage: string
+): {
+    next_milestone: PerPlantAnalysis['next_milestone'];
+    milestone_badge: string;
+    milestone_detail: string;
+    lst_vector_direction: string | null;
+} {
+    const cx = (zone.x_pct ?? 0) + (zone.w_pct ?? 10) / 2;
+    const cy = (zone.y_pct ?? 0) + (zone.h_pct ?? 14) / 2;
+    const rightCount = allActiveZones.filter(z => ((z.x_pct ?? 0) + (z.w_pct ?? 10) / 2) > 54).length;
+
+    let lstVector: string | null = null;
+    if (rightCount === 0 && cx < 54) {
+        if (cx >= 43) lstVector = '➡️ Espacio libre inmediato hacia Bandeja Derecha';
+        else if (cx <= 34) lstVector = '🔄 Borde izquierdo: rotar al centro o derecha';
+        else lstVector = '↗️ Distribuir / guiar hacia sector derecho libre';
+    } else {
+        lstVector = cy < 45 ? '⬇️ Guiar copa hacia sector inferior abierto' : '⬆️ Guiar ramas hacia zona superior abierta';
+    }
+
+    if (['RIPENING_SENESCENCE', 'HARVEST_READY'].includes(stage)) {
+        return {
+            next_milestone: 'HARVEST_CHECK',
+            milestone_badge: '🔬 Revisar Tricomas',
+            milestone_detail: 'Controlar proporción de tricomas lechosos/ámbar para ventana de corte.',
+            lst_vector_direction: null
+        };
+    }
+
+    if (['PRE_FLOWER_STRETCH', 'FLOWERING_MID'].includes(stage)) {
+        return {
+            next_milestone: 'FLOWER_SWELL',
+            milestone_badge: '🌸 Engorde Floral',
+            milestone_detail: 'Mantener flujo de aire entre colas y vigilar consumo EC según semana activa.',
+            lst_vector_direction: lstVector
+        };
+    }
+
+    if (stage === 'VEGETATIVE_SCROG') {
+        return {
+            next_milestone: 'SCROG_TUCKING',
+            milestone_badge: '🕸️ Guiar Malla (SCROG)',
+            milestone_detail: 'Plegar brotes dominantes bajo la red para nivelar altura antes de pasar a 12/12.',
+            lst_vector_direction: lstVector
+        };
+    }
+
+    if (item.dome_detected) {
+        const readyToVent =
+            item.dome_status === 'LEAVES_TOUCHING_REMOVE_SOON' ||
+            item.dome_status === 'HIGH_CONDENSATION' ||
+            item.canopy_share_pct >= 4 ||
+            item.health_score >= 94;
+
+        if (readyToVent) {
+            return {
+                next_milestone: 'REMOVE_DOME_SOON',
+                milestone_badge: '🫧 Ventilar / Retirar Domo',
+                milestone_detail: 'Vigor foliar avanzado bajo cúpula: aumentar ventilación gradual y retirar domo pronto.',
+                lst_vector_direction: lstVector
+            };
+        }
+
+        return {
+            next_milestone: 'KEEP_DOME_HUMID',
+            milestone_badge: '🌱 Mantener Cúpula',
+            milestone_detail: 'Plántula en establecimiento radicular: conservar cúpula limpia y humedad estable.',
+            lst_vector_direction: lstVector
+        };
+    }
+
+    if (item.canopy_share_pct >= 18) {
+        return {
+            next_milestone: 'TOPPING_LST_READY',
+            milestone_badge: '✂️ Lista Apical / LST',
+            milestone_detail: 'Nudos consolidados: apta para poda apical o amarre lateral hacia hueco libre.',
+            lst_vector_direction: lstVector
+        };
+    }
+
+    if (item.canopy_share_pct >= 10) {
+        return {
+            next_milestone: 'TRANSPLANT_WINDOW',
+            milestone_badge: '🪴 Ventana Trasplante',
+            milestone_detail: 'La envergadura foliar alcanza el borde de la maceta actual: evaluar trasplante.',
+            lst_vector_direction: lstVector
+        };
+    }
+
+    return {
+        next_milestone: 'KEEP_DOME_HUMID',
+        milestone_badge: '🌿 Desarrollo Inicial',
+        milestone_detail: 'Crecimiento sin cúpula estable: sostener riegos cortos y buena aireación.',
+        lst_vector_direction: lstVector
+    };
+}
+
+/**
+ * Analiza el mapa espacial (X, Y) junto a la respuesta individual para generar
+ * el reporte de microclima (exposición al ventilador central, epicentro de luz y rotación sugerida).
+ */
+export function computeSpatialMicroclimateInsight(
+    grid: PlantGridLayout,
+    perPlant: PerPlantAnalysis[]
+): SpatialMicroclimateInsight {
+    const activeZones = (grid?.zones || []).filter(z => z.active);
+    if (activeZones.length === 0) {
+        return {
+            wind_exposure_zones: [],
+            optimal_light_zones: [],
+            peripheral_lagging_zones: [],
+            occupied_left_pct: 0,
+            occupied_right_pct: 0,
+            rotation_recommendation: 'Activa y posiciona al menos 2 macetas para calcular rotaciones de microclima.',
+            tray_balance_advice: 'Sin zonas activas mapeadas.',
+            summary_badges: []
+        };
+    }
+
+    const enriched = activeZones.map(z => {
+        const cx = (z.x_pct ?? 0) + (z.w_pct ?? 10) / 2;
+        const cy = (z.y_pct ?? 0) + (z.h_pct ?? 14) / 2;
+        const analysis = perPlant.find(p => String(p.zone_id).toUpperCase() === String(z.zone_id).toUpperCase());
+        const score = analysis?.health_score ?? 80;
+        const canopy = analysis?.canopy_share_pct ?? 3;
+        const vigorRank = score + canopy * 2.5;
+        return { zone: z, cx, cy, analysis, score, canopy, vigorRank };
+    });
+
+    // Ventilador del poste central de la carpa está en ~X: 46..58%, Y: 18..55%
+    const windExposureZones = enriched
+        .filter(e => e.cx >= 41 && e.cx <= 58)
+        .map(e => e.zone.zone_id);
+
+    const byVigorDesc = [...enriched].sort((a, b) => b.vigorRank - a.vigorRank);
+    const best = byVigorDesc[0];
+    const optimalLightZones = byVigorDesc
+        .filter(e => e.vigorRank >= best.vigorRank - 3)
+        .slice(0, 2)
+        .map(e => e.zone.zone_id);
+
+    const peripheralOrLagging = [...enriched]
+        .filter(e => e.zone.zone_id !== best.zone.zone_id)
+        .sort((a, b) => a.vigorRank - b.vigorRank);
+    const lowest = peripheralOrLagging[0];
+
+    const peripheralLaggingZones = enriched
+        .filter(e => e.analysis?.relative_growth_vs_batch === 'LAGGING' || (e.cx < 34 && e.score <= best.score - 3))
+        .map(e => e.zone.zone_id);
+
+    const leftCount = enriched.filter(e => e.cx < 53).length;
+    const rightCount = enriched.length - leftCount;
+    const occupiedLeftPct = Math.round((leftCount / enriched.length) * 100);
+    const occupiedRightPct = 100 - occupiedLeftPct;
+
+    let rotationRecommendation = 'Desarrollo espacial parejo entre posiciones actuales.';
+    if (best && lowest && best.zone.zone_id !== lowest.zone.zone_id) {
+        const edgeHint = lowest.cx <= 34 ? 'borde izquierdo' : lowest.cx >= 43 ? 'borde cercano al ventilador' : 'posición lateral';
+        rotationRecommendation = `🔄 Rotar ${lowest.zone.zone_id} (${lowest.score}pts, ${edgeHint}) ↔ ${best.zone.zone_id} (${best.score}pts, núcleo óptimo) cada 3–4 días para homogeneizar vigor y evapotranspiración.`;
+    }
+
+    const trayBalanceAdvice =
+        occupiedLeftPct >= 80
+            ? `⚖️ ${occupiedLeftPct}% del lote concentrado en la bandeja izquierda (${occupiedRightPct}% derecha). Al retirar domos o trasplantar, aprovechar la bandeja derecha libre para abrir aireación y evitar sombreado.`
+            : `✅ Distribución equilibrada en sala (${occupiedLeftPct}% izq / ${occupiedRightPct}% der).`;
+
+    const summaryBadges: string[] = [];
+    if (windExposureZones.length > 0) summaryBadges.push(`💨 Mayor brisa central: ${windExposureZones.join(', ')}`);
+    if (optimalLightZones.length > 0) summaryBadges.push(`☀️ Epicentro vigor: ${optimalLightZones.join(', ')}`);
+    summaryBadges.push(`📦 Bandejas: ${occupiedLeftPct}% izq / ${occupiedRightPct}% der`);
+
+    return {
+        wind_exposure_zones: windExposureZones,
+        optimal_light_zones: optimalLightZones,
+        peripheral_lagging_zones: peripheralLaggingZones,
+        occupied_left_pct: occupiedLeftPct,
+        occupied_right_pct: occupiedRightPct,
+        rotation_recommendation: rotationRecommendation,
+        tray_balance_advice: trayBalanceAdvice,
+        summary_badges: summaryBadges
+    };
+}
+
+/**
  * Garantiza coherencia total entre las zonas activas del mapa espacial (plant_grid.json)
  * y el arreglo per_plant_analysis devuelto por la IA o almacenado en base de datos.
- * - Siempre prevalecen el plant_name, strain y zone_id actuales configurados por el usuario.
- * - Calcula comparativa intra-lote contra la mediana (plantas rezagadas vs destacadas).
- * - Preserva estado de domo/cúpula, humedad visual del sustrato y estado de tracking espacial.
+ * - Siempre prevalecen el plant_name, strain, zone_id y coordenadas actuales.
+ * - Comparativa intra-lote, auditoría cruzada Suelo ESP32 x Visión, crecimiento 24h/72h y semáforo de hitos.
  */
 export function reconcilePerPlantAnalysis(
     grid: PlantGridLayout,
@@ -909,11 +1260,15 @@ export function reconcilePerPlantAnalysis(
         stage?: string;
         health_score?: number;
         crop_detected?: boolean;
+        soilMoistureBySensorId?: Record<string, number | null>;
+        historySnapshots?: Array<{ created_at: string; per_plant_analysis?: any[] }>;
     }
 ): PerPlantAnalysis[] {
     if (!grid || !Array.isArray(grid.zones)) return [];
     const activeZones = grid.zones.filter(z => z.active);
     const rawList = Array.isArray(rawPerPlant) ? rawPerPlant : [];
+    const soilMap = globalContext?.soilMoistureBySensorId || {};
+    const historySnapshots = Array.isArray(globalContext?.historySnapshots) ? globalContext!.historySnapshots : [];
 
     const stage = globalContext?.stage || 'SEEDLING';
     const isSeedlingOrVeg = ['SEEDLING', 'VEGETATIVE_EARLY', 'VEGETATIVE_SCROG', 'NONE'].includes(stage);
@@ -935,6 +1290,10 @@ export function reconcilePerPlantAnalysis(
                 zone_id: zone.zone_id,
                 plant_name: zone.plant_name || `Planta ${zone.zone_id}`,
                 strain: zone.strain || 'Sin especificar',
+                x_pct: round1(zone.x_pct ?? 0),
+                y_pct: round1(zone.y_pct ?? 0),
+                w_pct: round1(zone.w_pct ?? 10),
+                h_pct: round1(zone.h_pct ?? 14),
                 health_score: 0,
                 canopy_share_pct: 0,
                 leaf_posture: 'NONE' as const,
@@ -952,6 +1311,7 @@ export function reconcilePerPlantAnalysis(
             };
         }
 
+        let item: PerPlantAnalysis;
         if (match) {
             const rawScore = Number(match.health_score);
             const validScore = !isNaN(rawScore) && rawScore > 0 ? rawScore : baseHealth;
@@ -961,10 +1321,14 @@ export function reconcilePerPlantAnalysis(
                 ? normalizeBox2dToPct(match.detected_box_2d, Math.max(...match.detected_box_2d.map(Number)) > 100.5 ? 1000 : 100)
                 : match.detected_box_pct || undefined;
 
-            return {
+            item = {
                 zone_id: zone.zone_id,
                 plant_name: zone.plant_name || `Planta ${zone.zone_id}`,
                 strain: zone.strain || 'Sin especificar',
+                x_pct: round1(zone.x_pct ?? 0),
+                y_pct: round1(zone.y_pct ?? 0),
+                w_pct: round1(zone.w_pct ?? 10),
+                h_pct: round1(zone.h_pct ?? 14),
                 health_score: validScore,
                 canopy_share_pct: Math.max(2, Number(match.canopy_share_pct) || 8),
                 leaf_posture: match.leaf_posture && ['PRAYING', 'TURGID', 'DROOPING', 'CLAWING'].includes(match.leaf_posture)
@@ -986,38 +1350,86 @@ export function reconcilePerPlantAnalysis(
                 dome_detected: typeof match.dome_detected === 'boolean' ? match.dome_detected : undefined,
                 dome_status: match.dome_status || (match.dome_detected ? 'OPTIMAL_HUMIDITY' : 'NONE'),
                 visual_substrate_moisture: match.visual_substrate_moisture || 'UNKNOWN'
-            } as PerPlantAnalysis;
+            };
+        } else {
+            const stageDesc = stage === 'SEEDLING'
+                ? `Plántula de ${zone.strain} (${zone.plant_name}) posicionada en X:${Math.round(zone.x_pct)}% Y:${Math.round(zone.y_pct)}%. Cotiledones y primeras hojas verdaderas en desarrollo.`
+                : `Planta de ${zone.strain} (${zone.plant_name}) activa en zona ${zone.zone_id}.`;
+
+            const diagDesc = stage === 'SEEDLING'
+                ? `Establecimiento inicial uniforme en zona ${zone.zone_id}. Sin signos visuales de estrés hídrico ni clorosis.`
+                : `Desarrollo vegetativo normal en zona ${zone.zone_id} (${zone.strain}).`;
+
+            item = {
+                zone_id: zone.zone_id,
+                plant_name: zone.plant_name || `Planta ${zone.zone_id}`,
+                strain: zone.strain || 'Sin especificar',
+                x_pct: round1(zone.x_pct ?? 0),
+                y_pct: round1(zone.y_pct ?? 0),
+                w_pct: round1(zone.w_pct ?? 10),
+                h_pct: round1(zone.h_pct ?? 14),
+                health_score: baseHealth,
+                canopy_share_pct: isSeedlingOrVeg ? 3 : 12,
+                leaf_posture: 'TURGID' as const,
+                pheno_traits_observed: stageDesc,
+                bud_count: 0,
+                maturity_pct: 0,
+                harvest_status: defaultHarvestStatus,
+                anthocyanin_expression: 'NONE' as const,
+                specific_diagnosis: diagDesc,
+                specific_action: isSeedlingOrVeg
+                    ? 'Mantener microclima húmedo y riego suave alrededor del tallo para estimular expansión radicular.'
+                    : 'Continuar seguimiento cenital y control de humedad por sensor asignado.',
+                presence_status: zonePresence,
+                dome_detected: undefined,
+                dome_status: 'NONE' as const,
+                visual_substrate_moisture: 'UNKNOWN' as const
+            };
         }
 
-        const stageDesc = stage === 'SEEDLING'
-            ? `Plántula de ${zone.strain} (${zone.plant_name}) posicionada en X:${Math.round(zone.x_pct)}% Y:${Math.round(zone.y_pct)}%. Cotiledones y primeras hojas verdaderas en desarrollo.`
-            : `Planta de ${zone.strain} (${zone.plant_name}) activa en zona ${zone.zone_id}.`;
+        // Enriquecer con Auditoría Suelo ESP32 <-> Visión IA
+        const rawSoil = zone.soil_sensor_id && soilMap[zone.soil_sensor_id] !== undefined
+            ? soilMap[zone.soil_sensor_id]
+            : null;
+        const soilVal = typeof rawSoil === 'number' && !isNaN(rawSoil) ? round1(rawSoil) : null;
+        const soilAudit = evaluateSoilAudit(zone, soilVal, item.visual_substrate_moisture, item.leaf_posture);
+        item.soil_moisture_pct = soilVal;
+        item.soil_sensor_audit = soilAudit.audit;
+        item.soil_audit_message = soilAudit.message;
 
-        const diagDesc = stage === 'SEEDLING'
-            ? `Establecimiento inicial uniforme en zona ${zone.zone_id}. Sin signos visuales de estrés hídrico ni clorosis.`
-            : `Desarrollo vegetativo normal en zona ${zone.zone_id} (${zone.strain}).`;
+        // Enriquecer con Tasa de Crecimiento Individual (24h y 72h)
+        const ref24 =
+            findHistoricalPlantSample(zone.zone_id, historySnapshots, 16, 36, 24) ||
+            findHistoricalPlantSample(zone.zone_id, historySnapshots, 2, 16, 12);
+        const ref72 = findHistoricalPlantSample(zone.zone_id, historySnapshots, 54, 96, 72);
 
-        return {
-            zone_id: zone.zone_id,
-            plant_name: zone.plant_name || `Planta ${zone.zone_id}`,
-            strain: zone.strain || 'Sin especificar',
-            health_score: baseHealth,
-            canopy_share_pct: isSeedlingOrVeg ? 8 : 12,
-            leaf_posture: 'TURGID' as const,
-            pheno_traits_observed: stageDesc,
-            bud_count: 0,
-            maturity_pct: 0,
-            harvest_status: defaultHarvestStatus,
-            anthocyanin_expression: 'NONE' as const,
-            specific_diagnosis: diagDesc,
-            specific_action: isSeedlingOrVeg
-                ? 'Mantener microclima húmedo y riego suave alrededor del tallo para estimular expansión radicular.'
-                : 'Continuar seguimiento cenital y control de humedad por sensor asignado.',
-            presence_status: zonePresence,
-            dome_detected: undefined,
-            dome_status: 'NONE' as const,
-            visual_substrate_moisture: 'UNKNOWN' as const
-        } as PerPlantAnalysis;
+        const delta24 = ref24 ? round1(item.canopy_share_pct - (Number(ref24.sample.canopy_share_pct) || 0)) : null;
+        const delta72 = ref72 ? round1(item.canopy_share_pct - (Number(ref72.sample.canopy_share_pct) || 0)) : null;
+        const healthDelta24 = ref24 ? Math.round(item.health_score - (Number(ref24.sample.health_score) || item.health_score)) : null;
+
+        item.growth_delta_24h_pct = delta24;
+        item.growth_delta_72h_pct = delta72;
+        item.health_delta_24h = healthDelta24;
+
+        const isStalled = Boolean(
+            (healthDelta24 !== null && healthDelta24 <= -8) ||
+            (ref24 && ref24.ageHours >= 36 && delta24 !== null && delta24 <= 0 && item.health_score < 88)
+        );
+        const isFast = Boolean((delta24 !== null && delta24 >= 2) || (delta72 !== null && delta72 >= 4));
+
+        item.growth_velocity_status = isStalled ? 'STALLED_ALERT' : isFast ? 'FAST_EXPANSION' : 'STEADY_GROWTH';
+        item.stalled_alert = isStalled
+            ? `⏸️ Posible freno de desarrollo o estrés radicular (${healthDelta24 !== null && healthDelta24 <= -8 ? `${healthDelta24} pts en 24h` : 'sin expansión foliar reciente'}).`
+            : null;
+
+        // Enriquecer con Semáforo de Hitos y Vector LST
+        const milestone = evaluateMilestoneAndLst(zone, activeZones, item, stage);
+        item.next_milestone = milestone.next_milestone;
+        item.milestone_badge = milestone.milestone_badge;
+        item.milestone_detail = milestone.milestone_detail;
+        item.lst_vector_direction = milestone.lst_vector_direction;
+
+        return item;
     });
 
     // Comparativa intra-lote para detectar plantas rezagadas o destacadas
