@@ -381,6 +381,9 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                 }
                 const activeCountNow = (data.grid.zones || []).filter((z: PlantZoneConfig) => z.active).length;
                 setCustomPlantCount(activeCountNow);
+                if (!data.grid.zones.some((z: PlantZoneConfig) => z.zone_id === selectedZoneId)) {
+                    setSelectedZoneId(data.grid.zones[0]?.zone_id || 'A1');
+                }
                 window.dispatchEvent(new CustomEvent('vision-grid-updated'));
                 const msg = data.tracking_summary?.message || 'Plantas detectadas y coordenadas calibradas.';
                 setSaveMessage(`🎯 Auto-Detección completada: ${msg}`);
@@ -764,7 +767,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
                                 onChange={e => handleToggleTrackingSetting({ auto_add_remove_zones: e.target.checked })}
                                 className="accent-purple-500 rounded cursor-pointer"
                             />
-                            <span>Detectar altas/bajas automáticamente</span>
+                            <span>Auto-agregar nuevas y eliminar etiquetas sobrantes</span>
                         </label>
                     </div>
 
@@ -806,7 +809,7 @@ export default function PlantGridMapper({ latestImageUrl, cropDetected = false }
 
                         {/* Lienzo de Zonas Espaciales (Posicionamiento por Coordenadas % X, Y, Ancho, Alto) */}
                         <div className="absolute inset-0">
-                            {grid.zones.map(zone => {
+                            {grid.zones.filter(zone => zone.active).map(zone => {
                                 const isSelected = zone.zone_id === selectedZone?.zone_id;
                                 const isDraggingThis = dragState?.zoneId === zone.zone_id;
                                 const plantDiag = perPlantResults.find(p => p.zone_id === zone.zone_id);

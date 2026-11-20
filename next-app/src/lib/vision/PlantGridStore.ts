@@ -556,8 +556,8 @@ export function normalizeBox2dToPct(
 
     const cx = (xmin + xmax) / 2;
     const cy = (ymin + ymax) / 2;
-    const w_pct = round1(clampNum(xmax - xmin, 9.5, 85));
-    const h_pct = round1(clampNum(ymax - ymin, 14.5, 85));
+    const w_pct = round1(clampNum(xmax - xmin, 8.5, 85));
+    const h_pct = round1(clampNum(ymax - ymin, 12.5, 85));
     const x_pct = round1(clampNum(cx - w_pct / 2, 0, 100 - w_pct));
     const y_pct = round1(clampNum(cy - h_pct / 2, 0, 100 - h_pct));
 
@@ -624,16 +624,15 @@ export function reconcileSpatialTracking(
         const cx = pct.x_pct + pct.w_pct / 2;
         const cy = pct.y_pct + pct.h_pct / 2;
 
-        // Evitar apilamiento de dos cajas sobre una misma maceta/domo (cúpula + sustrato interior)
+        // Deduplicar cajas duplicadas de una misma maceta sin fusionar filas superior/inferior contiguas
         const isDuplicate = normalizedList.some(
             existing =>
                 computeIoU(existing.pct, pct) > 0.42 ||
                 computeContainment(existing.pct, pct) > 0.58 ||
                 Math.hypot(existing.cx - cx, existing.cy - cy) < 5.6
         );
-        if (!isDuplicate) {
-            normalizedList.push({ ...raw, pct, cx, cy });
-        }
+        if (isDuplicate) continue;
+        normalizedList.push({ ...raw, pct, cx, cy });
     }
 
     const zonesCopy: PlantZoneConfig[] = (grid.zones || []).map(z => ({ ...z }));
@@ -688,13 +687,15 @@ export function reconcileSpatialTracking(
         }
     }
 
-    // Paso 3: Emparejamiento bipartito greedy por menor distancia euclidiana de centroides
-    const runGreedyMatch = (limitDistPct: number, minSeparationFromMatchedPct = 0) => {
+    // Paso 3: Emparejamiento bipartito greedy priorizando estrictamente zonas del usuario sobre auto-generadas
+    const runGreedyMatch = (limitDistPct: number, minSeparationFromMatchedPct = 0, onlyUserZones = false) => {
         const candidatePairs: Array<{ zIdx: number; detIdx: number; dist: number; isAuto: number }> = [];
 
         for (const zIdx of activeZoneIndices) {
             if (matchedZoneToDet.has(zIdx)) continue;
             const isAuto = isAutoCreatedZone(zonesCopy[zIdx]) ? 1 : 0;
+            if (onlyUserZones && isAuto === 1) continue;
+
             for (let detIdx = 0; detIdx < normalizedList.length; detIdx++) {
                 if (matchedDetIndices.has(detIdx)) continue;
                 const det = normalizedList[detIdx];
@@ -727,30 +728,32 @@ export function reconcileSpatialTracking(
     };
 
     const maxDist = options?.maxMatchDistancePct ?? 36;
-    runGreedyMatch(maxDist);
+    // 1) Emparejar zonas configuradas por el usuario (evita que etiquetas auto-generadas P13/P14 las desplacen)
+    runGreedyMatch(maxDist, 0, true);
+    if (matchedDetIndices.size < normalizedList.length) {
+        runGreedyMatch(55, 5.6, true);
+    }
 
-    // Paso 3b: Fallback para plantas movidas a mayor distancia manteniendo separación mínima >= 5.6%
+    // 2) Si aún quedan detecciones libres tras asignar zonas del usuario, emparejar zonas auto-generadas
     const maxDistFallback = 42;
     if (
-        maxDist < maxDistFallback &&
         matchedZoneToDet.size < activeZoneIndices.length &&
         matchedDetIndices.size < normalizedList.length
     ) {
-        runGreedyMatch(maxDistFallback, 5.6);
+        runGreedyMatch(Math.max(maxDist, maxDistFallback), 5.6, false);
     }
 
     let matchedCount = 0;
     let movedCount = 0;
     const missingZones: string[] = [];
     const addedZones: string[] = [];
-    const autoZonesToDelete = new Set<number>();
-    const shouldDeactivateMissing = Boolean(
-        options?.markMissing ||
+    const zonesToDelete = new Set<number>();
+    const shouldRemoveMissing = Boolean(
         options?.replaceAll ||
-        (grid.auto_add_remove_zones !== false && normalizedList.length < activeZoneIndices.length)
+        ((options?.markMissing || grid.auto_add_remove_zones !== false) && normalizedList.length < activeZoneIndices.length)
     );
 
-    // Aplicar emparejamientos y marcar o limpiar ausencias reales
+    // Aplicar emparejamientos y eliminar definitivamente las etiquetas sobrantes
     for (const zIdx of activeZoneIndices) {
         const z = zonesCopy[zIdx];
         if (matchedZoneToDet.has(zIdx)) {
@@ -775,13 +778,8 @@ export function reconcileSpatialTracking(
                 z.visual_marker_label = det.visual_label_read.trim();
             }
         } else {
-            if (shouldDeactivateMissing) {
-                if (isAutoCreatedZone(z)) {
-                    autoZonesToDelete.add(zIdx);
-                } else {
-                    z.active = false;
-                    z.presence_status = 'MISSING';
-                }
+            if (shouldRemoveMissing) {
+                zonesToDelete.add(zIdx);
                 missingZones.push(z.zone_id);
             } else {
                 z.presence_status = 'PRESENT';
@@ -856,11 +854,13 @@ export function reconcileSpatialTracking(
     parts.push(`${matchedCount} planta(s) emparejada(s)`);
     if (movedCount > 0) parts.push(`${movedCount} etiqueta(s) reubicada(s)`);
     if (addedZones.length > 0) parts.push(`${addedZones.length} nueva(s) (${addedZones.join(', ')})`);
-    if (missingZones.length > 0) parts.push(`${missingZones.length} ausente(s) (${missingZones.join(', ')})`);
+    if (missingZones.length > 0) {
+        parts.push(`${missingZones.length} etiqueta(s) sobrante(s) eliminada(s) (${missingZones.join(', ')})`);
+    }
     const summaryMessage = parts.join(' • ');
 
-    const finalZones = autoZonesToDelete.size > 0
-        ? zonesCopy.filter((_, idx) => !autoZonesToDelete.has(idx))
+    const finalZones = zonesToDelete.size > 0
+        ? zonesCopy.filter((_, idx) => !zonesToDelete.has(idx))
         : zonesCopy;
 
     const updatedGrid: PlantGridLayout = {

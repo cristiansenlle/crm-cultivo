@@ -702,7 +702,7 @@ Estimate "estimated_canopy_share_pct" realistically (integer 3..65) per unit bas
         const tracking = reconcileSpatialTracking(currentGrid, detRes.detected_plants, {
             forceSnap: true,
             allowAddNew: currentGrid.auto_add_remove_zones !== false,
-            markMissing: Boolean(options?.replaceAll),
+            markMissing: true,
             replaceAll: Boolean(options?.replaceAll),
             maxMatchDistancePct: 28
         });
