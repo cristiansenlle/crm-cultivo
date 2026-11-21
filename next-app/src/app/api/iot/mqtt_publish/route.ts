@@ -2,9 +2,83 @@ import { NextResponse } from 'next/server';
 import mqtt from 'mqtt';
 import { exec } from 'child_process';
 import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 const MQTT_BROKER = process.env.MQTT_BROKER_URL || 'mqtt://127.0.0.1:1883';
-const STATUS_CACHE_FILE = '/tmp/broadlink_rm4_status.json';
+const STATUS_CACHE_FILE = process.platform === 'win32'
+  ? path.join(os.tmpdir(), 'broadlink_rm4_status.json')
+  : '/tmp/broadlink_rm4_status.json';
+const EQUIPMENT_STATE_FILE = process.platform === 'win32'
+  ? path.join(os.tmpdir(), 'broadlink_equipment_state.json')
+  : '/tmp/broadlink_equipment_state.json';
+
+export interface EquipmentRuntimeState {
+  equipment: string;
+  powerState: 'on' | 'off';
+  activeCommandId: string | null;
+  activeCommandName: string | null;
+  isSequence: boolean;
+  steps?: string[];
+  source: 'manual' | 'automation' | 'manual_sync';
+  ruleName?: string | null;
+  updatedAt: string;
+}
+
+export interface ExecutingSequenceState {
+  commandId: string | null;
+  commandName: string;
+  equipment: string;
+  currentStep: number;
+  totalSteps: number;
+  currentStepName?: string;
+  startedAt: string;
+}
+
+interface EquipmentStateStore {
+  equipmentStates: Record<string, EquipmentRuntimeState>;
+  executingSequence: ExecutingSequenceState | null;
+}
+
+function readEquipmentStateFile(): EquipmentStateStore {
+  try {
+    if (fs.existsSync(EQUIPMENT_STATE_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(EQUIPMENT_STATE_FILE, 'utf8'));
+      return {
+        equipmentStates: parsed.equipmentStates && typeof parsed.equipmentStates === 'object' ? parsed.equipmentStates : {},
+        executingSequence: parsed.executingSequence || null,
+      };
+    }
+  } catch (e) {}
+  return { equipmentStates: {}, executingSequence: null };
+}
+
+function writeEquipmentStateFile(store: EquipmentStateStore): void {
+  try {
+    fs.writeFileSync(EQUIPMENT_STATE_FILE, JSON.stringify(store, null, 2), 'utf8');
+  } catch (e) {}
+}
+
+function applyEquipmentStateUpdate(update: Partial<EquipmentRuntimeState> & { equipment: string }, clearExecuting = false): EquipmentStateStore {
+  const store = readEquipmentStateFile();
+  const prev = store.equipmentStates[update.equipment];
+  store.equipmentStates[update.equipment] = {
+    equipment: update.equipment,
+    powerState: update.powerState === 'off' ? 'off' : 'on',
+    activeCommandId: update.activeCommandId !== undefined ? update.activeCommandId : (prev?.activeCommandId ?? null),
+    activeCommandName: update.activeCommandName !== undefined ? update.activeCommandName : (prev?.activeCommandName ?? null),
+    isSequence: update.isSequence !== undefined ? Boolean(update.isSequence) : Boolean(prev?.isSequence),
+    steps: update.steps !== undefined ? update.steps : prev?.steps,
+    source: update.source || 'manual',
+    ruleName: update.ruleName !== undefined ? update.ruleName : null,
+    updatedAt: new Date().toISOString(),
+  };
+  if (clearExecuting) {
+    store.executingSequence = null;
+  }
+  writeEquipmentStateFile(store);
+  return store;
+}
 
 function saveStatusCache(data: any) {
   try {
@@ -62,6 +136,7 @@ function extractIp(msg: string): string | null {
 
 export async function GET() {
   const cached = readStatusCache();
+  const stateStore = readEquipmentStateFile();
   return NextResponse.json({
     success: true,
     status: cached || {
@@ -70,6 +145,8 @@ export async function GET() {
       lastMessage: 'Conectado al RM4 en 192.168.100.7',
       updatedAt: new Date().toISOString(),
     },
+    equipmentStates: stateStore.equipmentStates,
+    executingSequence: stateStore.executingSequence,
   });
 }
 
@@ -143,6 +220,43 @@ export async function POST(req: Request) {
         client.on('error', () => {
           finish(false, 'Error de conexión con el broker MQTT.');
         });
+      });
+    }
+
+    // 1b. Sincronizar estado de un equipo (Manual / Fin de secuencia) sin emitir IR
+    if (action === 'sync_equipment_state') {
+      const { equipment, powerState, activeCommandId, activeCommandName, isSequence, steps, source, ruleName, clearExecuting } = body;
+      if (!equipment) {
+        return NextResponse.json({ error: 'equipment is required' }, { status: 400 });
+      }
+      const store = applyEquipmentStateUpdate(
+        {
+          equipment,
+          powerState: powerState === 'off' ? 'off' : 'on',
+          activeCommandId: activeCommandId ?? null,
+          activeCommandName: activeCommandName ?? null,
+          isSequence: Boolean(isSequence),
+          steps: Array.isArray(steps) ? steps : undefined,
+          source: source || 'manual_sync',
+          ruleName: ruleName ?? null,
+        },
+        Boolean(clearExecuting)
+      );
+      return NextResponse.json({
+        success: true,
+        equipmentStates: store.equipmentStates,
+        executingSequence: store.executingSequence,
+      });
+    }
+
+    // 1c. Registrar o limpiar secuencia en ejecución en vivo
+    if (action === 'set_executing_sequence') {
+      const store = readEquipmentStateFile();
+      store.executingSequence = body.executingSequence || null;
+      writeEquipmentStateFile(store);
+      return NextResponse.json({
+        success: true,
+        executingSequence: store.executingSequence,
       });
     }
 
@@ -264,10 +378,24 @@ export async function POST(req: Request) {
           resolved = true;
           clearTimeout(timer);
           client.end();
+          let updatedEquipmentStates: Record<string, EquipmentRuntimeState> | undefined = undefined;
           if (ok) {
             saveStatusCache({ online: true, lastMessage: statusMessage });
+            if (body.stateUpdate && body.stateUpdate.equipment) {
+              const store = applyEquipmentStateUpdate({
+                equipment: body.stateUpdate.equipment,
+                powerState: body.stateUpdate.powerState === 'off' ? 'off' : 'on',
+                activeCommandId: body.stateUpdate.activeCommandId ?? null,
+                activeCommandName: body.stateUpdate.activeCommandName ?? null,
+                isSequence: Boolean(body.stateUpdate.isSequence),
+                steps: Array.isArray(body.stateUpdate.steps) ? body.stateUpdate.steps : undefined,
+                source: body.stateUpdate.source || 'manual',
+                ruleName: body.stateUpdate.ruleName ?? null,
+              }, Boolean(body.clearExecuting));
+              updatedEquipmentStates = store.equipmentStates;
+            }
           }
-          resolve(NextResponse.json({ success: ok, statusMessage }));
+          resolve(NextResponse.json({ success: ok, statusMessage, equipmentStates: updatedEquipmentStates }));
         };
 
         const timer = setTimeout(() => {

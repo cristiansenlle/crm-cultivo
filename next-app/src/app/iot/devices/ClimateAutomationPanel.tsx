@@ -3,9 +3,15 @@
 import React, { useState, useEffect } from 'react';
 import { 
   Sun, Moon, Thermometer, Droplets, Activity, Zap, Play, CheckCircle2, 
-  AlertTriangle, Clock, RefreshCw, Plus, Trash2, Sliders, ShieldCheck 
+  AlertTriangle, Clock, RefreshCw, Plus, Trash2, Sliders, ShieldCheck,
+  Cpu, Loader2, Bot, User
 } from 'lucide-react';
-import { parseCommandMeta } from './BroadlinkPanel';
+import {
+  parseCommandMeta,
+  EquipmentRuntimeState,
+  ExecutingSequenceState,
+  formatRelativeTimeAr,
+} from './BroadlinkPanel';
 
 export default function ClimateAutomationPanel() {
   const [loading, setLoading] = useState(true);
@@ -16,6 +22,8 @@ export default function ClimateAutomationPanel() {
   const [logs, setLogs] = useState<any[]>([]);
   const [latestTelemetry, setLatestTelemetry] = useState<any>(null);
   const [isLightOn, setIsLightOn] = useState<boolean>(true);
+  const [equipmentStates, setEquipmentStates] = useState<Record<string, EquipmentRuntimeState>>({});
+  const [executingSequence, setExecutingSequence] = useState<ExecutingSequenceState | null>(null);
   const [saving, setSaving] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
 
@@ -35,7 +43,10 @@ export default function ClimateAutomationPanel() {
 
   const fetchData = async () => {
     try {
-      const res = await fetch('/api/iot/climate-automation');
+      const [res, stateRes] = await Promise.all([
+        fetch('/api/iot/climate-automation'),
+        fetch('/api/iot/mqtt_publish'),
+      ]);
       const data = await res.json();
       if (data.success) {
         setProfiles(data.profiles || []);
@@ -48,6 +59,11 @@ export default function ClimateAutomationPanel() {
         if (typeof data.isLightOn === 'boolean') {
           setIsLightOn(data.isLightOn);
         }
+      }
+      const stateData = await stateRes.json();
+      if (stateData.success) {
+        if (stateData.equipmentStates) setEquipmentStates(stateData.equipmentStates);
+        setExecutingSequence(stateData.executingSequence || null);
       }
     } catch (e) {
       console.error(e);
@@ -251,6 +267,87 @@ export default function ClimateAutomationPanel() {
           </div>
         </div>
       </div>
+
+      {/* ESTADO ACTIVO DE EQUIPOS IR (BROADLINK) */}
+      {(Object.keys(equipmentStates).length > 0 || executingSequence) && (
+        <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 shadow-lg">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <span className="text-xs font-semibold text-neutral-300 uppercase tracking-wider flex items-center gap-2">
+              <Cpu className="w-4 h-4 text-emerald-400" />
+              Estado Activo de Equipos IR (Broadlink)
+            </span>
+            <span className="text-[11px] text-neutral-500">
+              Última secuencia o comando aplicado por equipo
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {Array.from(
+              new Set([
+                ...Object.keys(equipmentStates),
+                ...(executingSequence?.equipment ? [executingSequence.equipment] : []),
+              ])
+            ).map(eq => {
+              const st = equipmentStates[eq];
+              const isExec = executingSequence?.equipment === eq;
+              const isOn = st?.powerState === 'on';
+
+              return (
+                <div
+                  key={eq}
+                  className={`rounded-lg p-3 border flex items-center justify-between gap-3 ${
+                    isExec
+                      ? 'bg-amber-950/25 border-amber-500/50'
+                      : isOn
+                      ? 'bg-emerald-950/25 border-emerald-600/50'
+                      : 'bg-neutral-950/60 border-neutral-800'
+                  }`}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-white truncate">{eq}</span>
+                      {isExec ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                          <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                          Paso {executingSequence?.currentStep}/{executingSequence?.totalSteps}
+                        </span>
+                      ) : isOn ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          {st?.isSequence ? 'SECUENCIA ACTIVA' : 'ON'}
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-neutral-800 text-neutral-400 border border-neutral-700">
+                          OFF
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-neutral-300 font-medium truncate mt-1">
+                      {isExec
+                        ? executingSequence?.commandName
+                        : st?.activeCommandName || (isOn ? 'Encendido' : 'Apagado')}
+                    </div>
+                    {st && !isExec && (
+                      <div className="text-[10px] text-neutral-500 flex items-center gap-1.5 mt-0.5">
+                        {st.source === 'automation' ? (
+                          <span className="inline-flex items-center gap-1 text-purple-300">
+                            <Bot className="w-2.5 h-2.5" /> {st.ruleName || 'Auto'}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-neutral-400">
+                            <User className="w-2.5 h-2.5" /> Manual
+                          </span>
+                        )}
+                        <span>• {formatRelativeTimeAr(st.updatedAt)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {statusMsg && (
         <div className="p-3 bg-emerald-950/40 border border-emerald-800/60 rounded-xl text-emerald-300 text-sm flex items-center gap-2">

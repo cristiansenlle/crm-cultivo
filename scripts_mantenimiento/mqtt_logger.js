@@ -267,6 +267,89 @@ async function initPhotoperiodState() {
 }
 initPhotoperiodState();
 
+const BROADLINK_EQUIPMENT_STATE_FILE = '/tmp/broadlink_equipment_state.json';
+
+function parseBroadlinkCommandMeta(cmd) {
+  const raw = cmd?.device_ip || '';
+  let equipment = 'Climatizador';
+  let powerEffect = null;
+
+  if (typeof raw === 'string' && raw.trim().startsWith('{')) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.equipment) equipment = String(parsed.equipment).trim();
+      if (parsed.powerEffect === 'on' || parsed.powerEffect === 'off' || parsed.powerEffect === 'toggle') {
+        powerEffect = parsed.powerEffect;
+      }
+    } catch (e) {}
+  }
+
+  const lowerName = (cmd?.name || '').toLowerCase();
+  if (!raw || !raw.trim().startsWith('{')) {
+    if (lowerName.includes('aire') || lowerName.includes('split') || lowerName.includes('ac ')) equipment = 'Aire Acondicionado';
+    else if (lowerName.includes('deshum')) equipment = 'Deshumidificador';
+    else if (lowerName.includes('calefac') || lowerName.includes('estufa')) equipment = 'Calefactor';
+    else if (lowerName.includes('ventil') || lowerName.includes('extrac')) equipment = 'Ventilación';
+  }
+
+  if (!powerEffect) {
+    if (lowerName.includes('on/off') || lowerName.includes('encendido apagado') || lowerName.includes('encendido/apagado')) {
+      powerEffect = 'toggle';
+    } else if (lowerName.includes('apagar') && !lowerName.includes('encend')) {
+      powerEffect = 'off';
+    } else {
+      powerEffect = 'on';
+    }
+  }
+
+  return { equipment, powerEffect };
+}
+
+function readBroadlinkEquipmentStore() {
+  try {
+    if (fs.existsSync(BROADLINK_EQUIPMENT_STATE_FILE)) {
+      const parsed = JSON.parse(fs.readFileSync(BROADLINK_EQUIPMENT_STATE_FILE, 'utf8'));
+      return {
+        equipmentStates: parsed.equipmentStates && typeof parsed.equipmentStates === 'object' ? parsed.equipmentStates : {},
+        executingSequence: parsed.executingSequence || null
+      };
+    }
+  } catch (e) {}
+  return { equipmentStates: {}, executingSequence: null };
+}
+
+function updateBroadlinkEquipmentState(equipment, statePatch, executingSeq = undefined) {
+  try {
+    const store = readBroadlinkEquipmentStore();
+    if (equipment && statePatch) {
+      const prev = store.equipmentStates[equipment];
+      let resolvedPower = statePatch.powerState;
+      if (statePatch.powerEffect === 'toggle') {
+        resolvedPower = prev?.powerState === 'on' ? 'off' : 'on';
+      } else if (!resolvedPower) {
+        resolvedPower = statePatch.powerEffect === 'off' ? 'off' : 'on';
+      }
+      store.equipmentStates[equipment] = {
+        equipment,
+        powerState: resolvedPower === 'off' ? 'off' : 'on',
+        activeCommandId: statePatch.activeCommandId !== undefined ? statePatch.activeCommandId : (prev?.activeCommandId ?? null),
+        activeCommandName: statePatch.activeCommandName !== undefined ? statePatch.activeCommandName : (prev?.activeCommandName ?? null),
+        isSequence: statePatch.isSequence !== undefined ? Boolean(statePatch.isSequence) : Boolean(prev?.isSequence),
+        steps: statePatch.steps !== undefined ? statePatch.steps : prev?.steps,
+        source: statePatch.source || 'automation',
+        ruleName: statePatch.ruleName !== undefined ? statePatch.ruleName : null,
+        updatedAt: new Date().toISOString()
+      };
+    }
+    if (executingSeq !== undefined) {
+      store.executingSequence = executingSeq;
+    }
+    fs.writeFileSync(BROADLINK_EQUIPMENT_STATE_FILE, JSON.stringify(store, null, 2), 'utf8');
+  } catch (e) {
+    console.warn('[BROADLINK STATE] Error actualizando estado de equipo:', e.message);
+  }
+}
+
 async function evaluateClimateAutomation(tC, rh, vpdLeaf) {
   const now = Date.now();
   if (now - lastAutomationEval < 10000) return; // Debounce mínimo 10s
@@ -312,18 +395,63 @@ async function evaluateClimateAutomation(tC, rh, vpdLeaf) {
 
         ruleCooldowns[rule.id] = now;
 
+        const { equipment, powerEffect } = parseBroadlinkCommandMeta(matchedCmd);
+
         if (matchedCmd.hex_code.startsWith('MACRO:')) {
           try {
             const seq = JSON.parse(matchedCmd.hex_code.replace('MACRO:', ''));
+            const singleCmds = (commands || []).filter(c => c.hex_code && !c.hex_code.startsWith('MACRO:'));
+            const stepNames = seq.map((hex, idx) => {
+              const found = singleCmds.find(c => c.hex_code === hex);
+              return found ? found.name : `Paso ${idx + 1}`;
+            });
+            const startedAt = new Date().toISOString();
+
             for (let i = 0; i < seq.length; i++) {
+              updateBroadlinkEquipmentState(null, null, {
+                commandId: matchedCmd.id,
+                commandName: matchedCmd.name,
+                equipment,
+                currentStep: i + 1,
+                totalSteps: seq.length,
+                currentStepName: stepNames[i],
+                startedAt
+              });
               client.publish('cultivo/broadlink/command', JSON.stringify({ code: seq[i], name: `${matchedCmd.name} (Paso ${i+1})` }));
-              if (i < seq.length - 1) await new Promise(r => setTimeout(r, 2000));
+              if (i < seq.length - 1) await new Promise(r => setTimeout(r, 3000));
             }
+
+            updateBroadlinkEquipmentState(
+              equipment,
+              {
+                powerEffect,
+                activeCommandId: matchedCmd.id,
+                activeCommandName: matchedCmd.name,
+                isSequence: true,
+                steps: stepNames,
+                source: 'automation',
+                ruleName: rule.name
+              },
+              null
+            );
           } catch (e) {
+            updateBroadlinkEquipmentState(null, null, null);
             console.error("[CLIMA AUTO] Error ejecutando macro:", e);
           }
         } else {
           client.publish('cultivo/broadlink/command', JSON.stringify({ code: matchedCmd.hex_code, name: matchedCmd.name }));
+          updateBroadlinkEquipmentState(
+            equipment,
+            {
+              powerEffect,
+              activeCommandId: matchedCmd.id,
+              activeCommandName: matchedCmd.name,
+              isSequence: false,
+              steps: undefined,
+              source: 'automation',
+              ruleName: rule.name
+            }
+          );
         }
 
         await insertSupabase('climate_automation_logs', {
