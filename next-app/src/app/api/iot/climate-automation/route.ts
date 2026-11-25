@@ -10,8 +10,12 @@ export async function GET() {
   try {
     const [profilesRes, rulesRes, commandsRes, logsRes, telemetryRes, devicesRes, deviceLogsRes] = await Promise.all([
       supabase.from('climate_profiles').select('*').order('created_at', { ascending: true }),
-      supabase.from('climate_automation_rules').select('*, broadlink_commands(id, name)').order('created_at', { ascending: true }),
-      supabase.from('broadlink_commands').select('id, name, hex_code').order('created_at', { ascending: false }),
+      supabase
+        .from('climate_automation_rules')
+        .select('*, broadlink_commands(id, name, hex_code, device_ip)')
+        .order('priority', { ascending: true })
+        .order('created_at', { ascending: true }),
+      supabase.from('broadlink_commands').select('id, name, hex_code, device_ip').order('created_at', { ascending: false }),
       supabase.from('climate_automation_logs').select('*').order('created_at', { ascending: false }).limit(20),
       supabase.from('daily_telemetry').select('*').order('created_at', { ascending: false }).limit(1),
       supabase.from('core_iot_devices').select('*'),
@@ -43,15 +47,50 @@ export async function POST(req: Request) {
     const { action } = body;
 
     if (action === 'save_profile') {
-      const { profile } = body;
+      const { profile, activate } = body;
+      const shouldActivate = Boolean(activate ?? profile?.is_active);
+      const cleanProfile = {
+        name: profile.name,
+        phase: profile.phase || 'vegetative',
+        is_active: shouldActivate,
+        day_temp_min: Number(profile.day_temp_min),
+        day_temp_max: Number(profile.day_temp_max),
+        day_humidity_min: Number(profile.day_humidity_min),
+        day_humidity_max: Number(profile.day_humidity_max),
+        day_vpd_min: Number(profile.day_vpd_min),
+        day_vpd_max: Number(profile.day_vpd_max),
+        night_temp_min: Number(profile.night_temp_min),
+        night_temp_max: Number(profile.night_temp_max),
+        night_humidity_min: Number(profile.night_humidity_min),
+        night_humidity_max: Number(profile.night_humidity_max),
+        night_vpd_min: Number(profile.night_vpd_min),
+        night_vpd_max: Number(profile.night_vpd_max),
+      };
+
       if (profile.id) {
-        const { error } = await supabase.from('climate_profiles').update(profile).eq('id', profile.id);
+        if (shouldActivate) {
+          await supabase.from('climate_profiles').update({ is_active: false }).neq('id', profile.id);
+        }
+        const { data, error } = await supabase
+          .from('climate_profiles')
+          .update(cleanProfile)
+          .eq('id', profile.id)
+          .select()
+          .single();
         if (error) throw error;
+        return NextResponse.json({ success: true, profile: data, message: 'Perfil guardado con éxito' });
       } else {
-        const { error } = await supabase.from('climate_profiles').insert([profile]);
+        if (shouldActivate) {
+          await supabase.from('climate_profiles').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000');
+        }
+        const { data, error } = await supabase
+          .from('climate_profiles')
+          .insert([cleanProfile])
+          .select()
+          .single();
         if (error) throw error;
+        return NextResponse.json({ success: true, profile: data, message: 'Nuevo perfil creado con éxito' });
       }
-      return NextResponse.json({ success: true, message: 'Perfil guardado con éxito' });
     }
 
     if (action === 'set_active_profile') {
@@ -62,13 +101,55 @@ export async function POST(req: Request) {
       return NextResponse.json({ success: true, message: 'Perfil activado' });
     }
 
+    if (action === 'delete_profile') {
+      const { profileId } = body;
+      const { data: allProfiles, error: listError } = await supabase.from('climate_profiles').select('id, is_active');
+      if (listError) throw listError;
+      if (!allProfiles || allProfiles.length <= 1) {
+        return NextResponse.json({ success: false, error: 'No puedes eliminar el único perfil existente.' }, { status: 400 });
+      }
+      const target = allProfiles.find(p => p.id === profileId);
+      if (!target) {
+        return NextResponse.json({ success: false, error: 'Perfil no encontrado.' }, { status: 404 });
+      }
+      if (target.is_active) {
+        return NextResponse.json({ success: false, error: 'Activa otro perfil antes de eliminar el perfil activo.' }, { status: 400 });
+      }
+      const { error } = await supabase.from('climate_profiles').delete().eq('id', profileId);
+      if (error) throw error;
+      return NextResponse.json({ success: true, message: 'Perfil eliminado con éxito' });
+    }
+
     if (action === 'save_rule') {
       const { rule } = body;
+      const cleanRule = {
+        profile_id: rule.profile_id || null,
+        name: String(rule.name || '').trim(),
+        mode: rule.mode || 'both',
+        target_parameter: rule.target_parameter || 'temperature',
+        condition: rule.condition || 'greater_than',
+        threshold_source: rule.threshold_source || 'manual',
+        threshold_value: Number.isFinite(Number(rule.threshold_value)) ? Number(rule.threshold_value) : 0,
+        hysteresis: Number.isFinite(Number(rule.hysteresis)) ? Number(rule.hysteresis) : 1.0,
+        cooldown_minutes: Number.isFinite(Number(rule.cooldown_minutes)) ? parseInt(String(rule.cooldown_minutes), 10) : 10,
+        priority: Number.isFinite(Number(rule.priority)) ? parseInt(String(rule.priority), 10) : 10,
+        secondary_parameter: rule.secondary_parameter || null,
+        secondary_condition: rule.secondary_parameter ? (rule.secondary_condition || 'gte') : null,
+        secondary_threshold_source: rule.secondary_parameter ? (rule.secondary_threshold_source || 'profile_min') : 'manual',
+        secondary_threshold_value:
+          rule.secondary_parameter && rule.secondary_threshold_value !== null && rule.secondary_threshold_value !== undefined && rule.secondary_threshold_value !== ''
+            ? Number(rule.secondary_threshold_value)
+            : null,
+        action_type: rule.action_type || 'auto',
+        command_id: rule.command_id || null,
+        is_active: rule.is_active !== false,
+      };
+
       if (rule.id) {
-        const { error } = await supabase.from('climate_automation_rules').update(rule).eq('id', rule.id);
+        const { error } = await supabase.from('climate_automation_rules').update(cleanRule).eq('id', rule.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase.from('climate_automation_rules').insert([rule]);
+        const { error } = await supabase.from('climate_automation_rules').insert([cleanRule]);
         if (error) throw error;
       }
       return NextResponse.json({ success: true, message: 'Regla guardada con éxito' });

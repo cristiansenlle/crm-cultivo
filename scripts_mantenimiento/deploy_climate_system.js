@@ -56,15 +56,15 @@ async function run() {
     console.log("3. Reiniciando mqtt_logger...");
     await ssh.execCommand('pm2 restart mqtt_logger');
 
-    console.log("4. Subiendo API y componentes de Broadlink / Climatización...");
+    console.log("4. Subiendo APIs y componentes de Climatización / Broadlink...");
     const nextAppRoot = path.join(__dirname, '..', 'next-app');
     const targetRoot = '/opt/crm-cannabis-next/next-app';
 
-    await ssh.execCommand(`mkdir -p ${targetRoot}/src/app/api/iot/mqtt_publish ${targetRoot}/src/app/iot/devices`);
+    await ssh.execCommand(`mkdir -p ${targetRoot}/src/app/api/iot/climate-automation ${targetRoot}/src/app/iot/devices`);
 
     await ssh.putFile(
-      path.join(nextAppRoot, 'src/app/api/iot/mqtt_publish/route.ts'),
-      `${targetRoot}/src/app/api/iot/mqtt_publish/route.ts`
+      path.join(nextAppRoot, 'src/app/api/iot/climate-automation/route.ts'),
+      `${targetRoot}/src/app/api/iot/climate-automation/route.ts`
     );
     await ssh.putFile(
       path.join(nextAppRoot, 'src/app/iot/devices/BroadlinkPanel.tsx'),
@@ -86,16 +86,16 @@ async function run() {
     console.log("6. Reiniciando next-hud en PM2...");
     await ssh.execCommand('pm2 restart next-hud');
 
-    console.log("7. Verificando endpoint GET /api/iot/mqtt_publish...");
+    console.log("7. Verificando endpoint GET /api/iot/climate-automation...");
     await new Promise(r => setTimeout(r, 3000));
-    const verifyRes = await ssh.execCommand('curl -s http://127.0.0.1/api/iot/mqtt_publish');
-    console.log("Respuesta GET /api/iot/mqtt_publish:", verifyRes.stdout);
+    const verifyRes = await ssh.execCommand('curl -s http://127.0.0.1/api/iot/climate-automation');
+    console.log("Respuesta GET /api/iot/climate-automation:", verifyRes.stdout);
 
     console.log("8. Verificando logs recientes de mqtt_logger...");
     const logsRes = await ssh.execCommand('pm2 logs mqtt_logger --lines 15 --nostream');
     console.log(logsRes.stdout);
 
-    console.log("✅ ¡Despliegue de monitor de estado y secuencias activas completado con éxito!");
+    console.log("✅ ¡Despliegue del motor de Consignas Ambientales completado con éxito!");
     process.exit(0);
   } catch (e) {
     console.error("❌ Error durante despliegue:", e);

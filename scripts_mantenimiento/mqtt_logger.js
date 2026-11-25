@@ -324,10 +324,12 @@ function updateBroadlinkEquipmentState(equipment, statePatch, executingSeq = und
     if (equipment && statePatch) {
       const prev = store.equipmentStates[equipment];
       let resolvedPower = statePatch.powerState;
-      if (statePatch.powerEffect === 'toggle') {
-        resolvedPower = prev?.powerState === 'on' ? 'off' : 'on';
-      } else if (!resolvedPower) {
-        resolvedPower = statePatch.powerEffect === 'off' ? 'off' : 'on';
+      if (!resolvedPower) {
+        if (statePatch.powerEffect === 'toggle') {
+          resolvedPower = prev?.powerState === 'on' ? 'off' : 'on';
+        } else {
+          resolvedPower = statePatch.powerEffect === 'off' ? 'off' : 'on';
+        }
       }
       store.equipmentStates[equipment] = {
         equipment,
@@ -350,6 +352,118 @@ function updateBroadlinkEquipmentState(equipment, statePatch, executingSeq = und
   }
 }
 
+const equipmentLastAutoSwitch = {};
+
+function getProfileBound(profile, mode, param, bound) {
+  if (!profile) return null;
+  const prefix = mode === 'night' ? 'night' : 'day';
+  const colParam = param === 'temperature' ? 'temp' : param === 'humidity' ? 'humidity' : 'vpd';
+  const val = Number(profile[`${prefix}_${colParam}_${bound}`]);
+  return Number.isFinite(val) ? val : null;
+}
+
+function getLiveParamValue(param, tC, rh, vpdLeaf) {
+  if (param === 'temperature') return tC;
+  if (param === 'humidity') return rh;
+  if (param === 'vpd') return vpdLeaf;
+  return tC;
+}
+
+function evaluateSingleCondition(param, cond, source, manualVal, hysteresis, activeProfile, mode, tC, rh, vpdLeaf) {
+  const hyst = Math.max(0, Number(hysteresis) || 0);
+  const src = source || 'manual';
+
+  if (src === 'profile_in_range') {
+    if (param === 'all_climate') {
+      const tMin = getProfileBound(activeProfile, mode, 'temperature', 'min');
+      const tMax = getProfileBound(activeProfile, mode, 'temperature', 'max');
+      const hMin = getProfileBound(activeProfile, mode, 'humidity', 'min');
+      const hMax = getProfileBound(activeProfile, mode, 'humidity', 'max');
+      if (tMin === null || tMax === null || hMin === null || hMax === null) {
+        return { met: false, label: 'Consigna incompleta', measuredValue: tC };
+      }
+      const effTempHyst = Math.min(hyst, Math.max(0, (tMax - tMin) * 0.45));
+      const effHumHyst = Math.min(Math.max(2, hyst * 2), Math.max(0, (hMax - hMin) * 0.45));
+      const tLow = Number((tMin + effTempHyst).toFixed(2));
+      const tHigh = Number((tMax - effTempHyst).toFixed(2));
+      const hHigh = Number((hMax - effHumHyst).toFixed(1));
+      const met = tC >= tLow && tC <= tHigh && rh <= hHigh;
+      return {
+        met,
+        label: `Todo en rango Consigna (${tLow}–${tHigh}°C y Hum <= ${hHigh}%)`,
+        measuredValue: tC
+      };
+    }
+
+    const pMin = getProfileBound(activeProfile, mode, param, 'min');
+    const pMax = getProfileBound(activeProfile, mode, param, 'max');
+    const val = getLiveParamValue(param, tC, rh, vpdLeaf);
+    if (pMin === null || pMax === null) {
+      return { met: false, label: 'Consigna incompleta', measuredValue: val };
+    }
+    const effHyst = Math.min(hyst, Math.max(0, (pMax - pMin) * 0.45));
+    const low = Number((pMin + effHyst).toFixed(2));
+    const high = Number((pMax - effHyst).toFixed(2));
+    const met = val >= low && val <= high;
+    return {
+      met,
+      label: `${param} en Consigna (${low}–${high})`,
+      measuredValue: val
+    };
+  }
+
+  const val = getLiveParamValue(param, tC, rh, vpdLeaf);
+  let target = Number(manualVal);
+  let sourceTag = 'Manual';
+  if (src === 'profile_max') {
+    const bound = getProfileBound(activeProfile, mode, param, 'max');
+    if (bound === null) return { met: false, label: 'Consigna Máx no definida', measuredValue: val };
+    target = bound;
+    sourceTag = 'Consigna Máx';
+  } else if (src === 'profile_min') {
+    const bound = getProfileBound(activeProfile, mode, param, 'min');
+    if (bound === null) return { met: false, label: 'Consigna Mín no definida', measuredValue: val };
+    target = bound;
+    sourceTag = 'Consigna Mín';
+  }
+
+  if (!Number.isFinite(target)) {
+    return { met: false, label: 'Umbral inválido', measuredValue: val };
+  }
+
+  let effTarget = target;
+  let met = false;
+  let opLabel = '>';
+
+  if (src === 'profile_max' && cond === 'less_than') {
+    effTarget = Number((target - hyst).toFixed(2));
+    met = val <= effTarget;
+    opLabel = '<=';
+  } else if (src === 'profile_min' && cond === 'greater_than') {
+    effTarget = Number((target + hyst).toFixed(2));
+    met = val >= effTarget;
+    opLabel = '>=';
+  } else if (cond === 'greater_than') {
+    met = val > effTarget;
+    opLabel = '>';
+  } else if (cond === 'less_than') {
+    met = val < effTarget;
+    opLabel = '<';
+  } else if (cond === 'gte') {
+    met = val >= effTarget;
+    opLabel = '>=';
+  } else if (cond === 'lte') {
+    met = val <= effTarget;
+    opLabel = '<=';
+  }
+
+  return {
+    met,
+    label: `${param} ${opLabel} ${effTarget} [${sourceTag} ${mode === 'day' ? 'Día' : 'Noche'}]`,
+    measuredValue: val
+  };
+}
+
 async function evaluateClimateAutomation(tC, rh, vpdLeaf) {
   const now = Date.now();
   if (now - lastAutomationEval < 10000) return; // Debounce mínimo 10s
@@ -361,119 +475,179 @@ async function evaluateClimateAutomation(tC, rh, vpdLeaf) {
     if (!activeProfile) return;
 
     const { data: rules } = await getSupabase('climate_automation_rules');
-    const activeRules = rules?.filter(r => r.is_active) || [];
+    const activeRules = (rules?.filter(r => r.is_active) || []).sort((a, b) => {
+      const pA = Number.isFinite(Number(a.priority)) ? Number(a.priority) : 10;
+      const pB = Number.isFinite(Number(b.priority)) ? Number(b.priority) : 10;
+      if (pA !== pB) return pA - pB;
+      return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+    });
     if (activeRules.length === 0) return;
 
     const { data: commands } = await getSupabase('broadlink_commands');
 
     const mode = isLightOn ? 'day' : 'night';
+    const store = readBroadlinkEquipmentStore();
+    const triggeredEquipments = new Set();
 
     for (const rule of activeRules) {
       if (rule.mode !== 'both' && rule.mode !== mode) continue;
 
-      const lastTrigger = ruleCooldowns[rule.id] || (rule.last_triggered_at ? new Date(rule.last_triggered_at).getTime() : 0);
-      const cooldownMs = (rule.cooldown_minutes || 10) * 60 * 1000;
-      if (now - lastTrigger < cooldownMs) continue;
+      const matchedCmd = commands?.find(c => c.id === rule.command_id);
+      if (!matchedCmd) continue;
 
-      let valToCompare = 0;
-      if (rule.target_parameter === 'temperature') valToCompare = tC;
-      else if (rule.target_parameter === 'humidity') valToCompare = rh;
-      else if (rule.target_parameter === 'vpd') valToCompare = vpdLeaf;
+      const { equipment, powerEffect } = parseBroadlinkCommandMeta(matchedCmd);
 
-      let conditionMet = false;
-      if (rule.condition === 'greater_than' && valToCompare > rule.threshold_value) {
-        conditionMet = true;
-      } else if (rule.condition === 'less_than' && valToCompare < rule.threshold_value) {
-        conditionMet = true;
+      // Máximo 1 regla ganadora por equipo por ciclo de evaluación (respeta prioridad P1..Pn)
+      if (triggeredEquipments.has(equipment)) continue;
+
+      // Acción efectiva sobre el equipo
+      const effectiveAction =
+        rule.action_type === 'deactivate'
+          ? 'deactivate'
+          : rule.action_type === 'activate'
+          ? 'activate'
+          : powerEffect === 'off'
+          ? 'deactivate'
+          : 'activate';
+
+      // Protección Anti-Doble Disparo con Gemelo Digital
+      const eqState = store.equipmentStates[equipment];
+      if (effectiveAction === 'deactivate' && (!eqState || eqState.powerState === 'off')) {
+        continue; // Ya está apagado
+      }
+      if (effectiveAction === 'activate') {
+        if (eqState && eqState.powerState === 'on' && eqState.activeCommandId === matchedCmd.id) {
+          continue; // Ya está encendido con este mismo comando/modo
+        }
+        if (powerEffect === 'toggle' && eqState && eqState.powerState === 'on') {
+          continue; // Evitar mandar un toggle On/Off que apagaría un equipo ya encendido
+        }
       }
 
-      if (conditionMet) {
-        const matchedCmd = commands?.find(c => c.id === rule.command_id);
-        if (!matchedCmd) continue;
+      // Protección de compresor (Cooldown a nivel de Regla + a nivel de Equipo)
+      const lastRuleTrigger = ruleCooldowns[rule.id] || (rule.last_triggered_at ? new Date(rule.last_triggered_at).getTime() : 0);
+      const lastEquipTrigger = equipmentLastAutoSwitch[equipment] || 0;
+      const cooldownMs = (rule.cooldown_minutes || 10) * 60 * 1000;
+      if (now - Math.max(lastRuleTrigger, lastEquipTrigger) < cooldownMs) continue;
 
-        console.log(`[CLIMA AUTO] 🚨 Disparando regla: ${rule.name} (Modo: ${mode}, Valor: ${valToCompare}, Umbral: ${rule.threshold_value}) -> Comando: ${matchedCmd.name}`);
+      // Evaluar condición primaria
+      const primary = evaluateSingleCondition(
+        rule.target_parameter,
+        rule.condition,
+        rule.threshold_source || 'manual',
+        rule.threshold_value,
+        rule.hysteresis,
+        activeProfile,
+        mode,
+        tC,
+        rh,
+        vpdLeaf
+      );
+      if (!primary.met) continue;
 
-        ruleCooldowns[rule.id] = now;
+      // Evaluar condición secundaria combinada (Y / AND) si está configurada
+      let secondaryLabel = '';
+      if (rule.secondary_parameter && rule.secondary_condition) {
+        const secondary = evaluateSingleCondition(
+          rule.secondary_parameter,
+          rule.secondary_condition,
+          rule.secondary_threshold_source || 'profile_min',
+          rule.secondary_threshold_value,
+          0,
+          activeProfile,
+          mode,
+          tC,
+          rh,
+          vpdLeaf
+        );
+        if (!secondary.met) continue;
+        secondaryLabel = ` Y ${secondary.label}`;
+      }
 
-        const { equipment, powerEffect } = parseBroadlinkCommandMeta(matchedCmd);
+      const targetPowerState = effectiveAction === 'deactivate' ? 'off' : 'on';
+      const rulePrio = Number.isFinite(Number(rule.priority)) ? Number(rule.priority) : 10;
+      console.log(`[CLIMA AUTO] 🚨 Disparando [P${rulePrio}] ${rule.name} -> Equipo: ${equipment} (${targetPowerState.toUpperCase()}) | Perfil: ${activeProfile.name} (${mode}) | ${primary.label}${secondaryLabel} -> Comando: ${matchedCmd.name}`);
 
-        if (matchedCmd.hex_code.startsWith('MACRO:')) {
-          try {
-            const seq = JSON.parse(matchedCmd.hex_code.replace('MACRO:', ''));
-            const singleCmds = (commands || []).filter(c => c.hex_code && !c.hex_code.startsWith('MACRO:'));
-            const stepNames = seq.map((hex, idx) => {
-              const found = singleCmds.find(c => c.hex_code === hex);
-              return found ? found.name : `Paso ${idx + 1}`;
-            });
-            const startedAt = new Date().toISOString();
+      ruleCooldowns[rule.id] = now;
+      equipmentLastAutoSwitch[equipment] = now;
+      triggeredEquipments.add(equipment);
 
-            for (let i = 0; i < seq.length; i++) {
-              updateBroadlinkEquipmentState(null, null, {
-                commandId: matchedCmd.id,
-                commandName: matchedCmd.name,
-                equipment,
-                currentStep: i + 1,
-                totalSteps: seq.length,
-                currentStepName: stepNames[i],
-                startedAt
-              });
-              client.publish('cultivo/broadlink/command', JSON.stringify({ code: seq[i], name: `${matchedCmd.name} (Paso ${i+1})` }));
-              if (i < seq.length - 1) await new Promise(r => setTimeout(r, 3000));
-            }
+      if (matchedCmd.hex_code.startsWith('MACRO:')) {
+        try {
+          const seq = JSON.parse(matchedCmd.hex_code.replace('MACRO:', ''));
+          const singleCmds = (commands || []).filter(c => c.hex_code && !c.hex_code.startsWith('MACRO:'));
+          const stepNames = seq.map((hex, idx) => {
+            const found = singleCmds.find(c => c.hex_code === hex);
+            return found ? found.name : `Paso ${idx + 1}`;
+          });
+          const startedAt = new Date().toISOString();
 
-            updateBroadlinkEquipmentState(
+          for (let i = 0; i < seq.length; i++) {
+            updateBroadlinkEquipmentState(null, null, {
+              commandId: matchedCmd.id,
+              commandName: matchedCmd.name,
               equipment,
-              {
-                powerEffect,
-                activeCommandId: matchedCmd.id,
-                activeCommandName: matchedCmd.name,
-                isSequence: true,
-                steps: stepNames,
-                source: 'automation',
-                ruleName: rule.name
-              },
-              null
-            );
-          } catch (e) {
-            updateBroadlinkEquipmentState(null, null, null);
-            console.error("[CLIMA AUTO] Error ejecutando macro:", e);
+              currentStep: i + 1,
+              totalSteps: seq.length,
+              currentStepName: stepNames[i],
+              startedAt
+            });
+            client.publish('cultivo/broadlink/command', JSON.stringify({ code: seq[i], name: `${matchedCmd.name} (Paso ${i+1})` }));
+            if (i < seq.length - 1) await new Promise(r => setTimeout(r, 3000));
           }
-        } else {
-          client.publish('cultivo/broadlink/command', JSON.stringify({ code: matchedCmd.hex_code, name: matchedCmd.name }));
+
           updateBroadlinkEquipmentState(
             equipment,
             {
+              powerState: targetPowerState,
               powerEffect,
               activeCommandId: matchedCmd.id,
               activeCommandName: matchedCmd.name,
-              isSequence: false,
-              steps: undefined,
+              isSequence: true,
+              steps: stepNames,
               source: 'automation',
               ruleName: rule.name
-            }
+            },
+            null
           );
+        } catch (e) {
+          updateBroadlinkEquipmentState(null, null, null);
+          console.error("[CLIMA AUTO] Error ejecutando macro:", e);
         }
-
-        await insertSupabase('climate_automation_logs', {
-          rule_id: rule.id,
-          event_description: `Regla ${rule.name}: ${rule.target_parameter} ${rule.condition === 'greater_than' ? '>' : '<'} ${rule.threshold_value}`,
-          triggered_value: valToCompare,
-          mode: mode,
-          command_name: matchedCmd.name
-        });
-
-        await fetch(`${SUPABASE_URL}/rest/v1/climate_automation_rules?id=eq.${rule.id}`, {
-          method: 'PATCH',
-          headers: {
-            'apikey': SUPABASE_ANON_KEY,
-            'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({ last_triggered_at: new Date().toISOString() })
-        });
-
-        break;
+      } else {
+        client.publish('cultivo/broadlink/command', JSON.stringify({ code: matchedCmd.hex_code, name: matchedCmd.name }));
+        updateBroadlinkEquipmentState(
+          equipment,
+          {
+            powerState: targetPowerState,
+            powerEffect,
+            activeCommandId: matchedCmd.id,
+            activeCommandName: matchedCmd.name,
+            isSequence: false,
+            steps: undefined,
+            source: 'automation',
+            ruleName: rule.name
+          }
+        );
       }
+
+      await insertSupabase('climate_automation_logs', {
+        rule_id: rule.id,
+        event_description: `[P${rulePrio}] ${rule.name} (${activeProfile.name}): ${primary.label}${secondaryLabel}`,
+        triggered_value: primary.measuredValue,
+        mode: mode,
+        command_name: matchedCmd.name
+      });
+
+      await fetch(`${SUPABASE_URL}/rest/v1/climate_automation_rules?id=eq.${rule.id}`, {
+        method: 'PATCH',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ last_triggered_at: new Date().toISOString() })
+      });
     }
   } catch (e) {
     console.error("[CLIMA AUTO] Error en motor de automatización:", e.message);
